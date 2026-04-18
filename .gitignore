@@ -1,0 +1,14 @@
+*.mx
+*.mx/
+.WolframEngine/
+.wolframscript/
+*.nb~
+*.nb.bak
+Untitled-*.nb
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*~
