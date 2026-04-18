@@ -11,7 +11,8 @@ Module[{repoRoot, testFiles},
       {"ErrorUtil.wl"},
       {"tests", "harness.wl"},
       {"Types.wl"},
-      {"Terms.wl"}
+      {"Terms.wl"},
+      {"Kernel.wl"}
     }
   ];
 

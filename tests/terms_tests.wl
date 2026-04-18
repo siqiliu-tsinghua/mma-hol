@@ -4,6 +4,7 @@ Needs["HOLTest`"];
 Needs["HOL`Error`"];
 Needs["HOL`Types`"];
 Needs["HOL`Terms`"];
+Needs["HOL`Kernel`"];
 
 HOLTest`runTests["terms: mkVar", Module[{alpha},
   alpha = mkVarType["a"];

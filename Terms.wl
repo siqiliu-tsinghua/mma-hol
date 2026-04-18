@@ -3,12 +3,11 @@
 BeginPackage["HOL`Terms`", {"HOL`Error`", "HOL`Types`"}];
 
 var::usage     = "var[name, type] — variable head. Construct via mkVar.";
-const::usage   = "const[name, type] — constant head. Construct via mkConst.";
+const::usage   = "const[name, type] — constant head. Construct via mkConst (from HOL`Kernel`).";
 comb::usage    = "comb[f, x] — application head. Construct via mkComb.";
 abs::usage     = "abs[bv, body, origin] — lambda head. Construct via mkAbs.";
 
 mkVar::usage      = "mkVar[name, ty] returns var[name, ty] after validating the name is a nonempty string and not in the reserved _b<digits> bound-variable namespace.";
-mkConst::usage    = "mkConst[name, ty] returns const[name, ty] if ty is an instance of the registered generic type for name.";
 mkComb::usage     = "mkComb[f, x] returns comb[f, x] if typeOf[f] is fun[dom, rng] and typeOf[x] === dom.";
 mkAbs::usage      = "mkAbs[v, body] returns an α-canonical abs. v must be a non-reserved variable; occurrences of v in body are renamed to the canonical bound-variable name for their depth.";
 
@@ -28,47 +27,10 @@ vsubst::usage     = "vsubst[theta, term] substitutes terms for variables; theta 
 instType::usage   = "instType[theta, term] applies a type substitution to every type annotation in the term.";
 aconv::usage      = "aconv[s, t] tests α-equivalence (ignores origin slots on abs).";
 
-mkEq::usage       = "mkEq[s, t] builds the term (s = t) after checking typeOf[s] === typeOf[t].";
-constType::usage  = "constType[name] returns the registered generic type of a constant.";
-listConstants::usage = "listConstants[] returns the sorted list of currently registered constant names.";
-
 Begin["`Private`"];
 
 canonicalBoundQ[n_String] := StringMatchQ[n, "_b" ~~ DigitCharacter ..];
 decodeBoundIndex[n_String] := FromDigits[StringDrop[n, 2]];
-
-constTypeTable = <||>;
-
-registerConst[name_String, ty_] := (constTypeTable[name] = ty;);
-
-listConstants[] := Sort[Keys[constTypeTable]];
-
-constType[name_String] :=
-  Lookup[constTypeTable, name,
-    HOL`Error`holError["term", "constType: unknown constant", <|"name" -> name|>]];
-
-With[{alpha = tyVar["a"]},
-  registerConst["=", tyFun[alpha, tyFun[alpha, boolTy]]];
-];
-
-tyMatch[tyVar[n_String], target_, theta_Association] :=
-  Module[{k = tyVar[n]},
-    If[KeyExistsQ[theta, k],
-      If[theta[k] === target, theta,
-        HOL`Error`holError["term", "tyMatch: inconsistent binding",
-          <|"var" -> k, "old" -> theta[k], "new" -> target|>]],
-      Append[theta, k -> target]
-    ]
-  ];
-tyMatch[tyApp[n_String, pArgs_List], tyApp[m_String, tArgs_List], theta_Association] :=
-  If[n =!= m || Length[pArgs] =!= Length[tArgs],
-    HOL`Error`holError["term", "tyMatch: type structure mismatch",
-      <|"pattern" -> tyApp[n, pArgs], "target" -> tyApp[m, tArgs]|>],
-    Fold[tyMatch[#2[[1]], #2[[2]], #1] &, theta, Transpose[{pArgs, tArgs}]]
-  ];
-tyMatch[p_, t_, _] :=
-  HOL`Error`holError["term", "tyMatch: incompatible shapes",
-    <|"pattern" -> p, "target" -> t|>];
 
 destFunType[tyApp["fun", {dom_, rng_}]] := {dom, rng};
 destFunType[other_] :=
@@ -77,12 +39,6 @@ destFunType[other_] :=
 mkVar[n_String, t_] /; StringLength[n] > 0 && ! canonicalBoundQ[n] := var[n, t];
 mkVar[n_, t_] :=
   HOL`Error`holError["term", "mkVar: invalid name", <|"name" -> n, "type" -> t|>];
-
-mkConst[name_String, ty_] :=
-  Module[{},
-    tyMatch[constType[name], ty, <||>];
-    const[name, ty]
-  ];
 
 mkComb[f_, x_] :=
   Module[{ft, xt, dom, rng},
@@ -143,7 +99,7 @@ isAbs[_] := False;
 typeOf[var[_, t_]] := t;
 typeOf[const[_, t_]] := t;
 typeOf[comb[f_, _]] := destFunType[typeOf[f]][[2]];
-typeOf[abs[bv_, body_, _]] := tyFun[typeOf[bv], typeOf[body]];
+typeOf[abs[bv_, body_, _]] := tyApp["fun", {typeOf[bv], typeOf[body]}];
 
 freesIn[t_] := Sort[DeleteDuplicates[freesWalk[t, 0]]];
 
@@ -189,14 +145,6 @@ stripOrigin[v : var[_, _]] := v;
 stripOrigin[c : const[_, _]] := c;
 stripOrigin[comb[f_, x_]] := comb[stripOrigin[f], stripOrigin[x]];
 stripOrigin[abs[bv_, body_, _]] := abs[bv, stripOrigin[body], "_"];
-
-mkEq[s_, t_] :=
-  Module[{ty = typeOf[s]},
-    If[ty =!= typeOf[t],
-      HOL`Error`holError["term", "mkEq: type mismatch",
-        <|"lhsType" -> ty, "rhsType" -> typeOf[t]|>]];
-    comb[comb[mkConst["=", tyFun[ty, tyFun[ty, boolTy]]], s], t]
-  ];
 
 End[];
 EndPackage[];

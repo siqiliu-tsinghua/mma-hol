@@ -3,6 +3,7 @@
 Needs["HOLTest`"];
 Needs["HOL`Error`"];
 Needs["HOL`Types`"];
+Needs["HOL`Kernel`"];
 
 HOLTest`runTests["types: construction", Module[{},
   HOLTest`assertEq[mkVarType["a"], tyVar["a"], "mkVarType returns tyVar"];
