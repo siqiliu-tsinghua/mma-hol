@@ -18,7 +18,7 @@ Hard rules:
 1. **`new_axiom` must disappear from the Kernel Association after bootstrap.** Three axioms (`ETA_AX`, `SELECT_AX`, `INFINITY_AX`) are declared during init; after that the API is withdrawn. Adding a new axiom is a user decision, not a Claude decision.
 2. **Term construction above the kernel goes through `mkVar` / `mkConst` / `mkComb` / `mkAbs`.** Raw `comb[...]` / `abs[...]` literals bypass type-checking and α-normalization — forbidden outside the kernel module.
 3. **Kernel is a singleton.** `makeKernel[]` runs once at load; no reset. To clear state, restart `wolframscript`.
-4. **Bound variables are canonicalized to `_b0, _b1, …`** by `mkAbs`; the original name lives in the 3rd slot of `abs[v, body, origin]` for the printer only. Structural equality ⟺ α-equivalence by construction.
+4. **Bound variables are canonicalized to `_b0, _b1, …`** by `mkAbs`. The scheme is de-Bruijn *levels-from-binder*: inside any `abs`, the immediately enclosing binder's var is `_b0`; references to a binder k levels further out are `_b{k}`. So `λx. λy. x` ≡ `abs[_b0, abs[_b0, _b1, "y"], "x"]` — each abs binds its own `_b0`, and the `_b1` in the innermost body points one level out. The original binder name lives in the 3rd slot of `abs[v, body, origin]` for the printer only. **α-equivalence is `aconv`, not `===`** — `===` distinguishes the origin slot; `aconv` strips it. Kernel rules that compare terms up to α must use `aconv`.
 5. **Printer correctness is independent of soundness.** A printer bug that renders `⊢ False` as `⊢ True` won't break the kernel but will deceive readers — printer needs regression tests.
 
 ## Conventions
@@ -56,4 +56,9 @@ Capstones: M3 `⊢ T`; M8 Lebesgue criterion for Riemann integrability; M9 gener
 
 ## Current state
 
-M1 (types) done: `Types.wl` provides `tyVar`/`tyApp`, `mkVarType`/`mkType` with arity checking, `destVarType`/`destType`, `tyvars`, `typeSubst` (parallel), and built-ins `boolTy`/`indTy`/`tyFun`. Arity table lives in `HOL`Types`Private`` and will be subsumed by the M3 kernel closure. Running `wolframscript -file tests/run_all.wls` at repo root passes 55/0. Next step is M2 (terms).
+M1 + M2 done.
+
+- `Types.wl` (M1): `tyVar`/`tyApp`, `mkVarType`/`mkType` with arity check, `destVarType`/`destType`, `tyvars`, `typeSubst` (parallel), built-ins `boolTy`/`indTy`/`tyFun`. Arity table private in `HOL`Types`Private``.
+- `Terms.wl` (M2): `var`/`const`/`comb`/`abs` heads; smart constructors `mkVar`/`mkConst`/`mkComb`/`mkAbs` with type checking and α-canonicalization; `destVar`/`destConst`/`destComb`/`destAbs`, predicates, `typeOf`, `freesIn`, `vsubst` (capture-free by construction), `instType`, `aconv`, `mkEq`. Constants table private; `=` pre-registered as `α → α → bool`.
+
+Both M1 and M2 arity/constant tables will be subsumed by the M3 kernel closure. Running `wolframscript -file tests/run_all.wls` at repo root passes 124/0. Next step is M3 (10 primitive rules + bootstrap).

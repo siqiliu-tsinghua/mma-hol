@@ -10,7 +10,8 @@ Module[{repoRoot, testFiles},
     {
       {"ErrorUtil.wl"},
       {"tests", "harness.wl"},
-      {"Types.wl"}
+      {"Types.wl"},
+      {"Terms.wl"}
     }
   ];
 
