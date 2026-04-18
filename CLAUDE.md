@@ -27,7 +27,7 @@ Hard rules:
 - **Contexts**: `HOL`Kernel``, `HOL`Bool``, `HOL`Real``, … Private helpers in `` `Private` `` subcontext.
 - **Errors**: kernel throws `Throw[Failure["HOLError", <|"tag" -> ..., "msg" -> ...|>], holErrorTag]`; top-level `Catch` in wolframscript entries. Tests assert on tag. **Do not use `Message` + `$Failed`** — cannot distinguish failure modes.
 - **Tests**: `tests/harness.wl` provides `assertEq` / `assertTrue` / `assertThrows` / `runTests` / `testExit`; `tests/run_all.wls` is the CI entry — it auto-discovers `tests/*_tests.wl`. Nonzero exit = failure.
-- **Package loading**: every entry script (`*.wls`) sets `$Path` to include the repo root and `tests/`, then `Get[...]`s `ErrorUtil.wl` + `tests/harness.wl` before any test file. Never rely on global `$Path` configuration.
+- **Package loading**: `tests/run_all.wls` holds an ordered list of library files (`ErrorUtil.wl`, `tests/harness.wl`, `Types.wl`, …) and `Get[]`s them in dependency order before discovering `tests/*_tests.wl`. Test files use `Needs["HOL`Whatever`"]` which is a no-op once the context is in `$Packages`. `Needs` cannot locate a flat-layout file on its own — always add new modules to the run_all load list.
 - **Failure payload access**: `Failure[tag, assoc]` — `[[1]]` is the tag string, `[[2]]` is the association. Always read keys via `f[[2, "tag"]]`, never `f[[1, "tag"]]`.
 - **No comments describing what code does** — names should carry that. Comments only for non-obvious *why*.
 
@@ -56,4 +56,4 @@ Capstones: M3 `⊢ T`; M8 Lebesgue criterion for Riemann integrability; M9 gener
 
 ## Current state
 
-Harness committed: `ErrorUtil.wl`, `tests/harness.wl`, `tests/run_all.wls`, plus self-tests `tests/{harness,errorutil}_tests.wl`. Running `wolframscript -file tests/run_all.wls` at repo root passes 19/0. Next step is M1 (types).
+M1 (types) done: `Types.wl` provides `tyVar`/`tyApp`, `mkVarType`/`mkType` with arity checking, `destVarType`/`destType`, `tyvars`, `typeSubst` (parallel), and built-ins `boolTy`/`indTy`/`tyFun`. Arity table lives in `HOL`Types`Private`` and will be subsumed by the M3 kernel closure. Running `wolframscript -file tests/run_all.wls` at repo root passes 55/0. Next step is M2 (terms).

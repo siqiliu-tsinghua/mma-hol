@@ -5,8 +5,14 @@ Module[{repoRoot, testFiles},
   $Path = Prepend[$Path, repoRoot];
   $Path = Prepend[$Path, FileNameJoin[{repoRoot, "tests"}]];
 
-  Get[FileNameJoin[{repoRoot, "ErrorUtil.wl"}]];
-  Get[FileNameJoin[{repoRoot, "tests", "harness.wl"}]];
+  Scan[
+    Function[rel, Get[FileNameJoin[Prepend[rel, repoRoot]]]],
+    {
+      {"ErrorUtil.wl"},
+      {"tests", "harness.wl"},
+      {"Types.wl"}
+    }
+  ];
 
   HOLTest`resetCounters[];
 
