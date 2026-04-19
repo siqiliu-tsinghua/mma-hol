@@ -57,9 +57,11 @@ Capstones: M3 `⊢ T`; M8 Lebesgue criterion for Riemann integrability; M9 gener
 
 ## Current state
 
-M1 + M2 done.
+M1 + M2 + M3 done.
 
-- `Types.wl` (M1): `tyVar`/`tyApp`, `mkVarType`/`mkType` with arity check, `destVarType`/`destType`, `tyvars`, `typeSubst` (parallel), built-ins `boolTy`/`indTy`/`tyFun`. Arity table private in `HOL`Types`Private``.
-- `Terms.wl` (M2): `var`/`const`/`comb`/`abs` heads; smart constructors `mkVar`/`mkConst`/`mkComb`/`mkAbs` with type checking and α-canonicalization; `destVar`/`destConst`/`destComb`/`destAbs`, predicates, `typeOf`, `freesIn`, `vsubst` (capture-free by construction), `instType`, `aconv`, `mkEq`. Constants table private; `=` pre-registered as `α → α → bool`.
+- `Types.wl` (M1): pure type-layer — `tyVar`/`tyApp` heads, `mkVarType`, destructors, `tyvars`, `typeSubst`. No state.
+- `Terms.wl` (M2): pure term-layer — `var`/`const`/`comb`/`abs` heads, `mkVar`/`mkComb`/`mkAbs` (α-canonicalizing), destructors/predicates, `typeOf`, `freesIn`, `vsubst`, `instType`, `aconv`, `stripOrigin`. No state, no `mkEq`/`mkConst`.
+- `Kernel.wl` (M3a+b): the trust boundary. One `Module` closure owns `arityTable`, `constTypeTable`, `axiomList`, `defnList`, `axiomIntakeOpen`, and the `thmTag` gensym. Provides `mkType`/`typeArity`/`boolTy`/`indTy`/`tyFun` (state-aware), `mkConst`/`constType`/`listConstants`/`mkEq`, the 10 primitive rules (`REFL`, `TRANS`, `MKCOMB`, `ABS`, `BETA`, `ASSUME`, `EQMP`, `DEDUCTANTISYM`, `INST`, `INSTTYPE`), the 4 extension points (`newConstant`, `newType`, `newDefinition`, `newBasicTypeDefinition`, `newAxiom`), `lockAxioms`, and the theorem accessors (`destThm`, `hyp`, `concl`, `isThm`, `listAxioms`, `listDefinitions`). `=` is pre-registered as `α→α→bool`.
+- `Bootstrap.wl` (M3c): declares the HOL logical constants — `T`, `∀`, `∧`, `⇒`, `∃`, `F`, `¬` via `newDefinition`; `@` (Hilbert ε) via `newConstant`; `ONE_ONE` and `ONTO` via `newDefinition`; then posts the three axioms `ETA_AX`, `SELECT_AX`, `INFINITY_AX` and calls `lockAxioms[]`. Exposes the returned theorems as `HOL`Bootstrap`tDef`, `forallDef`, …, `etaAx`, `selectAx`, `infinityAx`.
 
-Both M1 and M2 arity/constant tables will be subsumed by the M3 kernel closure. Running `wolframscript -file tests/run_all.wls` at repo root passes 124/0. Next step is M3 (10 primitive rules + bootstrap).
+`tests/bootstrap_tests.wl` includes the M3 capstone ⊢ T, derived from `tDef` + `REFL` + `MKCOMB` + `EQMP`. Running `wolframscript -file tests/run_all.wls` at repo root passes 240/0. Next step is M4 (derived rules on top of the primitives: `SYM`, `MP`, `SPEC`, `GEN`, `CONJ`/`CONJUNCT{1,2}`, `DISCH`, `UNDISCH`, `SUBS`, rewrite engine, …).

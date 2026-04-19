@@ -1,6 +1,6 @@
 #!/usr/bin/env wolframscript
 
-Module[{repoRoot, testFiles},
+Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   repoRoot = ParentDirectory[DirectoryName[$InputFileName]];
   $Path = Prepend[$Path, repoRoot];
   $Path = Prepend[$Path, FileNameJoin[{repoRoot, "tests"}]];
@@ -18,15 +18,27 @@ Module[{repoRoot, testFiles},
 
   HOLTest`resetCounters[];
 
-  testFiles = FileNames["*_tests.wl", FileNameJoin[{repoRoot, "tests"}]];
-  Print["discovered ", Length[testFiles], " test file(s)"];
-  Scan[
-    Function[f,
-      Print[">>> ", FileNameTake[f]];
-      Get[f]
-    ],
-    testFiles
-  ];
+  runGroup[label_, files_] := (
+    Print["=== ", label, " ==="];
+    Scan[
+      Function[f,
+        Print[">>> ", FileNameTake[f]];
+        Get[f]
+      ],
+      files
+    ]
+  );
+
+  preBootstrapTests  = {FileNameJoin[{repoRoot, "tests", "kernel_tests.wl"}]};
+  postBootstrapTests = Complement[
+    FileNames["*_tests.wl", FileNameJoin[{repoRoot, "tests"}]],
+    preBootstrapTests];
+
+  runGroup["pre-bootstrap", preBootstrapTests];
+
+  Get[FileNameJoin[{repoRoot, "Bootstrap.wl"}]];
+
+  runGroup["post-bootstrap", postBootstrapTests];
 
   HOLTest`testExit[]
 ]

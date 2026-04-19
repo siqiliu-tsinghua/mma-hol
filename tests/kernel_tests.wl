@@ -230,9 +230,10 @@ HOLTest`runTests["kernel: newBasicTypeDefinition", Module[{y, P, x, axThm, pair,
     "rep constant has type kcTyA → bool"];
 ]];
 
-(* ========= newAxiom + lockAxioms (LAST — one-way door) ========= *)
+(* newAxiom (open-intake properties only; lockAxioms is exercised by Bootstrap
+   and verified post-bootstrap). *)
 
-HOLTest`runTests["kernel: newAxiom + lockAxioms", Module[{p, th, before, after},
+HOLTest`runTests["kernel: newAxiom (pre-bootstrap)", Module[{p, th, before, after},
   p = mkVar["kcAxP", boolTy];
   before = Length[listAxioms[]];
   th = newAxiom[p];
@@ -243,8 +244,4 @@ HOLTest`runTests["kernel: newAxiom + lockAxioms", Module[{p, th, before, after},
   HOLTest`assertEq[after - before, 1, "listAxioms grows by 1"];
   HOLTest`assertThrows[newAxiom[mkVar["x", mkVarType["a"]]], "rule",
     "newAxiom rejects non-bool"];
-  (* LOCK — must be the last interaction with newAxiom *)
-  lockAxioms[];
-  HOLTest`assertThrows[newAxiom[mkVar["kcAxPost", boolTy]], "kernel",
-    "newAxiom throws after lockAxioms"];
 ]];
