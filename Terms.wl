@@ -26,6 +26,7 @@ freesIn::usage    = "freesIn[term] returns the sorted list of distinct free vari
 vsubst::usage     = "vsubst[theta, term] substitutes terms for variables; theta is keyed by var. Requires type-preserving entries; capture-free by canonical form.";
 instType::usage   = "instType[theta, term] applies a type substitution to every type annotation in the term.";
 aconv::usage      = "aconv[s, t] tests α-equivalence (ignores origin slots on abs).";
+stripOrigin::usage = "stripOrigin[t] replaces every abs origin slot with \"_\" (useful for canonicalizing for comparisons or display).";
 
 Begin["`Private`"];
 

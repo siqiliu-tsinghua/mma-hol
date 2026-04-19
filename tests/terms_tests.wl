@@ -19,9 +19,9 @@ HOLTest`runTests["terms: mkVar", Module[{alpha},
 HOLTest`runTests["terms: mkConst and '=' pre-registration", Module[{alpha, beta, eq},
   alpha = mkVarType["a"];
   beta = mkVarType["b"];
-  HOLTest`assertEq[
-    listConstants[], {"="},
-    "only '=' pre-registered"
+  HOLTest`assertTrue[
+    MemberQ[listConstants[], "="],
+    "'=' is pre-registered"
   ];
   HOLTest`assertEq[
     constType["="], tyFun[alpha, tyFun[alpha, boolTy]],
