@@ -15,7 +15,7 @@
 3. **封装由语言机制承担**：`thm` 类型的不可伪造性由 `Module` 的 gensym 机制保证，而不是靠社会契约或约定。
 4. **notebook 友好**：证明状态可视化、项与类型可排版、tactic 可一步步展开观察。
 5. **脚本可检查**：kernel、派生规则、tactic 层不依赖 notebook；写好的证明脚本必须能通过 `wolframscript` 无交互跑通，成功退出码 0、失败非零。notebook 的可视化（MakeBoxes、goal 栈渲染）是可选前端，不得进入可信核。
-6. **面向本科分析课程的形式化库**：长期目标是把本科数学分析的主干内容机械化到可实用的程度——一元分析推进到黎曼积分的 Lebesgue 可积性判据；多元部分覆盖重积分换元法与欧氏空间带边子流形上的一般 Stokes 公式；Fourier 分析覆盖三类收敛定理（点态 / 一致 / 均方）以及 Schwartz 类上的 Fourier 变换。全程保持在**黎曼积分 + 零测集**框架内，不引入完整勒贝格测度。路线详见 §7 M7–M10。
+6. **面向本科分析课程的形式化库**：长期目标是把本科数学分析的主干内容机械化到可实用的程度——一元分析推进到黎曼积分的 Lebesgue 可积性判据；多元部分覆盖重积分换元法与欧氏空间带边子流形上的一般 Stokes 公式；Fourier 分析覆盖三类收敛定理（点态 / 一致 / 均方），以 **Poisson 求和公式**与 **Radon 变换反演**（CT 重建的数学原理）作为压轴应用。全程保持在**黎曼积分 + 零测集**框架内，不引入完整勒贝格测度。路线详见 §7 M7–M10。
 
 参考系：HOL Light（John Harrison，OCaml）。它的 kernel 是已知最小、最清晰的 LCF 风格实现之一，Flyspeck 项目（Kepler 猜想形式化）就建立在它之上。
 
@@ -487,12 +487,20 @@ EndPackage[];
 - [ ] 卷积、近似单位
 - [ ] **Fourier 变换**：在 Schwartz 类 `𝒮(R)` 或 `C_c^∞` 上定义（使黎曼积分充分）；连续性 / 可微性 / 衰减性通过 Part A 的含参积分机制得到
 - [ ] **反演 / Plancherel / Parseval**：Schwartz 类上
-- [ ] 应用：热方程、波动方程基本解（力所能及的程度）
+- [ ] **Poisson 求和公式**：Schwartz 类上 `∑_n f(n) = ∑_k \hat f(2π k)`；用 Fejér 求和或 Schwartz 衰减直接推导，绕开 `L^2` 完备性
 
-**Part B 验收**：
-- 完整机械化 Fejér 定理
-- 在合适函数类上证出 Parseval
-- Schwartz 类上的 Fourier 反演公式
+#### Part C：Radon 变换与 CT 重建的数学原理
+
+- [ ] **Radon 变换**：在 Schwartz 类 `𝒮(R^2)` 上定义 `R f(θ, s) = ∫_{x·θ = s} f`；基本线性性与连续性
+- [ ] **投影切片定理**（Fourier Slice Theorem）：`\hat{R f}(θ, σ) = \hat f(σ θ)`——一维 Fourier 变换与二维 Fourier 变换通过 Radon 串起来，这是整个 CT 数学框架的中心定理
+- [ ] **滤波反投影反演公式**：`f = (1/(4π)) R^* (Λ R f)`，其中 `Λ` 是 Riesz 势（在 Schwartz 类上用一维 Fourier 乘 `|σ|` 表达）
+- [ ] 连续性与误差估计：带宽受限近似、有限采样角度的误差界（能做到多少取决于工程进度）
+
+**Part B + C 验收**：
+- 完整机械化 Fejér 定理与 Schwartz 类 Fourier 反演
+- Poisson 求和公式在 Schwartz 类上证出
+- 投影切片定理机械化
+- Schwartz 类上的 Radon 反演（滤波反投影）作为 **M10 capstone** 给出完整证明脚本
 
 ---
 
@@ -560,7 +568,7 @@ HOL/
 │   ├── Manifold.wl         (* 带边子流形 *)
 │   └── Stokes.wl
 │
-├── analysis3/              (* M10：函数项级数、含参积分、Fourier *)
+├── analysis3/              (* M10：函数项级数、含参积分、Fourier、Radon *)
 │   │                       (* Part A：Fourier 所需的中间层 *)
 │   ├── UnifConv.wl         (* 函数序列 / 级数的一致收敛 *)
 │   ├── PowerSeries.wl      (* 幂级数、Cauchy–Hadamard、Abel *)
@@ -574,7 +582,12 @@ HOL/
 │   ├── FourierUnifConv.wl
 │   ├── Parseval.wl
 │   ├── Convolution.wl
-│   └── FourierTransform.wl
+│   ├── FourierTransform.wl
+│   ├── PoissonSum.wl       (* Poisson 求和公式 *)
+│   │                       (* Part C：Radon 变换 / CT 重建 *)
+│   ├── Radon.wl            (* R 及其伴随 R^* *)
+│   ├── FourierSlice.wl     (* 投影切片定理 *)
+│   └── RadonInversion.wl   (* 滤波反投影反演 *)
 │
 ├── tests/
 │   ├── harness.wl
@@ -593,7 +606,8 @@ HOL/
     ├── 04-epsilon-delta.nb      (* M8 *)
     ├── 05-riemann-integral.nb   (* M8 *)
     ├── 06-stokes.nb             (* M9 *)
-    └── 07-fourier.nb            (* M10 *)
+    ├── 07-fourier.nb            (* M10 Part B *)
+    └── 08-radon.nb              (* M10 Part C：CT 重建 *)
 ```
 
 所有加载后，用户在 notebook 里：
@@ -767,9 +781,11 @@ M3 的端到端 demo 目标是 `⊢ T`（**不是** `⊢ ∀x. x = x`）。
 
 ➡️ 这是非平凡的形式化成果——Mathematica 生态内前所未有。
 
-### 第三档：Fourier 分析（完成 M10）
+### 第三档：Fourier 分析 + Radon 变换（完成 M10）
 - ✅ 三类收敛（点态 / 一致 / 均方）在黎曼积分框架内各自一份完整证明
 - ✅ Schwartz 类上的 Fourier 反演公式机械化
-- ✅ 至少一个 PDE 应用（热 / 波方程）的基本解推导
+- ✅ Poisson 求和公式在 Schwartz 类上证出
+- ✅ 投影切片定理机械化
+- ✅ Schwartz 类上的 Radon 变换反演（滤波反投影）——CT 重建的数学原理机械化
 
 ➡️ 到此为止，本项目已经是一个**可实用**的教学与研究级形式化工具，不再只是"Mathematica 复刻 LCF"的玩具演示。
