@@ -296,6 +296,44 @@ HOLTest`runTests["bool: DISJCASES rejects non-∨", Module[{p, r1, r2},
     "DISJCASES rejects non-∨"];
 ]];
 
+HOLTest`runTests["bool: EXCLUDEDMIDDLE basic", Module[{p, th},
+  p = mkVar["p", boolTy];
+  th = EXCLUDEDMIDDLE[p];
+  HOLTest`assertEq[concl[th], orTerm[p, notTerm[p]], "⊢ p ∨ ¬ p"];
+  HOLTest`assertEq[hyp[th], {}, "EXCLUDEDMIDDLE closes all hyps"];
+]];
+
+HOLTest`runTests["bool: EXCLUDEDMIDDLE on T", Module[{th},
+  th = EXCLUDEDMIDDLE[mkConst["T", boolTy]];
+  HOLTest`assertEq[concl[th],
+    orTerm[mkConst["T", boolTy], notTerm[mkConst["T", boolTy]]],
+    "⊢ T ∨ ¬ T"];
+  HOLTest`assertEq[hyp[th], {}, "closed"];
+]];
+
+HOLTest`runTests["bool: EXCLUDEDMIDDLE rejects non-bool", Module[{x, alpha},
+  alpha = mkVarType["a"];
+  x = mkVar["x", alpha];
+  HOLTest`assertThrows[EXCLUDEDMIDDLE[x], "rule",
+    "EXCLUDEDMIDDLE demands :bool"];
+]];
+
+HOLTest`runTests["bool: CCONTR discharges ¬p", Module[{p, notP, thF, th},
+  p = mkVar["p", boolTy];
+  notP = notTerm[p];
+  thF = MP[NOTELIM[ASSUME[notP]], ASSUME[p]];
+  HOLTest`assertEq[concl[thF], mkConst["F", boolTy], "built {¬p, p} ⊢ F"];
+  th = CCONTR[p, thF];
+  HOLTest`assertEq[concl[th], p, "CCONTR: ⊢ p"];
+  HOLTest`assertEq[hyp[th], {p}, "CCONTR removes ¬p, leaves p"];
+]];
+
+HOLTest`runTests["bool: CCONTR rejects non-F", Module[{p, q},
+  p = mkVar["p", boolTy];
+  q = ASSUME[mkVar["q", boolTy]];
+  HOLTest`assertThrows[CCONTR[p, q], "rule", "CCONTR needs F conclusion"];
+]];
+
 (* M4 acceptance test: ⊢ ∀x y. x = y ⇒ y = x *)
 HOLTest`runTests["bool: M4 acceptance — symmetry of equality",
   Module[{alpha, x, y, xEqY, symTh, dischTh, innerGen, outerGen,
