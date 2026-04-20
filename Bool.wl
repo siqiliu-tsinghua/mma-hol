@@ -3,11 +3,26 @@
 BeginPackage["HOL`Bool`", {"HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
                            "HOL`Bootstrap`", "HOL`Equal`"}];
 
-TRUTH::usage    = "TRUTH — ⊢ T, derived once from tDef + REFL.";
-EQTINTRO::usage = "EQTINTRO[th] — from Γ ⊢ p, derive Γ ⊢ p = T.";
-EQTELIM::usage  = "EQTELIM[th] — from Γ ⊢ p = T, derive Γ ⊢ p.";
-GEN::usage      = "GEN[x, th] — from Γ ⊢ p with x not free in Γ, derive Γ ⊢ ∀x. p.";
-SPEC::usage     = "SPEC[t, th] — from Γ ⊢ ∀(λx. p), derive Γ ⊢ p[t/x].";
+TRUTH::usage     = "TRUTH — ⊢ T, derived once from tDef + REFL.";
+EQTINTRO::usage  = "EQTINTRO[th] — from Γ ⊢ p, derive Γ ⊢ p = T.";
+EQTELIM::usage   = "EQTELIM[th] — from Γ ⊢ p = T, derive Γ ⊢ p.";
+GEN::usage       = "GEN[x, th] — from Γ ⊢ p with x not free in Γ, derive Γ ⊢ ∀x. p.";
+SPEC::usage      = "SPEC[t, th] — from Γ ⊢ ∀(λx. p), derive Γ ⊢ p[t/x].";
+CONJ::usage      = "CONJ[thp, thq] — from Γ₁ ⊢ p and Γ₂ ⊢ q, derive Γ₁∪Γ₂ ⊢ p ∧ q.";
+CONJUNCT1::usage = "CONJUNCT1[th] — from Γ ⊢ p ∧ q, derive Γ ⊢ p.";
+CONJUNCT2::usage = "CONJUNCT2[th] — from Γ ⊢ p ∧ q, derive Γ ⊢ q.";
+MP::usage        = "MP[thImp, thP] — from Γ₁ ⊢ p ⇒ q and Γ₂ ⊢ p, derive Γ₁∪Γ₂ ⊢ q.";
+DISCH::usage     = "DISCH[p, th] — from Γ ⊢ q, derive (Γ\\{p}) ⊢ p ⇒ q.";
+UNDISCH::usage   = "UNDISCH[th] — from Γ ⊢ p ⇒ q, derive Γ∪{p} ⊢ q.";
+NOTINTRO::usage  = "NOTINTRO[th] — from Γ ⊢ p ⇒ F, derive Γ ⊢ ¬ p.";
+NOTELIM::usage   = "NOTELIM[th] — from Γ ⊢ ¬ p, derive Γ ⊢ p ⇒ F.";
+CONTR::usage     = "CONTR[p, thF] — from Γ ⊢ F and p:bool, derive Γ ⊢ p.";
+EXISTS::usage    = "EXISTS[∃x. P x, t, th] — from Γ ⊢ P[t/x], derive Γ ⊢ ∃x. P x.";
+CHOOSE::usage    = "CHOOSE[v, existsTh, bodyTh] — from Γ₁ ⊢ ∃x. P x and (Γ₂, P[v/x]) ⊢ q with v fresh, derive Γ₁∪Γ₂ ⊢ q.";
+orDef::usage     = "orDef — ⊢ ∨ = (λp q. ∀r. (p ⇒ r) ⇒ (q ⇒ r) ⇒ r).";
+DISJ1::usage     = "DISJ1[thp, q] — from Γ ⊢ p, derive Γ ⊢ p ∨ q.";
+DISJ2::usage     = "DISJ2[thq, p] — from Γ ⊢ q, derive Γ ⊢ p ∨ q.";
+DISJCASES::usage = "DISJCASES[thOr, thPR, thQR] — from Γ ⊢ p ∨ q, (Δ₁,p) ⊢ r, (Δ₂,q) ⊢ r, derive Γ∪Δ₁∪Δ₂ ⊢ r.";
 
 Begin["`Private`"];
 
@@ -72,6 +87,307 @@ HOL`Bool`SPEC[t_, th_] :=
     rightBeta = BETACONV[destEqTh[step2][[2]]];
     chain = TRANS[TRANS[SYM[leftBeta], step2], rightBeta];
     HOL`Bool`EQTELIM[chain]
+  ];
+
+boolBinConst[name_] := mkConst[name, tyFun[boolTy, tyFun[boolTy, boolTy]]];
+
+unfoldBinop[defTh_, p_, q_] :=
+  Module[{s1, b1, t1, s2, b2},
+    s1 = APTHM[defTh, p];
+    b1 = BETACONV[rhsOfConcl[s1]];
+    t1 = TRANS[s1, b1];
+    s2 = APTHM[t1, q];
+    b2 = BETACONV[rhsOfConcl[s2]];
+    TRANS[s2, b2]
+  ];
+
+unfoldAnd[p_, q_]     := unfoldBinop[andDef, p, q];
+unfoldImplies[p_, q_] := unfoldBinop[impliesDef, p, q];
+
+proveHyp[th1_, th2_] := EQMP[DEDUCTANTISYM[th1, th2], th1];
+
+collectFreeNames[tms___] :=
+  DeleteDuplicates[Flatten[Map[Function[t, Map[First, freesIn[t]]], {tms}]]];
+
+freshName[prefix_String, forbidden_List] :=
+  Module[{i, cand},
+    cand = prefix; i = 0;
+    While[MemberQ[forbidden, cand], i++; cand = prefix <> ToString[i]];
+    cand
+  ];
+
+HOL`Bool`CONJ[thp_, thq_] :=
+  Module[{p, q, fName, fVar, pEqT, qEqT, fpqEqFTT, absth, unfoldTh},
+    p = concl[thp];
+    q = concl[thq];
+    fName = freshName["f",
+      collectFreeNames[p, q, Sequence @@ hyp[thp], Sequence @@ hyp[thq]]];
+    fVar = mkVar[fName, tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    pEqT = HOL`Bool`EQTINTRO[thp];
+    qEqT = HOL`Bool`EQTINTRO[thq];
+    fpqEqFTT = MKCOMB[MKCOMB[REFL[fVar], pEqT], qEqT];
+    absth = ABS[fVar, fpqEqFTT];
+    unfoldTh = unfoldAnd[p, q];
+    EQMP[SYM[unfoldTh], absth]
+  ];
+
+conjunctImpl[th_, selectLeft_] :=
+  Module[{c, pT, qT, pv, qv, sel, unfoldTh, eq0, eq1, tConst,
+          betaL1, inner1L, betaL2, applyQL, betaL3, chainL, lhsRed,
+          betaR1, inner1R, betaR2, applyQR, betaR3, chainR, rhsRed,
+          equation},
+    c = concl[th];
+    If[! MatchQ[c, comb[comb[const["∧", _], _], _]],
+      HOL`Error`holError["rule", "CONJUNCT: expected p ∧ q", <|"concl" -> c|>]];
+    pT = c[[1, 2]]; qT = c[[2]];
+    pv = mkVar["pSel", boolTy];
+    qv = mkVar["qSel", boolTy];
+    sel = If[selectLeft, mkAbs[pv, mkAbs[qv, pv]], mkAbs[pv, mkAbs[qv, qv]]];
+    unfoldTh = unfoldAnd[pT, qT];
+    eq0 = EQMP[unfoldTh, th];
+    eq1 = APTHM[eq0, sel];
+    betaL1 = BETACONV[destEqTh[eq1][[1]]];
+    inner1L = mkComb[sel, pT];
+    betaL2 = BETACONV[inner1L];
+    applyQL = APTHM[betaL2, qT];
+    betaL3 = BETACONV[destEqTh[applyQL][[2]]];
+    chainL = TRANS[applyQL, betaL3];
+    lhsRed = TRANS[betaL1, chainL];
+    tConst = mkConst["T", boolTy];
+    betaR1 = BETACONV[destEqTh[eq1][[2]]];
+    inner1R = mkComb[sel, tConst];
+    betaR2 = BETACONV[inner1R];
+    applyQR = APTHM[betaR2, tConst];
+    betaR3 = BETACONV[destEqTh[applyQR][[2]]];
+    chainR = TRANS[applyQR, betaR3];
+    rhsRed = TRANS[betaR1, chainR];
+    equation = TRANS[TRANS[SYM[lhsRed], eq1], rhsRed];
+    HOL`Bool`EQTELIM[equation]
+  ];
+
+HOL`Bool`CONJUNCT1[th_] := conjunctImpl[th, True];
+HOL`Bool`CONJUNCT2[th_] := conjunctImpl[th, False];
+
+HOL`Bool`MP[thImp_, thP_] :=
+  Module[{c, p, q, unfoldEq, step1, andTh},
+    c = concl[thImp];
+    If[! MatchQ[c, comb[comb[const["⇒", _], _], _]],
+      HOL`Error`holError["rule", "MP: expected ⊢ p ⇒ q", <|"concl" -> c|>]];
+    p = c[[1, 2]]; q = c[[2]];
+    unfoldEq = unfoldImplies[p, q];
+    step1 = EQMP[unfoldEq, thImp];
+    andTh = EQMP[SYM[step1], thP];
+    HOL`Bool`CONJUNCT2[andTh]
+  ];
+
+HOL`Bool`DISCH[p_, th_] :=
+  Module[{q, andTh, projTh, equivTh, unfoldEq},
+    If[typeOf[p] =!= boolTy,
+      HOL`Error`holError["rule", "DISCH: hypothesis must be :bool",
+        <|"got" -> typeOf[p]|>]];
+    q = concl[th];
+    andTh = HOL`Bool`CONJ[ASSUME[p], th];
+    projTh = HOL`Bool`CONJUNCT1[ASSUME[concl[andTh]]];
+    equivTh = DEDUCTANTISYM[andTh, projTh];
+    unfoldEq = unfoldImplies[p, q];
+    EQMP[SYM[unfoldEq], equivTh]
+  ];
+
+HOL`Bool`UNDISCH[th_] :=
+  Module[{c, p},
+    c = concl[th];
+    If[! MatchQ[c, comb[comb[const["⇒", _], _], _]],
+      HOL`Error`holError["rule", "UNDISCH: expected ⊢ p ⇒ q", <|"concl" -> c|>]];
+    p = c[[1, 2]];
+    HOL`Bool`MP[th, ASSUME[p]]
+  ];
+
+impTmInt[a_, b_] :=
+  mkComb[mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+
+Module[{p, q, r, orTy, impBool, forallBool, pImpR, qImpR, qImpRThenR,
+        innerImpl, outerForall, innerLam, outerLam, def},
+  orTy = tyFun[boolTy, tyFun[boolTy, boolTy]];
+  p = mkVar["p", boolTy]; q = mkVar["q", boolTy]; r = mkVar["r", boolTy];
+  impBool = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+  forallBool = mkConst["∀", tyFun[tyFun[boolTy, boolTy], boolTy]];
+  pImpR = mkComb[mkComb[impBool, p], r];
+  qImpR = mkComb[mkComb[impBool, q], r];
+  qImpRThenR = mkComb[mkComb[impBool, qImpR], r];
+  innerImpl = mkComb[mkComb[impBool, pImpR], qImpRThenR];
+  outerForall = mkComb[forallBool, mkAbs[r, innerImpl]];
+  innerLam = mkAbs[q, outerForall];
+  outerLam = mkAbs[p, innerLam];
+  def = mkEq[mkVar["∨", orTy], outerLam];
+  HOL`Bool`orDef = newDefinition[def];
+];
+
+unfoldOr[p_, q_] := unfoldBinop[HOL`Bool`orDef, p, q];
+
+unfoldNot[p_] :=
+  Module[{s1, b1},
+    s1 = APTHM[notDef, p];
+    b1 = BETACONV[rhsOfConcl[s1]];
+    TRANS[s1, b1]
+  ];
+
+HOL`Bool`NOTINTRO[th_] :=
+  Module[{c, p, unfoldEq},
+    c = concl[th];
+    If[! MatchQ[c, comb[comb[const["⇒", _], _], const["F", _]]],
+      HOL`Error`holError["rule", "NOTINTRO: expected ⊢ p ⇒ F",
+        <|"concl" -> c|>]];
+    p = c[[1, 2]];
+    unfoldEq = unfoldNot[p];
+    EQMP[SYM[unfoldEq], th]
+  ];
+
+HOL`Bool`NOTELIM[th_] :=
+  Module[{c, p, unfoldEq},
+    c = concl[th];
+    If[! MatchQ[c, comb[const["¬", _], _]],
+      HOL`Error`holError["rule", "NOTELIM: expected ⊢ ¬ p",
+        <|"concl" -> c|>]];
+    p = c[[2]];
+    unfoldEq = unfoldNot[p];
+    EQMP[unfoldEq, th]
+  ];
+
+HOL`Bool`CONTR[p_, thF_] :=
+  Module[{c, forAllAll},
+    If[typeOf[p] =!= boolTy,
+      HOL`Error`holError["rule", "CONTR: target must be :bool",
+        <|"got" -> typeOf[p]|>]];
+    c = concl[thF];
+    If[c =!= mkConst["F", boolTy],
+      HOL`Error`holError["rule", "CONTR: second arg must conclude F",
+        <|"concl" -> c|>]];
+    forAllAll = EQMP[fDef, thF];
+    HOL`Bool`SPEC[p, forAllAll]
+  ];
+
+HOL`Bool`EXISTS[existTm_, witness_, th_] :=
+  Module[{P, xTy, pWit, betaPw, bodyAsPw, qVar, xVar, forbidden,
+          innerForall, specTh, mpTh, dischTh, genTh,
+          defInst, s1, b1, unfoldEq},
+    If[! MatchQ[existTm, comb[const["∃", _], abs[var["_b0", _], _, _String]]],
+      HOL`Error`holError["rule", "EXISTS: expected ∃x. p",
+        <|"got" -> existTm|>]];
+    P = existTm[[2]];
+    xTy = typeOf[P] /. tyApp["fun", {a_, _}] :> a;
+    If[typeOf[witness] =!= xTy,
+      HOL`Error`holError["rule", "EXISTS: witness type mismatch",
+        <|"binderType" -> xTy, "witnessType" -> typeOf[witness]|>]];
+    pWit = mkComb[P, witness];
+    betaPw = BETACONV[pWit];
+    bodyAsPw = EQMP[SYM[betaPw], th];
+    forbidden = collectFreeNames[existTm, witness, Sequence @@ hyp[th]];
+    qVar = mkVar[freshName["q", forbidden], boolTy];
+    xVar = mkVar[freshName["x", Append[forbidden, qVar[[1]]]], xTy];
+    innerForall = mkComb[
+      mkConst["∀", tyFun[tyFun[xTy, boolTy], boolTy]],
+      mkAbs[xVar, impTmInt[mkComb[P, xVar], qVar]]];
+    specTh = HOL`Bool`SPEC[witness, ASSUME[innerForall]];
+    mpTh = HOL`Bool`MP[specTh, bodyAsPw];
+    dischTh = HOL`Bool`DISCH[innerForall, mpTh];
+    genTh = HOL`Bool`GEN[qVar, dischTh];
+    defInst = INSTTYPE[{tyVar["a"] -> xTy}, existsDef];
+    s1 = APTHM[defInst, P];
+    b1 = BETACONV[rhsOfConcl[s1]];
+    unfoldEq = TRANS[s1, b1];
+    EQMP[SYM[unfoldEq], genTh]
+  ];
+
+HOL`Bool`CHOOSE[v : var[vName_String, _], existsTh_, bodyTh_] :=
+  Module[{c, P, xTy, qRes, defInst, s1, b1, unfoldEq, step1, specTh,
+          pv, betaPv, assPv, bodyFromPv, withHyp, dischTh, genTh},
+    c = concl[existsTh];
+    If[! MatchQ[c, comb[const["∃", _], abs[var["_b0", _], _, _String]]],
+      HOL`Error`holError["rule", "CHOOSE: exists th must conclude ∃x. p",
+        <|"concl" -> c|>]];
+    P = c[[2]];
+    xTy = typeOf[P] /. tyApp["fun", {a_, _}] :> a;
+    If[typeOf[v] =!= xTy,
+      HOL`Error`holError["rule", "CHOOSE: v type must match ∃ binder",
+        <|"expected" -> xTy, "got" -> typeOf[v]|>]];
+    qRes = concl[bodyTh];
+    If[MemberQ[Map[First, freesIn[qRes]], vName],
+      HOL`Error`holError["rule", "CHOOSE: v must not be free in conclusion",
+        <|"v" -> v, "concl" -> qRes|>]];
+    If[AnyTrue[hyp[existsTh], MemberQ[Map[First, freesIn[#]], vName] &],
+      HOL`Error`holError["rule", "CHOOSE: v must not be free in exists-hypotheses",
+        <|"v" -> v|>]];
+    defInst = INSTTYPE[{tyVar["a"] -> xTy}, existsDef];
+    s1 = APTHM[defInst, P];
+    b1 = BETACONV[rhsOfConcl[s1]];
+    unfoldEq = TRANS[s1, b1];
+    step1 = EQMP[unfoldEq, existsTh];
+    specTh = HOL`Bool`SPEC[qRes, step1];
+    pv = mkComb[P, v];
+    betaPv = BETACONV[pv];
+    assPv = ASSUME[pv];
+    bodyFromPv = EQMP[betaPv, assPv];
+    withHyp = proveHyp[bodyFromPv, bodyTh];
+    dischTh = HOL`Bool`DISCH[pv, withHyp];
+    genTh = HOL`Bool`GEN[v, dischTh];
+    HOL`Bool`MP[specTh, genTh]
+  ];
+HOL`Bool`CHOOSE[other_, _, _] :=
+  HOL`Error`holError["rule", "CHOOSE: first arg must be a var",
+    <|"got" -> other|>];
+
+HOL`Bool`DISJ1[thp_, qTm_] :=
+  Module[{p, r, pImpR, qImpR, mpTh, inner1, inner2, genTh},
+    If[typeOf[qTm] =!= boolTy,
+      HOL`Error`holError["rule", "DISJ1: q must be :bool",
+        <|"got" -> typeOf[qTm]|>]];
+    p = concl[thp];
+    r = mkVar[freshName["r",
+      collectFreeNames[p, qTm, Sequence @@ hyp[thp]]], boolTy];
+    pImpR = impTmInt[p, r];
+    qImpR = impTmInt[qTm, r];
+    mpTh = HOL`Bool`MP[ASSUME[pImpR], thp];
+    inner1 = HOL`Bool`DISCH[qImpR, mpTh];
+    inner2 = HOL`Bool`DISCH[pImpR, inner1];
+    genTh = HOL`Bool`GEN[r, inner2];
+    EQMP[SYM[unfoldOr[p, qTm]], genTh]
+  ];
+
+HOL`Bool`DISJ2[thq_, pTm_] :=
+  Module[{q, r, pImpR, qImpR, mpTh, inner1, inner2, genTh},
+    If[typeOf[pTm] =!= boolTy,
+      HOL`Error`holError["rule", "DISJ2: p must be :bool",
+        <|"got" -> typeOf[pTm]|>]];
+    q = concl[thq];
+    r = mkVar[freshName["r",
+      collectFreeNames[q, pTm, Sequence @@ hyp[thq]]], boolTy];
+    pImpR = impTmInt[pTm, r];
+    qImpR = impTmInt[q, r];
+    mpTh = HOL`Bool`MP[ASSUME[qImpR], thq];
+    inner1 = HOL`Bool`DISCH[qImpR, mpTh];
+    inner2 = HOL`Bool`DISCH[pImpR, inner1];
+    genTh = HOL`Bool`GEN[r, inner2];
+    EQMP[SYM[unfoldOr[pTm, q]], genTh]
+  ];
+
+HOL`Bool`DISJCASES[thOr_, thPR_, thQR_] :=
+  Module[{c, p, q, rTgt, unfoldTh, step1, specTh, pImp, qImp, step3},
+    c = concl[thOr];
+    If[! MatchQ[c, comb[comb[const["∨", _], _], _]],
+      HOL`Error`holError["rule", "DISJCASES: expected p ∨ q",
+        <|"concl" -> c|>]];
+    p = c[[1, 2]]; q = c[[2]];
+    rTgt = concl[thPR];
+    If[concl[thQR] =!= rTgt,
+      HOL`Error`holError["rule", "DISJCASES: branches must share conclusion",
+        <|"left" -> rTgt, "right" -> concl[thQR]|>]];
+    unfoldTh = unfoldOr[p, q];
+    step1 = EQMP[unfoldTh, thOr];
+    specTh = HOL`Bool`SPEC[rTgt, step1];
+    pImp = HOL`Bool`DISCH[p, thPR];
+    qImp = HOL`Bool`DISCH[q, thQR];
+    step3 = HOL`Bool`MP[specTh, pImp];
+    HOL`Bool`MP[step3, qImp]
   ];
 
 End[];
