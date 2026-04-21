@@ -39,6 +39,7 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "Bootstrap.wl"}]];
   Get[FileNameJoin[{repoRoot, "Equal.wl"}]];
   Get[FileNameJoin[{repoRoot, "Bool.wl"}]];
+  Get[FileNameJoin[{repoRoot, "Drule.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
 
