@@ -15,6 +15,7 @@ REWRCONV::usage  = "REWRCONV[eqTh][t] — given eqTh : Γ ⊢ lhs = rhs, first-o
 CONVRULE::usage  = "CONVRULE[c, th] — from Γ ⊢ p, apply c to p to get ⊢ p = p', then EQMP to Γ ⊢ p'.";
 ONCEREWRITERULE::usage = "ONCEREWRITERULE[eqTh, th] — rewrite the first applicable subterm in concl[th] using eqTh.";
 REWRITERULE::usage     = "REWRITERULE[eqTh, th] — rewrite concl[th] bottom-up to fixpoint using eqTh.";
+SUBS::usage      = "SUBS[{eq1, …, eqn}, th] — substitute lhs→rhs in concl[th] for each eqi, top-down, all matching positions, no descent into rewritten subterms.";
 
 Begin["`Private`"];
 
@@ -213,6 +214,48 @@ onceDepthConv[c_][t_] :=
 
 HOL`Drule`REWRITERULE[eqTh_, th_] :=
   HOL`Drule`CONVRULE[HOL`Drule`DEPTHCONV[HOL`Drule`REWRCONV[eqTh]], th];
+
+topDownAllConv[c_][t_] :=
+  Module[{topRes, leftRes, rightRes, bty, forbidden, name, v, openTh,
+          opened, innerConv},
+    topRes = tryConv[c[t]];
+    If[topRes =!= $convFailed, Return[topRes]];
+    Which[
+      MatchQ[t, comb[_, _]],
+        leftRes  = topDownAllConv[c][t[[1]]];
+        rightRes = topDownAllConv[c][t[[2]]];
+        MKCOMB[leftRes, rightRes],
+      MatchQ[t, abs[var["_b0", _], _, _]],
+        bty = t[[1, 2]];
+        forbidden = Map[First, freesIn[t[[2]]]];
+        name = pickFreshName[t[[3]], forbidden];
+        v = mkVar[name, bty];
+        openTh = BETA[comb[abs[var["_b0", bty], t[[2]], name], v]];
+        opened = concl[openTh][[2]];
+        innerConv = topDownAllConv[c][opened];
+        ABS[v, innerConv],
+      True,
+        REFL[t]
+    ]
+  ];
+
+literalRewrConv[eqTh_][t_] :=
+  Module[{c, lhs},
+    c = concl[eqTh];
+    If[! MatchQ[c, comb[comb[const["=", _], _], _]],
+      convFail["SUBS: theorem is not an equation", <|"concl" -> c|>]];
+    lhs = c[[1, 2]];
+    If[t === lhs, eqTh,
+      convFail["SUBS: term does not equal LHS",
+        <|"lhs" -> lhs, "target" -> t|>]]
+  ];
+
+HOL`Drule`SUBS[{}, th_] := th;
+HOL`Drule`SUBS[eqThs_List, th_] :=
+  Fold[
+    HOL`Drule`CONVRULE[topDownAllConv[literalRewrConv[#2]], #1] &,
+    th, eqThs
+  ];
 
 End[];
 EndPackage[];

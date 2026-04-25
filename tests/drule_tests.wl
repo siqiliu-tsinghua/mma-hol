@@ -170,3 +170,77 @@ HOLTest`runTests["drule: REWRITERULE rewrites all",
     HOLTest`assertEq[concl[rewritten], expected,
       "REWRITERULE rewrites both ¬p occurrences"];
 ]];
+
+HOLTest`runTests["drule: SUBS empty list is identity",
+  Module[{p, th, res},
+    p = mkVar["p", boolTy];
+    th = ASSUME[p];
+    res = SUBS[{}, th];
+    HOLTest`assertEq[concl[res], p, "SUBS[{}, th] keeps concl"];
+    HOLTest`assertEq[hyp[res], {p}, "SUBS[{}, th] keeps hyps"];
+]];
+
+HOLTest`runTests["drule: SUBS replaces all occurrences",
+  Module[{p, q, notP, eqTh, andC, target, th, res, expected},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    notP = mkComb[mkConst["¬", tyFun[boolTy, boolTy]], p];
+    eqTh = ASSUME[mkEq[notP, q]];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    target = mkComb[mkComb[andC, notP], notP];
+    th = ASSUME[target];
+    res = SUBS[{eqTh}, th];
+    expected = mkComb[mkComb[andC, q], q];
+    HOLTest`assertEq[concl[res], expected, "both ¬p replaced"];
+    HOLTest`assertEq[hyp[res], Sort[{target, mkEq[notP, q]}],
+      "SUBS merges eqTh hyp with th hyp"];
+]];
+
+HOLTest`runTests["drule: SUBS does not descend into rewritten subterm",
+  Module[{p, q, notC, eqTh, target, th, res},
+    (* ⊢ p = ¬ p ; rewriting concl ⊢ p must yield ⊢ ¬ p, not ⊢ ¬ ¬ p *)
+    p = mkVar["p", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    eqTh = ASSUME[mkEq[p, mkComb[notC, p]]];
+    th = ASSUME[p];
+    res = SUBS[{eqTh}, th];
+    HOLTest`assertEq[concl[res], mkComb[notC, p],
+      "single pass: ¬ p, not ¬ ¬ p"];
+]];
+
+HOLTest`runTests["drule: SUBS no match leaves theorem alone",
+  Module[{p, q, r, eqTh, th, res},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy]; r = mkVar["r", boolTy];
+    eqTh = ASSUME[mkEq[q, r]];   (* q = r ; q does not appear in concl *)
+    th = ASSUME[p];
+    res = SUBS[{eqTh}, th];
+    HOLTest`assertEq[concl[res], p, "concl unchanged"];
+    HOLTest`assertEq[hyp[res], {p}, "no eqTh hyp added on no-match"];
+]];
+
+HOLTest`runTests["drule: SUBS sequential equations",
+  Module[{a, b, c, eq1, eq2, andC, target, th, res, expected},
+    a = mkVar["a", boolTy]; b = mkVar["b", boolTy]; c = mkVar["c", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    eq1 = ASSUME[mkEq[a, b]];
+    eq2 = ASSUME[mkEq[b, c]];
+    target = mkComb[mkComb[andC, a], a];
+    th = ASSUME[target];
+    res = SUBS[{eq1, eq2}, th];
+    expected = mkComb[mkComb[andC, c], c];
+    HOLTest`assertEq[concl[res], expected,
+      "a→b then b→c yields c on both sides"];
+]];
+
+HOLTest`runTests["drule: SUBS with type instantiation",
+  Module[{alpha, x, eqTh, p, q, andC, target, th, res, expected},
+    alpha = mkVarType["a"];
+    x = mkVar["x", alpha];
+    eqTh = REFL[x];   (* polymorphic ⊢ x = x at α *)
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    target = mkComb[mkComb[andC, p], q];
+    th = ASSUME[target];
+    res = SUBS[{eqTh}, th];
+    (* ⊢ x = x with α := bool reduces concl unchanged but exercises path. *)
+    HOLTest`assertEq[concl[res], target, "polymorphic refl no-op"];
+]];
