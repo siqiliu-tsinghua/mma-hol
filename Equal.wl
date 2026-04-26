@@ -32,22 +32,16 @@ HOL`Equal`APTERM[f_, th_] := MKCOMB[REFL[f], th];
 
 HOL`Equal`APTHM[th_, x_] := MKCOMB[th, REFL[x]];
 
-reservedQ[n_String] := StringMatchQ[n, "_b" ~~ DigitCharacter ..];
-
 pickFresh[preferred_String, forbidden_List] :=
   Module[{i, candidate},
-    If[! reservedQ[preferred] && ! MemberQ[forbidden, preferred],
-      Return[preferred]];
-    i = 0;
-    candidate = "z";
-    While[reservedQ[candidate] || MemberQ[forbidden, candidate],
-      i++;
-      candidate = "z" <> ToString[i]
-    ];
+    If[! MemberQ[forbidden, preferred], Return[preferred]];
+    i = 0; candidate = "z";
+    While[MemberQ[forbidden, candidate],
+      i++; candidate = "z" <> ToString[i]];
     candidate
   ];
 
-HOL`Equal`BETACONV[redex : comb[abs[var["_b0", bty_], body_, origin_String], arg_]] :=
+HOL`Equal`BETACONV[redex : comb[abs[bvar[0, bty_], body_, origin_String], arg_]] :=
   Module[{argTy, forbiddenNames, name, v, th0},
     argTy = typeOf[arg];
     If[argTy =!= bty,
@@ -56,7 +50,7 @@ HOL`Equal`BETACONV[redex : comb[abs[var["_b0", bty_], body_, origin_String], arg
     forbiddenNames = Map[First, Join[freesIn[body], freesIn[arg]]];
     name = pickFresh[origin, forbiddenNames];
     v = mkVar[name, bty];
-    th0 = BETA[comb[abs[var["_b0", bty], body, name], v]];
+    th0 = BETA[comb[abs[bvar[0, bty], body, name], v]];
     INST[{v -> arg}, th0]
   ];
 HOL`Equal`BETACONV[other_] :=

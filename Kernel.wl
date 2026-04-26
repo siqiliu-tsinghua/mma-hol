@@ -130,23 +130,21 @@ Module[{
   destEq[other_] :=
     HOL`Error`holError["rule", "destEq: not an equation", <|"got" -> other|>];
 
-  normHyps[lst_] := SortBy[DeleteDuplicates[lst, aconv], stripOrigin];
+  normHyps[lst_] := SortBy[DeleteDuplicatesBy[lst, stripOrigin], stripOrigin];
   mergeHyps[a_, b_] := normHyps[Join[a, b]];
-  removeHyp[hs_, p_] := Select[hs, ! aconv[#, p] &];
+  removeHyp[hs_, p_] := Module[{ps = stripOrigin[p]}, Select[hs, stripOrigin[#] =!= ps &]];
 
   hypContainsFree[hs_List, v_] := AnyTrue[hs, MemberQ[freesIn[#], v] &];
 
   tyvarsInTerm[var[_, t_]] := tyvars[t];
+  tyvarsInTerm[bvar[_, t_]] := tyvars[t];
   tyvarsInTerm[const[_, t_]] := tyvars[t];
   tyvarsInTerm[comb[f_, x_]] := Union[tyvarsInTerm[f], tyvarsInTerm[x]];
   tyvarsInTerm[abs[bv_, body_, _]] := Union[tyvarsInTerm[bv], tyvarsInTerm[body]];
 
-  betaSubst[v : var[n_String, _], depth_Integer, rep_] :=
-    If[StringMatchQ[n, "_b" ~~ DigitCharacter ..]
-        && FromDigits[StringDrop[n, 2]] == depth,
-      rep,
-      v
-    ];
+  betaSubst[bv : bvar[k_Integer, _], depth_Integer, rep_] :=
+    If[k == depth, rep, bv];
+  betaSubst[v : var[_, _], _, _] := v;
   betaSubst[c : const[_, _], _, _] := c;
   betaSubst[comb[f_, x_], depth_, rep_] :=
     comb[betaSubst[f, depth, rep], betaSubst[x, depth, rep]];
@@ -177,11 +175,8 @@ Module[{
   HOL`Kernel`MKCOMB[a_, b_] :=
     HOL`Error`holError["rule", "MKCOMB: arguments must be theorems", <|"arg1" -> a, "arg2" -> b|>];
 
-  HOL`Kernel`ABS[v : var[n_String, _], thmTag[h_List, c_]] :=
+  HOL`Kernel`ABS[v : var[_String, _], thmTag[h_List, c_]] :=
     Module[{s, t},
-      If[StringMatchQ[n, "_b" ~~ DigitCharacter ..],
-        HOL`Error`holError["rule", "ABS: binder must not be reserved",
-          <|"name" -> n|>]];
       If[hypContainsFree[h, v],
         HOL`Error`holError["rule", "ABS: binder occurs free in hypotheses",
           <|"binder" -> v|>]];
@@ -192,7 +187,7 @@ Module[{
     HOL`Error`holError["rule", "ABS: first arg must be a var, second a theorem",
       <|"v" -> v, "th" -> th|>];
 
-  HOL`Kernel`BETA[redex : comb[abs[var["_b0", bty_], body_, origin_String],
+  HOL`Kernel`BETA[redex : comb[abs[bvar[0, bty_], body_, origin_String],
                                var[argname_String, aty_]]] /;
       argname === origin && bty === aty :=
     thmTag[{}, HOL`Kernel`mkEq[redex, betaSubst[body, 0, var[argname, aty]]]];

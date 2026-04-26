@@ -62,14 +62,11 @@ HOL`Drule`REPEATC[c_][t_] :=
     TRANS[res, HOL`Drule`REPEATC[c][rhs]]
   ];
 
-canonicalBoundQ[n_String] := StringMatchQ[n, "_b" ~~ DigitCharacter ..];
-
 pickFreshName[preferred_String, forbidden_List] :=
   Module[{i, cand},
-    If[! canonicalBoundQ[preferred] && ! MemberQ[forbidden, preferred],
-      Return[preferred]];
+    If[! MemberQ[forbidden, preferred], Return[preferred]];
     cand = "z"; i = 0;
-    While[canonicalBoundQ[cand] || MemberQ[forbidden, cand],
+    While[MemberQ[forbidden, cand],
       i++; cand = "z" <> ToString[i]];
     cand
   ];
@@ -77,12 +74,12 @@ pickFreshName[preferred_String, forbidden_List] :=
 HOL`Drule`SUBCONV[c_][comb[f_, x_]] :=
   MKCOMB[HOL`Drule`TRYCONV[c][f], HOL`Drule`TRYCONV[c][x]];
 
-HOL`Drule`SUBCONV[c_][abs[var["_b0", bty_], body_, origin_String]] :=
+HOL`Drule`SUBCONV[c_][abs[bvar[0, bty_], body_, origin_String]] :=
   Module[{forbidden, name, v, openTh, opened, convTh},
     forbidden = Map[First, freesIn[body]];
     name = pickFreshName[origin, forbidden];
     v = mkVar[name, bty];
-    openTh = BETA[comb[abs[var["_b0", bty], body, name], v]];
+    openTh = BETA[comb[abs[bvar[0, bty], body, name], v]];
     opened = concl[openTh][[2]];
     convTh = HOL`Drule`TRYCONV[c][opened];
     ABS[v, convTh]
@@ -122,19 +119,18 @@ tryTypeMatch[tyApp[name_, args_List], tyApp[name2_, args2_List], acc_] :=
   ];
 tryTypeMatch[_, _, _] := $matchFail;
 
-tryTermMatch[var[n_String, ty_], tgt_, state : {tsubst_, tysubst_}] :=
-  If[canonicalBoundQ[n],
-    If[MatchQ[tgt, var[n, _]] && tgt[[2]] === typeSubst[tysubst, ty],
-      state, $matchFail],
-    Module[{tysubst2, existing, key},
-      tysubst2 = tryTypeMatch[ty, typeOf[tgt], tysubst];
-      If[tysubst2 === $matchFail, $matchFail,
-        key = var[n, ty];
-        existing = Lookup[tsubst, key, Missing[]];
-        If[MissingQ[existing],
-          {Append[tsubst, key -> tgt], tysubst2},
-          If[aconv[existing, tgt], {tsubst, tysubst2}, $matchFail]
-        ]
+tryTermMatch[bvar[k_Integer, ty_], tgt_, {tsubst_, tysubst_}] :=
+  If[MatchQ[tgt, bvar[k, _]] && tgt[[2]] === typeSubst[tysubst, ty],
+    {tsubst, tysubst}, $matchFail];
+tryTermMatch[var[n_String, ty_], tgt_, {tsubst_, tysubst_}] :=
+  Module[{tysubst2, existing, key},
+    tysubst2 = tryTypeMatch[ty, typeOf[tgt], tysubst];
+    If[tysubst2 === $matchFail, $matchFail,
+      key = var[n, ty];
+      existing = Lookup[tsubst, key, Missing[]];
+      If[MissingQ[existing],
+        {Append[tsubst, key -> tgt], tysubst2},
+        If[aconv[existing, tgt], {tsubst, tysubst2}, $matchFail]
       ]
     ]
   ];
@@ -195,12 +191,12 @@ onceDepthConv[c_][t_] :=
         If[rightRes =!= $convFailed, Return[rightRes]];
         convFail["ONCE_DEPTH_CONV: no subterm matched",
           <|"term" -> t|>],
-      MatchQ[t, abs[var["_b0", _], _, _]],
+      MatchQ[t, abs[bvar[0, _], _, _]],
         bty = t[[1, 2]];
         forbidden = Map[First, freesIn[t[[2]]]];
         name = pickFreshName[t[[3]], forbidden];
         v = mkVar[name, bty];
-        openTh = BETA[comb[abs[var["_b0", bty], t[[2]], name], v]];
+        openTh = BETA[comb[abs[bvar[0, bty], t[[2]], name], v]];
         opened = concl[openTh][[2]];
         convTh = tryConv[onceDepthConv[c][opened]];
         If[convTh === $convFailed,
@@ -225,12 +221,12 @@ topDownAllConv[c_][t_] :=
         leftRes  = topDownAllConv[c][t[[1]]];
         rightRes = topDownAllConv[c][t[[2]]];
         MKCOMB[leftRes, rightRes],
-      MatchQ[t, abs[var["_b0", _], _, _]],
+      MatchQ[t, abs[bvar[0, _], _, _]],
         bty = t[[1, 2]];
         forbidden = Map[First, freesIn[t[[2]]]];
         name = pickFreshName[t[[3]], forbidden];
         v = mkVar[name, bty];
-        openTh = BETA[comb[abs[var["_b0", bty], t[[2]], name], v]];
+        openTh = BETA[comb[abs[bvar[0, bty], t[[2]], name], v]];
         opened = concl[openTh][[2]];
         innerConv = topDownAllConv[c][opened];
         ABS[v, innerConv],

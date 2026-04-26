@@ -76,7 +76,9 @@ HOLTest`runTests["kernel: ABS", Module[{alpha, x, y, eq, th},
   HOLTest`assertThrows[
     ABS[x, ASSUME[mkEq[x, y]]],
     "rule", "ABS rejects binder free in hyps"];
-  HOLTest`assertThrows[ABS[mkVar["_b0", alpha], REFL[x]], "term", "ABS via mkVar: reserved name rejected earlier"];
+  th = ABS[mkVar["_b0", alpha], REFL[x]];
+  HOLTest`assertEq[concl[th], mkEq[mkAbs[mkVar["_b0", alpha], x], mkAbs[mkVar["_b0", alpha], x]],
+    "ABS accepts _b0-named var (no namespace conflict with bvar head)"];
 ]];
 
 (* ========= BETA ========= *)

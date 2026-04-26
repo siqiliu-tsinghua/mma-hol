@@ -70,7 +70,7 @@ HOL`Bool`SPEC[t_, th_] :=
   Module[{c, lamTm, bv, xTy, fdefInst, aptm, betaTh, unfoldEq,
           step1, step2, leftBeta, rightBeta, chain},
     c = concl[th];
-    If[! MatchQ[c, comb[const["∀", _], abs[var["_b0", _], _, _String]]],
+    If[! MatchQ[c, comb[const["∀", _], abs[bvar[0, _], _, _String]]],
       HOL`Error`holError["rule", "SPEC: expected ⊢ ∀(λx. p)",
         <|"concl" -> c|>]];
     lamTm = c[[2]];
@@ -272,7 +272,7 @@ HOL`Bool`EXISTS[existTm_, witness_, th_] :=
   Module[{P, xTy, pWit, betaPw, bodyAsPw, qVar, xVar, forbidden,
           innerForall, specTh, mpTh, dischTh, genTh,
           defInst, s1, b1, unfoldEq},
-    If[! MatchQ[existTm, comb[const["∃", _], abs[var["_b0", _], _, _String]]],
+    If[! MatchQ[existTm, comb[const["∃", _], abs[bvar[0, _], _, _String]]],
       HOL`Error`holError["rule", "EXISTS: expected ∃x. p",
         <|"got" -> existTm|>]];
     P = existTm[[2]];
@@ -304,7 +304,7 @@ HOL`Bool`CHOOSE[v : var[vName_String, _], existsTh_, bodyTh_] :=
   Module[{c, P, xTy, qRes, defInst, s1, b1, unfoldEq, step1, specTh,
           pv, betaPv, assPv, bodyFromPv, withHyp, dischTh, genTh},
     c = concl[existsTh];
-    If[! MatchQ[c, comb[const["∃", _], abs[var["_b0", _], _, _String]]],
+    If[! MatchQ[c, comb[const["∃", _], abs[bvar[0, _], _, _String]]],
       HOL`Error`holError["rule", "CHOOSE: exists th must conclude ∃x. p",
         <|"concl" -> c|>]];
     P = c[[2]];
