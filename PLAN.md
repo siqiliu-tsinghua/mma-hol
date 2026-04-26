@@ -329,28 +329,28 @@ EndPackage[];
 建议以 7 个 milestone 推进。每个 milestone 产出一个可以在 notebook 里跑的 demo。
 
 ### M1：Types ✦ 第 1 周
-- [ ] 数据构造 `tyVar`, `tyApp`
-- [ ] 操作 `destVarType`, `destType`, `tyvars`, `typeSubst`
-- [ ] 内建 `bool`, `ind`, `fun` 并提供 `-->` 辅助构造器
-- [ ] 单元测试：类型等价性、代换、平凡性质
+- [x] 数据构造 `tyVar`, `tyApp`
+- [x] 操作 `destVarType`, `destType`, `tyvars`, `typeSubst`
+- [x] 内建 `bool`, `ind`, `fun` 并提供 `-->` 辅助构造器
+- [x] 单元测试：类型等价性、代换、平凡性质
 
 **验收**：能构造 `(α → β) → α → β` 并正确做代换。
 
 ### M2：Terms + 良构 ✦ 第 2 周
-- [ ] `var`, `const`, `comb`, `abs` 数据构造
-- [ ] Smart constructor `mkComb`, `mkAbs` 带类型检查
-- [ ] `typeOf`, `freesIn`, `vsubst`（带捕获避免），`instType`
-- [ ] α 等价（通过规范化实现）
-- [ ] 预注册常量：`=` : `α → α → bool`
+- [x] `var`, `bvar`, `const`, `comb`, `abs` 数据构造（free / bound 用结构上分离的 head）
+- [x] Smart constructor `mkComb`, `mkAbs` 带类型检查
+- [x] `typeOf`, `freesIn`, `vsubst`（带捕获避免），`instType`
+- [x] α 等价（通过规范化实现）
+- [x] 预注册常量：`=` : `α → α → bool`
 
 **验收**：能构造 `λx:α. x` 并验证 `typeOf` 为 `α → α`；做捕获避免代换并通过测试。
 
 ### M3：可信核 ✦ 第 3–4 周
-- [ ] 10 条原始规则全部实现
-- [ ] `new_constant`、`new_definition`、`new_basic_type_definition`、`new_axiom`
-- [ ] Bootstrap 序列：定义 `T`、`∧`、`⇒`、`∀`、`∃`、`¬`、`ONE_ONE`、`ONTO`，然后 `new_axiom` 声明 `ETA_AX`、`SELECT_AX`、`INFINITY_AX`，最后把 `newAxiom` 从 Kernel Association 撤下
-- [ ] 完整的 Module 闭包封装 + 可变状态表（`typeArityTable` / `constTypeTable` / `axiomList` / `defnList`）
-- [ ] **反向测试**：尝试从外部直接构造 `thm` 应失败；尝试从外部访问 `new_axiom` 应失败
+- [x] 10 条原始规则全部实现
+- [x] `new_constant`、`new_definition`、`new_basic_type_definition`、`new_axiom`
+- [x] Bootstrap 序列：定义 `T`、`∧`、`⇒`、`∀`、`∃`、`¬`、`ONE_ONE`、`ONTO`，然后 `new_axiom` 声明 `ETA_AX`、`SELECT_AX`、`INFINITY_AX`，最后把 `newAxiom` 从 Kernel Association 撤下
+- [x] 完整的 Module 闭包封装 + 可变状态表（`typeArityTable` / `constTypeTable` / `axiomList` / `defnList`）
+- [x] **反向测试**：尝试从外部直接构造 `thm` 应失败；尝试从外部访问 `new_axiom` 应失败
 
 **验收**：
 - 定义 `T`，证明 `⊢ T`（端到端跑通 `new_definition` → `REFL` → `SYM`（派生）→ `EQ_MP`）
@@ -361,30 +361,52 @@ EndPackage[];
 ### M4：派生规则库 ✦ 第 5–6 周
 在 kernel 之外实现，作为不可信但受信任的日常工具。
 
-- [ ] 布尔连接词全套：`CONJ`, `CONJUNCT1/2`, `DISJ1/2`, `DISJ_CASES`, `NOT_INTRO`, `NOT_ELIM`, `CCONTR`（经典反证法）
-- [ ] 量词：`GEN`, `SPEC`, `EXISTS`, `CHOOSE`
-- [ ] 代换策略：`SUBST`, `SUBS`
-- [ ] 重写：最简版 `REWR_CONV` + `ONCE_REWRITE_RULE`
-- [ ] Conversion 组合子：`THENC`, `ORELSEC`, `TRY_CONV`, `REPEATC`, `SUB_CONV`, `DEPTH_CONV`
+- [x] 布尔连接词全套：`CONJ`, `CONJUNCT1/2`, `DISJ1/2`, `DISJCASES`, `NOTINTRO`, `NOTELIM`, `CCONTR`（经典反证法）
+- [x] 量词：`GEN`, `SPEC`, `EXISTS`, `CHOOSE`
+- [x] 代换策略：`SUBS`（HOL Light literal-equality 语义：给一组等式 thm，把 conclusion 里 LHS 的所有出现一刀切替换成 RHS；不递归进已替换的子项，不对 LHS 自由变量做 unification）。**`SUBST` 暂未做**：HOL Light 的 `SUBST` 是模板驱动的精确位置替换——传 `(eqThm, holeMarker)` 列表加一个带 hole 占位变量的模板，只在模板标出的位置换。SUBS 是粗粒度全替换，SUBST 是细粒度按位置；95% 的需求 SUBS / `REWRITERULE` 就够，HOL Light 自己后期也很少直接用 SUBST。**约定**：碰到第一个真用得上 SUBST 的证明再补
+- [x] 重写：`REWRCONV` + `ONCEREWRITERULE` + `REWRITERULE`
+- [x] Conversion 组合子：`THENC`, `ORELSEC`, `TRYCONV`, `REPEATC`, `SUBCONV`, `DEPTHCONV`
 
 **验收**：能一行证 `⊢ ∀x y. x = y ⇒ y = x`（对称性）。
 
 ### M5：Goal-oriented Tactic 层 ✦ 第 7–8 周
-- [ ] `goalstack` 对象（又一个 Module 闭包的应用！）
-- [ ] 基础 tactic：`CONJ_TAC`, `DISJ1_TAC`, `GEN_TAC`, `EXISTS_TAC`, `REWRITE_TAC`, `ASSUME_TAC`
-- [ ] Tactic 组合子：`THEN`, `THENL`, `ORELSE`, `REPEAT`, `ALL_TAC`, `NO_TAC`
-- [ ] `prove[term, tactic]` 高级接口
-- [ ] notebook 里的 goal 可视化（每一步当前目标与假设）
+- [x] `goalstack` 对象（又一个 Module 闭包的应用！）`makeGoalstack[]` 返回 `{g, e, b, top, finished}` 闭包
+- [x] 基础 tactic（camelCase——避免 `_` 被解析为 `Pattern`）：`conjTac`, `disj1Tac`/`disj2Tac`, `genTac`, `existsTac`, `dischTac`, `assumeTac`, `acceptTac`, `popAssum`, `rewriteTac`
+- [x] Tactic 组合子（无下划线，可保留 ALL-CAPS）：`THEN`, `THENL`, `ORELSE`, `REPEAT`, `TRY`, `allTac`/`noTac`
+- [x] `prove[term, tactic]` 高级接口
+- [ ] notebook 里的 goal 可视化（每一步当前目标与假设）—— 与 M6b 合并
 
 **验收**：用 tactic 风格证明一批经典命题逻辑等价式。
 
 ### M6：Parser + Pretty Printer ✦ 第 9 周
-- [ ] 字符串到 term 的 parser（中缀、绑定符、类型推断）
-- [ ] term 到 `Box` 的 pretty printer，支持数学排版
-- [ ] Notebook MakeBoxes 规则让 thm 在输出时渲染成 `⊢ …`
-- [ ] 前缀/中缀算符注册机制
 
-**验收**：可以写 `prove["∀ x y. x + y = y + x", ...]`（假设 `+` 已在某个加载的理论里定义）。
+拆三个子里程碑。M6b 不阻塞 M7（wolframscript 不需要 notebook 渲染），可延后到任意空档。
+
+**M6a — Pretty Printer（ASCII 输出 + 算符注册）**
+- [x] 算符注册表：`{name → {fixity, prec, assoc, ascii, unicode}}`，普通 Association（**不进 kernel closure**——排版数据非 soundness-critical），bootstrap 时为内建算符（`=`, `∧`, `∨`, `⇒`, `¬`, `∀`, `∃`, `@`）注册；`λ` 无对应常量，硬编码于 walker
+- [x] 单趟 render walk：以 `(ctxPrec, rightExt, nameStack, mode)` 作为下传上下文（实现上等价于 PLAN 原拟的 `term → printTree → String` 两段，但单趟更直观；括号决策和算符元数据在 `renderInfix/renderPrefix/renderApp/renderBinderChain` 各自分支内做）
+- [x] 特殊形式逆识别：infix（`a = b`、`p ∧ q`、…）、prefix（`¬ p`）、binder chain（`∀x y z. body`、`λx. body`、`@x. P x`）
+- [x] α-renaming for display：进入 `abs` 时维护"已用名"栈；origin 与栈或 body 自由变量撞名时加 `'` 后缀，反复直至唯一
+- [x] ASCII / Unicode 双输出（`!`/`?`/`/\`/`\/`/`==>`/`~`/`\` vs `∀`/`∃`/`∧`/`∨`/`⇒`/`¬`/`λ`），默认 Unicode
+- [x] `formatThm[th]` → `String`，`⊢ p` 或 `[h1; h2; …] ⊢ p`
+- [x] 回归测试：每个内建算符 / 嵌套优先级 / binder 撞名场景（46 测试在 `tests/printer_tests.wl`）
+- 已知简化：`=` 在 `bool` 类型上未特化为 `⇔`（HOL Light 把 iff 当作独立、更松的算符）；本期一律按 `=` 在 prec 28 渲染，可读但 `(p = q) ⇒ r` 之类的round-trip保真度要等 M6c parser + iff 特化时再补
+
+**M6b — Notebook MakeBoxes（可延后）**
+- [ ] `MakeBoxes[thmTag[h, c], _]` 规则：notebook 里 thm 自动渲染为 `⊢ …`
+- [ ] term 到 `Box` 的渲染（用 M6a 的 printTree 适配 `RowBox` / `SubscriptBox` 等数学排版）
+- [ ] Goalstack 当前状态的 notebook 可视化（承接 M5 遗留项）
+
+**M6c — Parser**
+- [ ] Tokenizer：标识符、数字、算符、括号、冒号、点号、类型变量记号
+- [ ] Pratt parser（算符优先），消费 M6a 的算符注册表
+- [ ] 类型推断（最小可用版的 W 算法）：每节点生成约束、unify、把多态常量实例化到具体类型再 `mkConst`；不做 let-polymorphism、不做重载
+- [ ] Binder 语法：`λx y z. body`、`∀x:α. body`、`∃x. body`
+- [ ] 类型标注：`(t : ty)`；类型变量 `'a` 与 `α` 都接受
+- [ ] **绝不调用 `ToExpression`**——会执行任意代码，破坏信任边界
+- [ ] 回归测试：parse → print → parse 的 roundtrip 在内建算符全集上守恒
+
+**验收**：`prove["∀ x y. x + y = y + x", ...]`（假设 `+` 已在某个加载的理论里定义）能跑通；M6a 的输出可以喂回 M6c 解析回同一个 term。
 
 ### M7：基础数据与数系 ✦ 第 10–14 周
 数学库的底座。此阶段必须同时做好**类型层**和**自动化层**两件事——后续所有分析内容对两者都高度依赖。
