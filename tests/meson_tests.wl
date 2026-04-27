@@ -222,3 +222,118 @@ HOLTest`runTests["meson: clausify — tautology produces empty clause set",
     HOLTest`assertEq[cs, {},
       "p ∨ ¬p factored away as tautology"];
   ]];
+
+(* === M7-α-3 search engine tests === *)
+
+(* Register a test predicate P : bool → bool — Skolem fresh names use ?sk*
+   so 'P' doesn't collide with anything the search engine will introduce. *)
+If[!MemberQ[HOL`Kernel`listConstants[], "P"],
+  HOL`Kernel`newConstant["P", tyFun[boolTy, boolTy]]];
+
+HOLTest`runTests["meson: unify — same atom is identity",
+  Module[{p, σ},
+    p = mkVar["p", boolTy];
+    σ = mesonUnify[p, p, <||>];
+    HOLTest`assertEq[σ, <||>, "var === var: empty σ"];
+  ]];
+
+HOLTest`runTests["meson: unify — var with const binds",
+  Module[{x, c, σ},
+    x = mkVar["x", boolTy];
+    c = mkConst["T", boolTy];
+    σ = mesonUnify[x, c, <||>];
+    HOLTest`assertEq[σ, <|"x" -> c|>, "x ↦ T"];
+  ]];
+
+HOLTest`runTests["meson: unify — type mismatch fails",
+  Module[{x, c, σ},
+    x = mkVar["x", boolTy];
+    c = mkConst["T", boolTy];  (* T is bool *)
+    (* Try to unify x:bool with const at a different type *)
+    σ = mesonUnify[x, mkVar["y", tyVar["a"]], <||>];
+    HOLTest`assertEq[σ, mesonUnifyFailed, "x:bool ≁ y:'a fails"];
+  ]];
+
+HOLTest`runTests["meson: unify — different consts fail",
+  Module[{σ},
+    σ = mesonUnify[mkConst["T", boolTy], mkConst["F", boolTy], <||>];
+    HOLTest`assertEq[σ, mesonUnifyFailed, "T ≁ F"];
+  ]];
+
+HOLTest`runTests["meson: unify — comb propagates",
+  Module[{p, x, y, q, σ},
+    (* Unify p(x) with p(c)  →  x ↦ c *)
+    p = mkConst["P", tyFun[boolTy, boolTy]];
+    x = mkVar["x", boolTy];
+    σ = mesonUnify[mkComb[p, x], mkComb[p, mkConst["T", boolTy]], <||>];
+    HOLTest`assertEq[σ, <|"x" -> mkConst["T", boolTy]|>, "P x ≃ P T → x ↦ T"];
+  ]];
+
+HOLTest`runTests["meson: unify — occurs check",
+  Module[{x, p, σ},
+    x = mkVar["x", boolTy];
+    p = mkConst["P", tyFun[boolTy, boolTy]];
+    (* Try x ≃ P x (occurs) *)
+    σ = mesonUnify[x, mkComb[p, x], <||>];
+    HOLTest`assertEq[σ, mesonUnifyFailed, "x ≁ P x (occurs check)"];
+  ]];
+
+HOLTest`runTests["meson: refute — propositional contradiction {p}, {¬p}",
+  Module[{p, clauses, result},
+    p = mkVar["p", boolTy];
+    clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
+    result = mesonRefute[clauses, 5];
+    HOLTest`assertTrue[result =!= mesonRefuteFailed,
+      "{p} ∧ {¬p} is unsatisfiable"];
+  ]];
+
+HOLTest`runTests["meson: refute — modus ponens contradiction",
+  Module[{p, q, np, nq, clauses, result},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    (* {p ∨ ¬q}, {q}, {¬p}: i.e., (q ⇒ p) ∧ q ∧ ¬p *)
+    clauses = {
+      mClause[{mLit[True, p], mLit[False, q]}],
+      mClause[{mLit[True, q]}],
+      mClause[{mLit[False, p]}]};
+    result = mesonRefute[clauses, 5];
+    HOLTest`assertTrue[result =!= mesonRefuteFailed,
+      "(q ⇒ p) ∧ q ∧ ¬p is unsatisfiable"];
+  ]];
+
+HOLTest`runTests["meson: refute — satisfiable returns failure within bound",
+  Module[{p, q, clauses, result},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    (* {p}, {q}: both consistent, no refutation *)
+    clauses = {mClause[{mLit[True, p]}], mClause[{mLit[True, q]}]};
+    result = mesonRefute[clauses, 3];
+    HOLTest`assertEq[result, mesonRefuteFailed,
+      "satisfiable set has no refutation"];
+  ]];
+
+HOLTest`runTests["meson: refute — first-order contradiction via unification",
+  Module[{px0, npxv, result, clauses},
+    mesonResetState[];
+    (* Goal: (∀x. P x) ⇒ P 0.  Negate: (∀x. P x) ∧ ¬P 0.
+       Clausify gives {P x_logical}, {¬P 0_const}. Unify x ↦ 0_const. *)
+    clauses = mesonClausify[
+      parseTerm["(∀x:bool. P x) ∧ (¬ (P T))"]];
+    result = mesonRefute[clauses, 5];
+    HOLTest`assertTrue[result =!= mesonRefuteFailed,
+      "(∀x:bool. P x) ∧ ¬P T refutes by unifying x ↦ T"];
+  ]];
+
+HOLTest`runTests["meson: refute — depth bound respected",
+  Module[{p, np, clauses, resultZero, resultOne},
+    p = mkVar["p", boolTy];
+    clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
+    (* At depth 0: starting clause has 1 literal needing extension;
+       extension uses 1 step → needs depth ≥ 1. Actually since the
+       second clause is unit, after one extension new subgoals = {}
+       so depth 1 should suffice. depth 0 cannot extend at all. *)
+    resultZero = mesonRefute[clauses, 0];
+    resultOne  = mesonRefute[clauses, 1];
+    HOLTest`assertEq[resultZero, mesonRefuteFailed,
+      "depth 0 can't refute even simple contradictions"];
+    HOLTest`assertTrue[resultOne =!= mesonRefuteFailed,
+      "depth 1 suffices for unit-clause contradiction"];
+  ]];

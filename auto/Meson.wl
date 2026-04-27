@@ -55,6 +55,21 @@ mesonOpenSubst::usage =
 mesonResetState::usage =
   "mesonResetState[] — reset the fresh-variable counter. (The Skolem counter is monotonic across the session because Skolem constants are registered permanently with the kernel; resetting would cause newConstant collisions.) Called at the start of each top-level MESON invocation; exposed for deterministic testing of fresh-var output.";
 
+mesonUnify::usage =
+  "mesonUnify[t1, t2, σ] — Robinson-style MGU on first-order HOL terms. Substitution σ is an Association from var-name strings to terms. Returns extended substitution on success or the sentinel mesonUnifyFailed on failure. Free vars (var[name, ty]) are logical (instantiable); constants and bound vars are rigid. Includes occurs check.";
+
+mesonUnifyFailed::usage =
+  "mesonUnifyFailed — sentinel returned by mesonUnify on failure.";
+
+mesonRefute::usage =
+  "mesonRefute[clauses_List, maxDepth_Integer] — top-level search. Iterative deepening from depth 0 to maxDepth on a Model Elimination tableaux. Returns the trace (a mProof tree) on success or mesonRefuteFailed if no refutation found within bound. The clause set is assumed unsatisfiable for a successful call (i.e., the input is the clausified negated goal ∧ premises).";
+
+mesonRefuteFailed::usage =
+  "mesonRefuteFailed — sentinel returned by mesonRefute when no refutation is found.";
+
+mProof::usage =
+  "mProof[kind, …] — internal proof-trace node. kind = \"extension\" or \"reduction\". Carries the literal closed, the clause/ancestor used, the σ delta, and (for extension) the sub-proofs of the new subgoals.";
+
 Begin["`Private`"];
 
 mesonMaxDepth = 50;
@@ -308,13 +323,183 @@ HOL`Auto`Meson`mesonClausify[t_] :=
   ];
 
 (* ============================================================ *)
-(* M7-α-1 stubs for MESON / mesonProve.  M7-α-3 will replace.   *)
+(* MGU — Robinson-style first-order unification.                 *)
+
+mesonUnifyFailedTag = "$mesonUnifyFailed$";
+HOL`Auto`Meson`mesonUnifyFailed = mesonUnifyFailedTag;
+
+(* Apply substitution to a term.  σ is an Association name → term. *)
+applySubstTerm[σ_Association, t_] :=
+  If[Length[σ] === 0, t,
+    t /. var[n_String, ty_] :> Lookup[σ, n, var[n, ty]]
+  ];
+
+(* Walk substitution chains: apply σ repeatedly to a single var until stable. *)
+walkVar[name_String, ty_, σ_Association] :=
+  Module[{cur = var[name, ty], next, n2},
+    While[MatchQ[cur, var[n2_String, _]] && KeyExistsQ[σ, cur[[1]]],
+      cur = σ[cur[[1]]]
+    ];
+    cur
+  ];
+
+typeOfFOTerm[var[_, ty_]]      := ty;
+typeOfFOTerm[const[_, ty_]]    := ty;
+typeOfFOTerm[bvar[_, ty_]]     := ty;
+typeOfFOTerm[comb[f_, _]]      := typeOfFOTerm[f] /. tyApp["fun", {_, b_}] :> b;
+
+HOL`Auto`Meson`mesonUnify[t1_, t2_, σ_Association] :=
+  unifyImpl[t1, t2, σ];
+
+unifyImpl[t1_, t2_, σ_] :=
+  Module[{a, b},
+    a = If[MatchQ[t1, var[_, _]], walkVar[t1[[1]], t1[[2]], σ], t1];
+    b = If[MatchQ[t2, var[_, _]], walkVar[t2[[1]], t2[[2]], σ], t2];
+    Which[
+      a === b, σ,
+      MatchQ[a, var[_, _]], unifyVarBind[a, b, σ],
+      MatchQ[b, var[_, _]], unifyVarBind[b, a, σ],
+      MatchQ[a, comb[_, _]] && MatchQ[b, comb[_, _]],
+        Module[{σ1},
+          σ1 = unifyImpl[a[[1]], b[[1]], σ];
+          If[σ1 === mesonUnifyFailedTag, mesonUnifyFailedTag,
+            unifyImpl[a[[2]], b[[2]], σ1]]
+        ],
+      MatchQ[a, const[_, _]] && MatchQ[b, const[_, _]],
+        If[a === b, σ, mesonUnifyFailedTag],
+      MatchQ[a, bvar[_, _]] && MatchQ[b, bvar[_, _]],
+        If[a === b, σ, mesonUnifyFailedTag],
+      True, mesonUnifyFailedTag
+    ]
+  ];
+
+unifyVarBind[var[n_String, ty_], t_, σ_] :=
+  Module[{tWalked},
+    tWalked = applySubstTerm[σ, t];
+    If[tWalked === var[n, ty], σ,
+      If[typeOfFOTerm[tWalked] =!= ty, mesonUnifyFailedTag,
+        If[occursIn[n, tWalked, σ], mesonUnifyFailedTag,
+          Append[σ, n -> tWalked]
+        ]
+      ]
+    ]
+  ];
+
+occursIn[name_String, t_, σ_] :=
+  MemberQ[
+    Cases[applySubstTerm[σ, t], var[m_String, _] :> m, {0, Infinity}],
+    name];
+
+(* ============================================================ *)
+(* Renaming apart: append a unique tag to all var names.        *)
+(* Skolem constants (const[...]) are rigid and stay shared.     *)
+
+$mesonRenameCounter = 0;
+
+renameClauseApart[mClause[lits_]] :=
+  Module[{tag, lits2},
+    $mesonRenameCounter += 1;
+    tag = "@" <> ToString[$mesonRenameCounter];
+    lits2 = lits /. var[name_String, ty_] :> var[name <> tag, ty];
+    mClause[lits2]
+  ];
+
+(* ============================================================ *)
+(* Search.  Model elimination with iterative deepening.          *)
+(*                                                                *)
+(* The trace is a tree: each goal literal is closed by either an  *)
+(* extension (using a clause from the input) creating sub-goals,  *)
+(* or a reduction (unifying with a path ancestor).                *)
+(*                                                                *)
+(* attemptProve throws the (final σ, trace-tree) on success.      *)
+
+mesonProofFoundTag = "$mesonProofFound$";
+HOL`Auto`Meson`mesonRefuteFailed = "$mesonRefuteFailed$";
+
+oppositeSign[mLit[s1_, _], mLit[s2_, _]] := s1 =!= s2;
+
+HOL`Auto`Meson`mesonRefute[clauses_List, maxDepth_Integer] :=
+  Module[{result = HOL`Auto`Meson`mesonRefuteFailed, depth = 0, found = False},
+    While[!found && depth <= maxDepth,
+      result = mesonSearchAtDepth[clauses, depth];
+      If[result =!= HOL`Auto`Meson`mesonRefuteFailed, found = True];
+      depth += 1
+    ];
+    result
+  ];
+
+mesonSearchAtDepth[clauses_List, depth_Integer] :=
+  Catch[
+    Module[{cRen, startLits},
+      Do[
+        cRen = renameClauseApart[c0];
+        startLits = cRen[[1]];
+        If[startLits === {},
+          Throw[{<||>, mProof["empty", {}]}, mesonProofFoundTag]
+        ];
+        attemptProveLits[startLits, {}, depth, <||>, clauses],
+        {c0, clauses}
+      ];
+      HOL`Auto`Meson`mesonRefuteFailed
+    ],
+    mesonProofFoundTag
+  ];
+
+attemptProveLits[{}, _, _, σ_, _] :=
+  Throw[{σ, mProof["closed", {}]}, mesonProofFoundTag];
+
+attemptProveLits[lits_, ancestors_, depth_, σ_, allClauses_] :=
+  If[depth === 0, Null,
+    Module[{lit, rest},
+      lit = First[lits]; rest = Rest[lits];
+      Do[
+        If[oppositeSign[lit, anc],
+          Module[{σ1},
+            σ1 = unifyImpl[lit[[2]], anc[[2]], σ];
+            If[σ1 =!= mesonUnifyFailedTag,
+              attemptProveLits[rest, ancestors, depth, σ1, allClauses]
+            ]
+          ]
+        ],
+        {anc, ancestors}
+      ];
+      Do[
+        Module[{cRen, cLits},
+          cRen = renameClauseApart[c];
+          cLits = cRen[[1]];
+          Do[
+            If[oppositeSign[lit, litC],
+              Module[{σ1, newSubgoals},
+                σ1 = unifyImpl[lit[[2]], litC[[2]], σ];
+                If[σ1 =!= mesonUnifyFailedTag,
+                  newSubgoals = DeleteCases[cLits, litC, 1, 1];
+                  attemptProveLits[
+                    Join[newSubgoals, rest],
+                    Prepend[ancestors, lit],
+                    depth - 1,
+                    σ1,
+                    allClauses
+                  ]
+                ]
+              ]
+            ],
+            {litC, cLits}
+          ]
+        ],
+        {c, allClauses}
+      ];
+      Null
+    ]
+  ];
+
+(* ============================================================ *)
+(* M7-α-1 stubs for MESON / mesonProve.  M7-α-4 will replace.   *)
 
 HOL`Auto`Meson`MESON[thms_List][g_goal] :=
   HOL`Tactics`noTac[g];
 
 HOL`Auto`Meson`mesonProve[tm_, thms_List] :=
-  HOL`Error`holError["meson", "mesonProve: search not implemented yet",
+  HOL`Error`holError["meson", "mesonProve: replay (M7-α-4) not implemented yet",
     <|"goal" -> tm|>];
 
 End[];
