@@ -397,14 +397,18 @@ EndPackage[];
 - [ ] term 到 `Box` 的渲染（用 M6a 的 printTree 适配 `RowBox` / `SubscriptBox` 等数学排版）
 - [ ] Goalstack 当前状态的 notebook 可视化（承接 M5 遗留项）
 
-**M6c — Parser**
-- [ ] Tokenizer：标识符、数字、算符、括号、冒号、点号、类型变量记号
-- [ ] Pratt parser（算符优先），消费 M6a 的算符注册表
-- [ ] 类型推断（最小可用版的 W 算法）：每节点生成约束、unify、把多态常量实例化到具体类型再 `mkConst`；不做 let-polymorphism、不做重载
-- [ ] Binder 语法：`λx y z. body`、`∀x:α. body`、`∃x. body`
-- [ ] 类型标注：`(t : ty)`；类型变量 `'a` 与 `α` 都接受
-- [ ] **绝不调用 `ToExpression`**——会执行任意代码，破坏信任边界
-- [ ] 回归测试：parse → print → parse 的 roundtrip 在内建算符全集上守恒
+**M6c — Parser** ✅
+- [x] Tokenizer：标识符、数字、算符、括号、冒号、点号、类型变量记号（ASCII alias `/\ \/ ==> ~ ! ? \ -> |-` → Unicode 在 `opCanon` 内一次映射）
+- [x] Pratt parser（算符优先），消费 M6a 的算符注册表（`registeredInfixQ` / `registeredPrefixQ` 直接读 `lookupOperator`）
+- [x] 类型推断（最小可用版的 W 算法）：原始 AST + Module 闭包内 `inferImpl` 收集约束 → `unify` 累积 σ → `applyToTerm` → `canonicalize`（自由变量按 name 共享 fresh tyvar，常量 `freshInstantiate` 每次调用独立泛化）
+- [x] Binder 语法：`λx y z. body`、`∀x:α. body`、`∃x. body`（`expandBinder` 展开成嵌套 `rAbs` / `rApp[rConst[bs], rAbs[…]]`）
+- [x] 类型标注：`(t : ty)`；类型变量 `'a` 语法（`α` 留待 M6b notebook 渲染）
+- [x] **绝不调用 `ToExpression`**——纯字符串扫描 + 显式 AST
+- [x] 回归测试：parse → print → parse 的 roundtrip 在内建算符全集上 aconv-守恒（`parser_tests.wl` 16 组共 70 断言；含 `tDef` capstone `T = (λx:bool. x) = (λx:bool. x)`）
+
+**实现细节备忘**：
+- `holError` 有 `HoldRest`，所以 message 参数里的 `<>` 字符串拼接会被 hold 住、不匹配 `_String` 模式、call 整个无声返回未求值。Parser.wl 内部凡需要拼接 message 的地方都用 `With[{msg = StringJoin[…]}, holError["parser", msg, …]]` 模式预先求值。
+- `AssociationMap[(# -> f[#]) &, list]` 在 WL 里把右侧 lambda 当作 *value 构造器*，结果是 `<|k -> (k -> f[k])|>`（Rule 作为值）。要正确建表用 `Association[(# -> f[#]) & /@ list]`。M6c 实现里 `freshInstantiate` 和 `bindTyVar` 都踩过这个坑。
 
 **验收**：`prove["∀ x y. x + y = y + x", ...]`（假设 `+` 已在某个加载的理论里定义）能跑通；M6a 的输出可以喂回 M6c 解析回同一个 term。
 
