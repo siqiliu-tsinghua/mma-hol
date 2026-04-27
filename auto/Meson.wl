@@ -68,7 +68,12 @@ mesonRefuteFailed::usage =
   "mesonRefuteFailed — sentinel returned by mesonRefute when no refutation is found.";
 
 mProof::usage =
-  "mProof[kind, …] — internal proof-trace node. kind = \"extension\" or \"reduction\". Carries the literal closed, the clause/ancestor used, the σ delta, and (for extension) the sub-proofs of the new subgoals.";
+  "mProof[kind, …] — internal proof-trace node. Five kinds: " <>
+  "mProof[\"start\", clause, sub] — search picked clause as root, sub closes its literals. " <>
+  "mProof[\"empty\", clause] — clause was empty (vacuous refutation). " <>
+  "mProof[\"closed\", {}] — leaf: all open literals discharged. " <>
+  "mProof[\"extension\", lit, clause, pivotLit, σ, sub] — closed lit by extending with clause, pivoting on pivotLit; sub proves the new subgoals (clause's other literals) followed by remaining old subgoals. " <>
+  "mProof[\"reduction\", lit, ancestor, σ, sub] — closed lit by unifying with path ancestor; sub proves remaining old subgoals.";
 
 Begin["`Private`"];
 
@@ -411,9 +416,14 @@ renameClauseApart[mClause[lits_]] :=
 (* extension (using a clause from the input) creating sub-goals,  *)
 (* or a reduction (unifying with a path ancestor).                *)
 (*                                                                *)
-(* attemptProve throws the (final σ, trace-tree) on success.      *)
+(* attemptProveLits returns either {True, σ, tree} on success or {False} on  *)
+(* exhaustion.  Each Catch wraps one call; success Throws to the local tag, *)
+(* the Catch unwraps and returns the wrapped value to the parent.  Throw    *)
+(* / Catch is used (rather than While+flag) because it actually breaks out  *)
+(* of nested Do loops on first success, which a flag cannot do without      *)
+(* iterating uselessly.                                                      *)
 
-mesonProofFoundTag = "$mesonProofFound$";
+mesonAttemptTag = "$mesonAttempt$";
 HOL`Auto`Meson`mesonRefuteFailed = "$mesonRefuteFailed$";
 
 oppositeSign[mLit[s1_, _], mLit[s2_, _]] := s1 =!= s2;
@@ -430,65 +440,82 @@ HOL`Auto`Meson`mesonRefute[clauses_List, maxDepth_Integer] :=
 
 mesonSearchAtDepth[clauses_List, depth_Integer] :=
   Catch[
-    Module[{cRen, startLits},
+    Module[{cRen, startLits, sub},
       Do[
         cRen = renameClauseApart[c0];
         startLits = cRen[[1]];
         If[startLits === {},
-          Throw[{<||>, mProof["empty", {}]}, mesonProofFoundTag]
+          Throw[mProof["empty", c0], mesonAttemptTag]
         ];
-        attemptProveLits[startLits, {}, depth, <||>, clauses],
+        sub = attemptProveLits[startLits, {}, depth, <||>, clauses];
+        If[sub[[1]],
+          Throw[mProof["start", c0, sub[[3]]], mesonAttemptTag]
+        ],
         {c0, clauses}
       ];
       HOL`Auto`Meson`mesonRefuteFailed
     ],
-    mesonProofFoundTag
+    mesonAttemptTag
   ];
 
-attemptProveLits[{}, _, _, σ_, _] :=
-  Throw[{σ, mProof["closed", {}]}, mesonProofFoundTag];
+attemptProveLits[{}, _, _, σ_, _] := {True, σ, mProof["closed", {}]};
 
-attemptProveLits[lits_, ancestors_, depth_, σ_, allClauses_] :=
-  If[depth === 0, Null,
-    Module[{lit, rest},
-      lit = First[lits]; rest = Rest[lits];
-      Do[
-        If[oppositeSign[lit, anc],
-          Module[{σ1},
-            σ1 = unifyImpl[lit[[2]], anc[[2]], σ];
-            If[σ1 =!= mesonUnifyFailedTag,
-              attemptProveLits[rest, ancestors, depth, σ1, allClauses]
-            ]
-          ]
-        ],
-        {anc, ancestors}
-      ];
-      Do[
-        Module[{cRen, cLits},
-          cRen = renameClauseApart[c];
-          cLits = cRen[[1]];
-          Do[
-            If[oppositeSign[lit, litC],
-              Module[{σ1, newSubgoals},
-                σ1 = unifyImpl[lit[[2]], litC[[2]], σ];
-                If[σ1 =!= mesonUnifyFailedTag,
-                  newSubgoals = DeleteCases[cLits, litC, 1, 1];
-                  attemptProveLits[
-                    Join[newSubgoals, rest],
-                    Prepend[ancestors, lit],
-                    depth - 1,
-                    σ1,
-                    allClauses
-                  ]
+attemptProveLits[lits_List, ancestors_, depth_Integer, σ_, allClauses_] :=
+  If[depth === 0, {False},
+    Catch[
+      Module[{lit, rest},
+        lit = First[lits]; rest = Rest[lits];
+        Do[
+          If[oppositeSign[lit, anc],
+            Module[{σ1, sub},
+              σ1 = unifyImpl[lit[[2]], anc[[2]], σ];
+              If[σ1 =!= mesonUnifyFailedTag,
+                sub = attemptProveLits[rest, ancestors, depth, σ1, allClauses];
+                If[sub[[1]],
+                  Throw[
+                    {True, sub[[2]],
+                      mProof["reduction", lit, anc, σ1, sub[[3]]]},
+                    mesonAttemptTag]
                 ]
               ]
-            ],
-            {litC, cLits}
-          ]
-        ],
-        {c, allClauses}
-      ];
-      Null
+            ]
+          ],
+          {anc, ancestors}
+        ];
+        Do[
+          Module[{cRen, cLits},
+            cRen = renameClauseApart[c];
+            cLits = cRen[[1]];
+            Do[
+              If[oppositeSign[lit, litC],
+                Module[{σ1, sub, newSubgoals},
+                  σ1 = unifyImpl[lit[[2]], litC[[2]], σ];
+                  If[σ1 =!= mesonUnifyFailedTag,
+                    newSubgoals = DeleteCases[cLits, litC, 1, 1];
+                    sub = attemptProveLits[
+                      Join[newSubgoals, rest],
+                      Prepend[ancestors, lit],
+                      depth - 1,
+                      σ1,
+                      allClauses
+                    ];
+                    If[sub[[1]],
+                      Throw[
+                        {True, sub[[2]],
+                          mProof["extension", lit, c, litC, σ1, sub[[3]]]},
+                        mesonAttemptTag]
+                    ]
+                  ]
+                ]
+              ],
+              {litC, cLits}
+            ]
+          ],
+          {c, allClauses}
+        ];
+        {False}
+      ],
+      mesonAttemptTag
     ]
   ];
 

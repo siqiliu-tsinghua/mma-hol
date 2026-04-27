@@ -225,10 +225,16 @@ HOLTest`runTests["meson: clausify — tautology produces empty clause set",
 
 (* === M7-α-3 search engine tests === *)
 
-(* Register a test predicate P : bool → bool — Skolem fresh names use ?sk*
-   so 'P' doesn't collide with anything the search engine will introduce. *)
+(* Register test predicates / propositions — Skolem fresh names use ?sk*
+   so these names don't collide with anything the search engine will introduce.
+   p_atm, q_atm are propositional constants used to test the propositional
+   refutation cases without collateral var-unification. *)
 If[!MemberQ[HOL`Kernel`listConstants[], "P"],
   HOL`Kernel`newConstant["P", tyFun[boolTy, boolTy]]];
+If[!MemberQ[HOL`Kernel`listConstants[], "p_atm"],
+  HOL`Kernel`newConstant["p_atm", boolTy]];
+If[!MemberQ[HOL`Kernel`listConstants[], "q_atm"],
+  HOL`Kernel`newConstant["q_atm", boolTy]];
 
 HOLTest`runTests["meson: unify — same atom is identity",
   Module[{p, σ},
@@ -336,4 +342,66 @@ HOLTest`runTests["meson: refute — depth bound respected",
       "depth 0 can't refute even simple contradictions"];
     HOLTest`assertTrue[resultOne =!= mesonRefuteFailed,
       "depth 1 suffices for unit-clause contradiction"];
+  ]];
+
+(* === M7-α-4-a proof-tree shape tests === *)
+
+HOLTest`runTests["meson: trace — root is mProof start",
+  Module[{p, clauses, tree},
+    p = mkVar["p", boolTy];
+    clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
+    tree = mesonRefute[clauses, 5];
+    HOLTest`assertTrue[
+      MatchQ[tree, mProof["start", _, _]],
+      "refutation tree's root is mProof[\"start\", clause, sub]"];
+  ]];
+
+HOLTest`runTests["meson: trace — unit refutation has extension + closed",
+  Module[{p, clauses, tree, ext, closed},
+    p = mkVar["p", boolTy];
+    clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
+    tree = mesonRefute[clauses, 5];
+    (* tree = mProof["start", c, mProof["extension", lit, c', litC, σ, mProof["closed", {}]]] *)
+    HOLTest`assertTrue[
+      MatchQ[tree,
+        mProof["start", _,
+          mProof["extension", _mLit, _mClause, _mLit, _Association,
+            mProof["closed", {}]]]],
+      "{p}, {¬p} refutation: start → extension → closed"];
+  ]];
+
+HOLTest`runTests["meson: trace — extension records original (un-renamed) clause",
+  Module[{p, clauses, tree, ext, sourceClause},
+    p = mkVar["p", boolTy];
+    clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
+    tree = mesonRefute[clauses, 5];
+    ext = tree[[3]];
+    sourceClause = ext[[3]];
+    HOLTest`assertTrue[MemberQ[clauses, sourceClause],
+      "the extension's clause field is one of the input clauses (un-renamed)"];
+  ]];
+
+HOLTest`runTests["meson: trace — multi-step proof for modus ponens contradiction",
+  Module[{p, q, clauses, tree, depth},
+    (* Constants here, not vars — vars would unify across atoms and
+       collapse the refutation to one step. *)
+    p = mkConst["p_atm", boolTy]; q = mkConst["q_atm", boolTy];
+    (* {p ∨ ¬q}, {q}, {¬p} *)
+    clauses = {
+      mClause[{mLit[True, p], mLit[False, q]}],
+      mClause[{mLit[True, q]}],
+      mClause[{mLit[False, p]}]};
+    tree = mesonRefute[clauses, 5];
+    depth = Length[Cases[tree, mProof["extension", __], {0, Infinity}]];
+    HOLTest`assertTrue[depth >= 2,
+      "modus ponens refutation uses at least 2 extensions"];
+  ]];
+
+HOLTest`runTests["meson: trace — empty starting clause produces mProof empty",
+  Module[{clauses, tree},
+    (* Pathological: an empty clause among inputs is a direct refutation. *)
+    clauses = {mClause[{}]};
+    tree = mesonRefute[clauses, 5];
+    HOLTest`assertTrue[MatchQ[tree, mProof["empty", _mClause]],
+      "empty clause in input produces mProof[\"empty\", c]"];
   ]];
