@@ -412,29 +412,51 @@ EndPackage[];
 
 **验收**：`prove["∀ x y. x + y = y + x", ...]`（假设 `+` 已在某个加载的理论里定义）能跑通；M6a 的输出可以喂回 M6c 解析回同一个 term。
 
-### M7：基础数据与数系 ✦ 第 10–14 周
-数学库的底座。此阶段必须同时做好**类型层**和**自动化层**两件事——后续所有分析内容对两者都高度依赖。
+### M7：基础数据与数系 ✦ 18–25 周
+数学库的底座，按学期工程量预算。原 5 周估计在我们决定走"传统 ℕ→ℤ→ℚ→ℝ + Zorich 风格 ℝ 上回切 ℕ/ℤ/ℚ + 任意整数底无穷小数 + 5 自动化决策过程"之后已不现实，整体扩张到一个学期级别的工程量。
 
-- [ ] 布尔、Pair、Sum、Option
-- [ ] **集合**：编码为 `α → bool`；建立 `∪`、`∩`、`\\`、`⊆`、`𝒫`、笛卡尔积、象 / 原象；`IN` 和 `SUBSET` 的改写规则
-- [ ] 自然数 `num`（从 `ind` 的无穷性定义，对齐 HOL Light）、整数 `int`、有理数 `rat`（商类型）
-- [ ] **实数 `real`**：Cauchy 序列等价类 / Dedekind cut 二选一构造；导出完备有序域定理。这是整个数学库的成败分界线
-- [ ] 列表、有限集合、finite sum / finite product 记号（`∑`、`∏`）
-- [ ] `num` / `int` / `real` 的代数恒等式改写集合
-- [ ] （可选）复数 `complex`：作为 `real × real` 的代数构造
+**走向**：
+- **教学路线**：杂糅——HOL 类型在底，集合论记号（`∈ ⊆ ∪ ∩ {x|P x}` 等）在表面；只在乘积类型 / 商类型 / 函数空间这三处让"类型 vs 集合"短暂浮现并明讲
+- **数构造顺序**：ℕ → ℤ → ℚ → ℝ (**Dedekind 分割**)；序列在 ℝ 之后（Cauchy 序列要序列概念，序列又要 ℝ，所以 Cauchy 路线被教学顺序排除）
+- **范畴性 / Eudoxus 同构**：留给 M8 与 Cauchy 列构造并列做，证 `ℝ_Dedekind ≅ ℝ_Cauchy ≅ ℝ_Eudoxus` 三角形闭环。M7 主线只构造 Dedekind ℝ
+- **拓扑学**：**不在 M7 末尾打包引入**。开 / 闭 / 紧 / 连通按教学规律分散到 M8，作为解决数列 / 函数 / 极限问题的工具逐个出现（与 Rudin / Zorich 一致）
+- **决策过程实现**：从头写，充分利用 WL 语言特性。oracle + verifier 模式（用 `Resolve` / `Reduce` / `LinearProgramming` 当搜索 oracle 找证据，再让 tactic 通过 10 条原始规则验证），改写表用 `Dispatch` 编译，term bank 用 Association 索引——全部不进信任边界
+- **Parser 扩展**：M7 一开始就在 parser 加 set-builder `{x | P x}` 语法（语义即 `λx. P x`，复用现有 binder 机器）。带表达式的 `{f x | P x}`（HOL Light 的 `GSPEC` 形式）等真用到时再补
 
-**必须伴生的自动化**（缺一项，后续分析证明体量都会失控）：
-- [ ] `MESON_TAC`：一阶 Model Elimination 证明搜索
-- [ ] `SIMP_TAC`：带假设的条件重写引擎，承接 M4 的 `REWRITE_TAC`
-- [ ] `SET_TAC`：集合论的小决策程序（布尔化 + `MESON_TAC`）
-- [ ] `ARITH_TAC`：自然数 / 整数 Presburger 片段决策
-- [ ] `REAL_ARITH`：实数线性算术决策（Fourier–Motzkin 或 Simplex 变种）
-- [ ] `REAL_FIELD`：实数域多项式等式 + `REAL_ARITH`（可延后到 M8）
+**Phase 0 — 自动化底座** ~3 周
 
-**验收**：
-- `⊢ ∀a b c:real. a*(b+c) = a*b + a*c` 一步 `REAL_ARITH`
-- `⊢ ∀S T:α→bool. S ∩ T ⊆ S ∪ T` 一步 `SET_TAC`
-- 能机械证 `num` / `real` 的域 / 有序域结构定理
+`auto/`，先于一切数学层。否则后面每个小定理都要手工 `THEN`-chain，效率不可接受。
+
+- [ ] **M7-α / `auto/Meson.wl`** —— MESON：一阶 resolution + Skolemization + paramodulation + subsumption。capstone：propositional 与一阶定理一行 `MESON[]` prove
+- [ ] **M7-β / `auto/Simp.wl`** —— SIMP：双向改写 + 条件改写 + congruence rules + 终止策略；改写规则集用 `Dispatch` 编译
+
+**Phase 1 — 代数数据 + 集合记号** ~3 周
+
+- [ ] **M7-1 / `stdlib/Pair.wl`、`Sum.wl`、`Option.wl`** —— 三个代数类型，全部 `new_basic_type_definition`。投影 / 构造子 / recursion principle / `MAP` / `CASE`
+- [ ] **M7-2 / `stdlib/Set.wl`** —— 集合记号层，全是 `α → bool` 谓词上的 derived 记号：`IN` / `SUBSET` / `∪` / `∩` / `∖` / `∅` / `UNIV` / `POW` / 像 / 原象 / 有界量词 `∀x ∈ S` / 函数性质（单射 / 满射 / 双射 / 合成 / 恒等）
+- [ ] **M7-2-parser** —— Parser 扩展 set-builder `{x | P x}` 语法
+- [ ] **M7-γ / `auto/Set.wl`** —— SET 决策过程：集合代数恒等式专用 normalization + MESON 兜底。capstone：`S ∪ T = T ∪ S` 一行
+
+**Phase 2 — 数构造** ~5–7 周
+
+- [ ] **M7-3 / `stdlib/Num.wl`**（最大块，2–3 周）—— 从 `ind` + `INFINITY_AX` 走 `IND_SUC` / `IND_0` / `NUM_REP` / `new_basic_type_definition` 经典路径；Peano 三件套；原始递归定理；`+ × ^ < ≤`；强归纳 / 良序原理；带余除法。capstone：算术基本定理（任意正整数唯一素因数分解）
+- [ ] **M7-4 / `stdlib/List.wl`、`Finite.wl`**（1–2 周）—— list 类型 + `HD` / `TL` / `CONS` / `APPEND` / `LENGTH` / `MAP` / `FILTER` / `FOLD`；`FINITE S ↔ ∃l. ∀x. x ∈ S ↔ MEM x l`；基数 `CARD`；有限和 `∑`
+- [ ] **M7-δ / `auto/Arith.wl`**（1–2 周）—— ℕ / ℤ 上 Presburger 线性算术决策：oracle 用 WL 的整线性规划接口找证据，verifier 拼 `+` 和 `≤` 的可加性引理。capstone：`∀ m n. m + n ≤ m * n + 2` 一行
+- [ ] **M7-5 / `stdlib/Int.wl`**（1 周）—— `num × num` 商类型；环结构、序、`|·|`、`&_ℤ : num → int` 嵌入
+- [ ] **M7-6 / `stdlib/Rat.wl`**（1 周）—— `int × int*` 商；域结构、序、`&_ℚ : int → rat` 嵌入；ℚ 在自身稠密
+
+**Phase 3 — 实数 + 序列收敛** ~7–9 周
+
+- [ ] **M7-7 / `stdlib/Real.wl`** 主体（3–4 周）—— Dedekind 分割 `{ L : ℚ → bool | 非空 ∧ 向下封闭 ∧ 无最大元 ∧ 上有界 }`；`new_basic_type_definition` 切出 `real`；加法（集合并）、乘法（分正负讨论）、序（包含）；**完备性（sup 性质）作为构造直给的定理**；`&_ℝ : rat → real` 嵌入；Archimedean property；ℚ 在 ℝ 中稠密；nth roots 存在性；`√2 ∉ ℚ`
+- [ ] **M7-7-Zorich** —— Zorich 视角的回切：定义 `is_nat` / `is_int` / `is_rat : real → bool` 谓词，证明它们与构造类型 ℕ/ℤ/ℚ 经由 `&_ℕ`/`&_ℤ`/`&_ℚ` 一一对应；展示这些刻画等价于"含 0 / 对 +1 封闭 / 最小"等归纳定义
+- [ ] **M7-ε / `auto/RealArith.wl`**（2–3 周，全 M7 最难一块）—— ℝ 上线性算术决策（Cohen-Hörmander 路线 / Positivstellensatz 子集），oracle 用 WL `Resolve[..., Reals]` / `LinearProgramming`。capstone：`∀ a b : ℝ. a < b ⇒ a < (a + b) / 2` 一行
+- [ ] **M7-8 / `stdlib/Seq.wl`**（2 周）—— 序列 `ℕ → ℝ`；ε-N 极限；单调收敛（从 sup 直推）；子列；Bolzano-Weierstrass；Cauchy 列；**Cauchy 完备性作为定理**（不再是公理 / 构造直给）
+- [ ] **M7-9 / `stdlib/Decimal.wl`**（1–2 周）—— **任意整数底 `b ≥ 2`** 的无穷展开存在性 + 唯一性（带尾 `(b-1)` / 尾 `0` 二义 caveat）；与级数 `∑ dᵢ b^{-i-1}` 收敛的等价（用 M7-8 的极限机器）
+
+**M7 capstone**（三件并列）：
+- **大 capstone**：`⊢ ∀ S : real → bool. S ≠ ∅ ∧ (∃ b. ∀ x ∈ S. x ≤ b) ⇒ ∃ s. is_sup S s`
+- **桥接 M8**：`⊢ ∀ a : ℕ → ℝ. Cauchy a ⇒ ∃ L. lim a = L`
+- **教学 capstone**：`⊢ ∀ b ≥ 2. ∀ x ∈ [0,1]. ∃!_{(b-1)/0 二义} d. x = ∑ d(i) · b^{-i-1}`
 
 ---
 
