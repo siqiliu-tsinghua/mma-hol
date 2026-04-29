@@ -43,6 +43,7 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "Tactics.wl"}]];
   Get[FileNameJoin[{repoRoot, "Printer.wl"}]];
   Get[FileNameJoin[{repoRoot, "Parser.wl"}]];
+  Get[FileNameJoin[{repoRoot, "auto", "PropTaut.wl"}]];
   Get[FileNameJoin[{repoRoot, "auto", "Meson.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
