@@ -243,12 +243,20 @@ HOLTest`runTests["meson: unify — same atom is identity",
     HOLTest`assertEq[σ, <||>, "var === var: empty σ"];
   ]];
 
-HOLTest`runTests["meson: unify — var with const binds",
+HOLTest`runTests["meson: unify — α-var with const binds",
   Module[{x, c, σ},
-    x = mkVar["x", boolTy];
-    c = mkConst["T", boolTy];
+    x = mkVar["x", tyVar["a"]];
+    c = mkVar["c", tyVar["a"]];
     σ = mesonUnify[x, c, <||>];
-    HOLTest`assertEq[σ, <|"x" -> c|>, "x ↦ T"];
+    HOLTest`assertEq[σ, <|"x" -> c|>, "x ↦ c (logical α-var binds)"];
+  ]];
+
+HOLTest`runTests["meson: unify — bool-typed vars are rigid",
+  Module[{p, q, σ},
+    p = mkVar["p", boolTy];
+    q = mkVar["q", boolTy];
+    σ = mesonUnify[p, q, <||>];
+    HOLTest`assertEq[σ, mesonUnifyFailed, "p:bool ≁ q:bool (atomic props)"];
   ]];
 
 HOLTest`runTests["meson: unify — type mismatch fails",
@@ -266,22 +274,24 @@ HOLTest`runTests["meson: unify — different consts fail",
     HOLTest`assertEq[σ, mesonUnifyFailed, "T ≁ F"];
   ]];
 
-HOLTest`runTests["meson: unify — comb propagates",
-  Module[{p, x, y, q, σ},
-    (* Unify p(x) with p(c)  →  x ↦ c *)
-    p = mkConst["P", tyFun[boolTy, boolTy]];
-    x = mkVar["x", boolTy];
-    σ = mesonUnify[mkComb[p, x], mkComb[p, mkConst["T", boolTy]], <||>];
-    HOLTest`assertEq[σ, <|"x" -> mkConst["T", boolTy]|>, "P x ≃ P T → x ↦ T"];
+HOLTest`runTests["meson: unify — comb propagates (FOL with α-var)",
+  Module[{p, x, c, σ},
+    (* Unify P(x) with P(c) where x:α (logical), c:α — binds x ↦ c. *)
+    p = mkConst["=", tyFun[tyVar["a"], tyFun[tyVar["a"], boolTy]]];
+    x = mkVar["x", tyVar["a"]];
+    c = mkVar["c", tyVar["a"]];
+    σ = mesonUnify[mkComb[mkComb[p, x], c], mkComb[mkComb[p, c], c], <||>];
+    HOLTest`assertEq[σ, <|"x" -> c|>, "= x c ≃ = c c → x ↦ c"];
   ]];
 
-HOLTest`runTests["meson: unify — occurs check",
-  Module[{x, p, σ},
-    x = mkVar["x", boolTy];
-    p = mkConst["P", tyFun[boolTy, boolTy]];
-    (* Try x ≃ P x (occurs) *)
-    σ = mesonUnify[x, mkComb[p, x], <||>];
-    HOLTest`assertEq[σ, mesonUnifyFailed, "x ≁ P x (occurs check)"];
+HOLTest`runTests["meson: unify — occurs check (α-var)",
+  Module[{x, p, c, σ},
+    x = mkVar["x", tyVar["a"]];
+    p = mkConst["=", tyFun[tyVar["a"], tyFun[tyVar["a"], boolTy]]];
+    c = mkVar["c", tyVar["a"]];
+    (* Try x ≃ (= x c)  — type-mismatched, but more importantly occurs *)
+    σ = mesonUnify[x, mkComb[mkComb[p, x], c], <||>];
+    HOLTest`assertEq[σ, mesonUnifyFailed, "x ≁ = x c (type mismatch / occurs)"];
   ]];
 
 HOLTest`runTests["meson: refute — propositional contradiction {p}, {¬p}",
@@ -317,15 +327,25 @@ HOLTest`runTests["meson: refute — satisfiable returns failure within bound",
   ]];
 
 HOLTest`runTests["meson: refute — first-order contradiction via unification",
-  Module[{px0, npxv, result, clauses},
+  Module[{aTy, pConst, xVar, cVar, pxAtom, pcAtom, clauses, result},
     mesonResetState[];
-    (* Goal: (∀x. P x) ⇒ P 0.  Negate: (∀x. P x) ∧ ¬P 0.
-       Clausify gives {P x_logical}, {¬P 0_const}. Unify x ↦ 0_const. *)
-    clauses = mesonClausify[
-      parseTerm["(∀x:bool. P x) ∧ (¬ (P T))"]];
+    (* Build {P x}, {¬P c} directly with x:'a logical, c:'a rigid.
+       (Bool-typed vars are now rigid; FOL needs non-bool.) *)
+    aTy    = tyVar["a"];
+    pConst = mkVar["P", tyFun[aTy, boolTy]];  (* free pred-var, rigid *)
+    xVar   = mkVar["x", aTy];                 (* logical *)
+    cVar   = mkVar["c", aTy];                 (* logical too — but
+                                                 since c never gets a
+                                                 σ binding from unify
+                                                 chain, x ↦ c happens *)
+    pxAtom = mkComb[pConst, xVar];
+    pcAtom = mkComb[pConst, cVar];
+    clauses = {
+      mClause[{mLit[True, pxAtom]}],
+      mClause[{mLit[False, pcAtom]}]};
     result = mesonRefute[clauses, 5];
     HOLTest`assertTrue[result =!= mesonRefuteFailed,
-      "(∀x:bool. P x) ∧ ¬P T refutes by unifying x ↦ T"];
+      "{P x:'a} ∧ {¬P c:'a} refutes via x ↦ c"];
   ]];
 
 HOLTest`runTests["meson: refute — depth bound respected",

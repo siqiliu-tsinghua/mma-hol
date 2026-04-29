@@ -10,7 +10,7 @@
 BeginPackage["HOL`Auto`Meson`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
-  "HOL`Tactics`"
+  "HOL`Tactics`", "HOL`Auto`PropTaut`"
 }];
 
 MESON::usage =
@@ -22,6 +22,15 @@ MESON::usage =
 mesonProve::usage =
   "mesonProve[tm_, thms_List] — proof builder counterpart of MESON. " <>
   "Skeleton in M7-α-1 throws 'meson' tag.";
+
+mesonProveProp::usage =
+  "mesonProveProp[goal, premiseThms] — propositional MESON proof builder " <>
+  "(M7-α-4-c MVP). Negates goal, clausifies premises + ¬goal via PropTaut, " <>
+  "runs mesonRefute, replays the trace through HOL Light-style contrapositive " <>
+  "MP chains, returns ⊢ goal under premise hypotheses. Restrictions: start " <>
+  "clause must be unit (k=1); atoms must be bool-typed free vars or boolean " <>
+  "constants (no quantifiers, no first-order Skolemization). First-order is " <>
+  "α-4-d.";
 
 mesonMaxDepth::usage =
   "mesonMaxDepth — Integer, the iterative-deepening cap. Default 50; " <>
@@ -378,13 +387,18 @@ unifyImpl[t1_, t2_, σ_] :=
     ]
   ];
 
+(* Bool-typed vars represent atomic propositions (rigid).  Other types  *)
+(* are first-order logical vars (instantiable).  A bool-typed var only  *)
+(* unifies with a syntactically identical term.                         *)
 unifyVarBind[var[n_String, ty_], t_, σ_] :=
   Module[{tWalked},
     tWalked = applySubstTerm[σ, t];
     If[tWalked === var[n, ty], σ,
-      If[typeOfFOTerm[tWalked] =!= ty, mesonUnifyFailedTag,
-        If[occursIn[n, tWalked, σ], mesonUnifyFailedTag,
-          Append[σ, n -> tWalked]
+      If[ty === tyApp["bool", {}], mesonUnifyFailedTag,
+        If[typeOfFOTerm[tWalked] =!= ty, mesonUnifyFailedTag,
+          If[occursIn[n, tWalked, σ], mesonUnifyFailedTag,
+            Append[σ, n -> tWalked]
+          ]
         ]
       ]
     ]
@@ -401,11 +415,14 @@ occursIn[name_String, t_, σ_] :=
 
 $mesonRenameCounter = 0;
 
+(* Bool-typed free vars are propositional atoms (rigid). Other types  *)
+(* are first-order logical vars (instantiable, must be apart per use). *)
 renameClauseApart[mClause[lits_]] :=
   Module[{tag, lits2},
     $mesonRenameCounter += 1;
     tag = "@" <> ToString[$mesonRenameCounter];
-    lits2 = lits /. var[name_String, ty_] :> var[name <> tag, ty];
+    lits2 = lits /. v : var[name_String, ty_] :>
+      If[ty === tyApp["bool", {}], v, var[name <> tag, ty]];
     mClause[lits2]
   ];
 
@@ -520,13 +537,192 @@ attemptProveLits[lits_List, ancestors_, depth_Integer, σ_, allClauses_] :=
   ];
 
 (* ============================================================ *)
-(* M7-α-1 stubs for MESON / mesonProve.  M7-α-4 will replace.   *)
+(* M7-α-4-c — Propositional proof reconstruction.                *)
+(*                                                                *)
+(* Walks the linearized mProof trace and replays each closure as  *)
+(* a HOL theorem combination. Each "open lit" L corresponds to a  *)
+(* hypothesis ⊢ L_term in the current branch; closing it produces *)
+(* ⊢ F under that hypothesis. Extension uses the pre-built        *)
+(* contrapositive rule (from clausifyContrapositives), MPing in   *)
+(* the ⊢ ¬Lⱼ for each non-pivot subgoal (recursively closed).     *)
+
+(* === Helpers for matching trace lits to clause records. ====== *)
+
+stripTagAtom[t_] :=
+  t /. var[name_String, ty_] :>
+    Module[{idx = StringPosition[name, "@"]},
+      If[idx === {}, var[name, ty],
+        var[StringTake[name, idx[[1, 1]] - 1], ty]]];
+
+stripTagLit[mLit[s_, atom_]] := mLit[s, stripTagAtom[atom]];
+
+collectDisjunctTerms[t_] :=
+  If[isOrQ[t],
+    Module[{p, q}, {p, q} = destOr[t];
+      Join[collectDisjunctTerms[p], collectDisjunctTerms[q]]],
+    {t}];
+
+litTermToMLit[t_] :=
+  If[isNotQ[t], mLit[False, destNot[t]], mLit[True, t]];
+
+mLitToTerm[mLit[True, atom_]]  := atom;
+mLitToTerm[mLit[False, atom_]] := mkNotStruct[atom];
+
+buildClauseRecord[clauseThm_] :=
+  Module[{lits},
+    lits = Map[litTermToMLit, collectDisjunctTerms[concl[clauseThm]]];
+    <|
+      "thm"     -> clauseThm,
+      "mClause" -> mClause[lits],
+      "lits"    -> lits,
+      "rules"   -> HOL`Auto`PropTaut`clausifyContrapositives[clauseThm]
+    |>
+  ];
+
+findRecordByMClause[clauseInfos_List, c_] :=
+  SelectFirst[clauseInfos, #["mClause"] === c &];
+
+findPivotIdx[record_, pivotLit_] :=
+  Module[{stripped, pos},
+    stripped = stripTagLit[pivotLit];
+    pos = Position[record["lits"], stripped, {1}, 1];
+    If[pos === {},
+      HOL`Error`holError["meson",
+        "findPivotIdx: pivot not in clause record",
+        <|"pivot" -> pivotLit, "lits" -> record["lits"]|>]];
+    pos[[1, 1]]
+  ];
+
+(* From `Γ ⊢ F` (with hyp Lⱼ_term in Γ), derive `Γ\{Lⱼ_term} ⊢ negate(Lⱼ)`. *)
+fromFalseToNegLit[Lⱼ_, fThm_] :=
+  If[Lⱼ[[1]] === True,
+    HOL`Bool`NOTINTRO[HOL`Bool`DISCH[Lⱼ[[2]], fThm]],
+    HOL`Bool`CCONTR[Lⱼ[[2]], fThm]];
+
+(* === Replay drivers. ========================================= *)
+
+closeLitProp[lit_, litThm_, ancestorBindings_, trace_, clauseInfos_] :=
+  Switch[trace[[1]],
+    "reduction",
+      closeReductionProp[lit, litThm, ancestorBindings, trace, clauseInfos],
+    "extension",
+      closeExtensionProp[lit, litThm, ancestorBindings, trace, clauseInfos],
+    _,
+      HOL`Error`holError["meson",
+        "closeLitProp: unexpected trace kind",
+        <|"kind" -> trace[[1]]|>]];
+
+closeReductionProp[
+    lit_, litThm_, ancestorBindings_,
+    mProof["reduction", _, anc_, _, sub_], _] :=
+  Module[{strippedAnc, ancEntry, ancThm, fThm},
+    strippedAnc = stripTagLit[anc];
+    ancEntry = SelectFirst[ancestorBindings, #[[1]] === strippedAnc &];
+    If[MissingQ[ancEntry],
+      HOL`Error`holError["meson",
+        "closeReductionProp: ancestor not bound",
+        <|"anc" -> anc|>]];
+    ancThm = ancEntry[[2]];
+    fThm = If[lit[[1]] === True,
+      HOL`Bool`MP[HOL`Bool`NOTELIM[ancThm], litThm],
+      HOL`Bool`MP[HOL`Bool`NOTELIM[litThm], ancThm]];
+    {fThm, sub}
+  ];
+
+closeExtensionProp[
+    lit_, litThm_, ancestorBindings_,
+    mProof["extension", _, c_, pivotLit_, _, sub_], clauseInfos_] :=
+  Module[{record, pivotIdx, ruleThm, k, subgoalLits, currentTrace,
+          currentRule, j, Lj, LjTerm, LjAssume, fThmJ, negLjThm, fThm,
+          subAncestors, result, strippedLit},
+    record    = findRecordByMClause[clauseInfos, c];
+    pivotIdx  = findPivotIdx[record, pivotLit];
+    ruleThm   = record["rules"][[pivotIdx]];
+    k         = Length[record["lits"]];
+    subgoalLits = Delete[record["lits"], pivotIdx];
+    currentTrace = sub;
+    currentRule  = ruleThm;
+    (* Search adds the current lit to the ancestor path before closing  *)
+    (* the new subgoals; ancestor lookup keys are stripped (renamed in  *)
+    (* the trace).                                                      *)
+    strippedLit  = stripTagLit[lit];
+    subAncestors = Prepend[ancestorBindings, {strippedLit, litThm}];
+    Do[
+      Lj      = subgoalLits[[j]];
+      LjTerm  = mLitToTerm[Lj];
+      LjAssume = ASSUME[LjTerm];
+      result = closeLitProp[Lj, LjAssume, subAncestors, currentTrace, clauseInfos];
+      fThmJ        = result[[1]];
+      currentTrace = result[[2]];
+      negLjThm     = fromFalseToNegLit[Lj, fThmJ];
+      currentRule  = HOL`Bool`MP[currentRule, negLjThm],
+      {j, 1, k - 1}
+    ];
+    fThm = If[pivotLit[[1]] === True,
+      HOL`Bool`MP[HOL`Bool`NOTELIM[litThm], currentRule],
+      HOL`Bool`MP[HOL`Bool`NOTELIM[currentRule], litThm]];
+    {fThm, currentTrace}
+  ];
+
+(* Process the start clause: MVP requires k=1 (unit start). *)
+
+processStartProp[mProof["empty", _], _] :=
+  HOL`Error`holError["meson",
+    "mesonProveProp: empty clause not yet handled", <||>];
+
+processStartProp[mProof["start", c_, sub_], clauseInfos_] :=
+  Module[{record, k, lit, litThm, result},
+    record = findRecordByMClause[clauseInfos, c];
+    If[MissingQ[record],
+      HOL`Error`holError["meson",
+        "processStartProp: start clause not in clauseInfos",
+        <|"c" -> c|>]];
+    k = Length[record["lits"]];
+    If[k =!= 1,
+      HOL`Error`holError["meson",
+        "mesonProveProp: only unit start clauses supported in MVP",
+        <|"k" -> k, "clause" -> c|>]];
+    lit    = record["lits"][[1]];
+    litThm = record["thm"];
+    result = closeLitProp[lit, litThm, {}, sub, clauseInfos];
+    result[[1]]
+  ];
+
+(* === Top-level. ============================================== *)
+
+HOL`Auto`Meson`mesonProveProp[goalTm_, premiseThms_List] :=
+  Module[{negGoal, assumeNeg, premiseInfos, negGoalInfos,
+          allClauseInfos, sortedInfos, mClauses, traceResult, fThm},
+    negGoal   = mkNotStruct[goalTm];
+    assumeNeg = ASSUME[negGoal];
+    premiseInfos = Flatten[
+      Map[Map[buildClauseRecord, HOL`Auto`PropTaut`clausifyPropThm[#]] &,
+          premiseThms]];
+    negGoalInfos = Map[buildClauseRecord,
+                       HOL`Auto`PropTaut`clausifyPropThm[assumeNeg]];
+    allClauseInfos = Join[premiseInfos, negGoalInfos];
+    (* MVP requires unit start clause; sort so unit clauses are tried first. *)
+    sortedInfos = SortBy[allClauseInfos, Length[#["lits"]] &];
+    mClauses = Map[#["mClause"] &, sortedInfos];
+    HOL`Auto`Meson`mesonResetState[];
+    traceResult = HOL`Auto`Meson`mesonRefute[mClauses, mesonMaxDepth];
+    If[traceResult === HOL`Auto`Meson`mesonRefuteFailed,
+      HOL`Error`holError["meson",
+        "mesonProveProp: no refutation found",
+        <|"goal" -> goalTm|>]];
+    fThm = processStartProp[traceResult, sortedInfos];
+    HOL`Bool`CCONTR[goalTm, fThm]
+  ];
+
+(* ============================================================ *)
+(* M7-α-1 stubs preserved.  Tactic-level integration in α-5+.    *)
 
 HOL`Auto`Meson`MESON[thms_List][g_goal] :=
   HOL`Tactics`noTac[g];
 
 HOL`Auto`Meson`mesonProve[tm_, thms_List] :=
-  HOL`Error`holError["meson", "mesonProve: replay (M7-α-4) not implemented yet",
+  HOL`Error`holError["meson",
+    "mesonProve: tactic-level integration not implemented yet (use mesonProveProp)",
     <|"goal" -> tm|>];
 
 End[];
