@@ -315,3 +315,188 @@ HOLTest`runTests["drule: SUBS with type instantiation",
     (* ⊢ x = x with α := bool reduces concl unchanged but exercises path. *)
     HOLTest`assertEq[concl[res], target, "polymorphic refl no-op"];
 ]];
+
+(* ===== TODO.C: higher-order Miller-pattern matching ===== *)
+
+HOLTest`runTests["drule: REWRCONV HO Miller match under ∀",
+  Module[{alpha, x, y, P, Pty, Q, f, forallTy, lhs, rhs, eqTh,
+          target, res, expected},
+    alpha    = mkVarType["a"];
+    Pty      = tyFun[alpha, boolTy];
+    forallTy = tyFun[Pty, boolTy];
+    x        = mkVar["x", alpha];
+    y        = mkVar["y", alpha];
+    P        = mkVar["P", Pty];
+    Q        = mkVar["Q", boolTy];
+    f        = mkVar["f", Pty];
+    (* eqTh : ⊢ (∀x. P x) = Q  — schema where P is a higher-order var *)
+    lhs = mkComb[mkConst["∀", forallTy],
+            mkAbs[x, mkComb[P, x]]];
+    rhs = Q;
+    eqTh = ASSUME[mkEq[lhs, rhs]];
+    (* Target: (∀y. f y), uses f instead of P *)
+    target = mkComb[mkConst["∀", forallTy],
+              mkAbs[y, mkComb[f, y]]];
+    res = REWRCONV[eqTh][target];
+    expected = mkEq[target, Q];
+    HOLTest`assertTrue[aconv[concl[res], expected],
+      "HO Miller: (∀y. f y) rewrites to Q"];
+]];
+
+HOLTest`runTests["drule: REWRCONV HO Miller against compound body",
+  Module[{alpha, x, y, P, Pty, Q, gtC, zeroC, intC, forallTy,
+          lhs, rhs, eqTh, target, res, expected},
+    alpha    = mkVarType["a"];
+    Pty      = tyFun[alpha, boolTy];
+    forallTy = tyFun[Pty, boolTy];
+    intC     = mkVarType["int"];
+    x        = mkVar["x", alpha];
+    P        = mkVar["P", Pty];
+    Q        = mkVar["Q", boolTy];
+    lhs = mkComb[mkConst["∀", forallTy],
+            mkAbs[x, mkComb[P, x]]];
+    rhs = Q;
+    eqTh = ASSUME[mkEq[lhs, rhs]];
+    (* Target: (∀y:int. y > 0). Use a synthetic > and 0 we declare here. *)
+    (* Avoid touching the kernel: use free vars to stand in for > and 0. *)
+    Module[{gt, zero, yi, body, fty},
+      yi   = mkVar["y", intC];
+      gt   = mkVar["gt", tyFun[intC, tyFun[intC, boolTy]]];
+      zero = mkVar["zero", intC];
+      body = mkComb[mkComb[gt, yi], zero];
+      target = mkComb[
+        mkConst["∀", tyFun[tyFun[intC, boolTy], boolTy]],
+        mkAbs[yi, body]];
+      res = REWRCONV[eqTh][target];
+      expected = mkEq[target, Q];
+      HOLTest`assertTrue[aconv[concl[res], expected],
+        "HO Miller: (∀y. y > 0) rewrites to Q"];
+    ];
+]];
+
+HOLTest`runTests["drule: REWRCONV closed-bvar guard rejects capturing FO match",
+  Module[{alpha, intC, x, y, P, Q, f, forallTy, lhs, rhs, eqTh, target},
+    alpha    = mkVarType["a"];
+    intC     = mkVarType["int"];
+    forallTy = tyFun[tyFun[alpha, boolTy], boolTy];
+    x        = mkVar["x", alpha];
+    P        = mkVar["P", boolTy];   (* P : bool, no x dependence *)
+    Q        = mkVar["Q", boolTy];
+    (* eqTh : ⊢ (∀x. P) = Q  — P is a bool-typed free var inside the abs.   *)
+    (* No Miller pattern (P has no args), so the matcher must fall back to *)
+    (* first-order. The closed-bvar check then refuses to bind P to a body *)
+    (* that references the abstracted x.                                    *)
+    lhs = mkComb[mkConst["∀", forallTy], mkAbs[x, P]];
+    rhs = Q;
+    eqTh = ASSUME[mkEq[lhs, rhs]];
+    f = mkVar["f", tyFun[intC, boolTy]];
+    y = mkVar["y", intC];
+    target = mkComb[
+      mkConst["∀", tyFun[tyFun[intC, boolTy], boolTy]],
+      mkAbs[y, mkComb[f, y]]];
+    HOLTest`assertThrows[REWRCONV[eqTh][target], "conv",
+      "FO match into context-bvar body is rejected"];
+]];
+
+HOLTest`runTests["drule: REWRCONV vacuous binder still rewrites when target is closed",
+  Module[{alpha, x, y, P, Q, T, forallTy, lhs, rhs, eqTh,
+          target, res, expected},
+    alpha    = mkVarType["a"];
+    forallTy = tyFun[tyFun[alpha, boolTy], boolTy];
+    x        = mkVar["x", alpha];
+    y        = mkVar["y", alpha];
+    P        = mkVar["P", boolTy];
+    Q        = mkVar["Q", boolTy];
+    T        = mkConst["T", boolTy];
+    lhs  = mkComb[mkConst["∀", forallTy], mkAbs[x, P]];
+    rhs  = Q;
+    eqTh = ASSUME[mkEq[lhs, rhs]];
+    target = mkComb[mkConst["∀", forallTy], mkAbs[y, T]];
+    res = REWRCONV[eqTh][target];
+    expected = mkEq[target, Q];
+    HOLTest`assertTrue[aconv[concl[res], expected],
+      "(∀y. T) (P-body has no bvar use) rewrites to Q"];
+]];
+
+HOLTest`runTests["drule: REWRCONV HO Miller with two args",
+  Module[{alpha, beta, x, y, R, Rty, Q, Sf, forallA, forallAB, lhs, rhs,
+          eqTh, target, res, expected},
+    alpha    = mkVarType["a"];
+    beta     = mkVarType["b"];
+    Rty      = tyFun[alpha, tyFun[beta, boolTy]];
+    forallA  = tyFun[tyFun[alpha, boolTy], boolTy];
+    forallAB = tyFun[tyFun[beta, boolTy], boolTy];
+    x        = mkVar["x", alpha];
+    y        = mkVar["y", beta];
+    R        = mkVar["R", Rty];
+    Q        = mkVar["Q", boolTy];
+    Sf       = mkVar["Sf", Rty];
+    (* Pattern: (∀x:α. ∀y:β. R x y).  Schema rule rewrites to Q.       *)
+    lhs = mkComb[mkConst["∀", forallA],
+            mkAbs[x,
+              mkComb[mkConst["∀", forallAB],
+                mkAbs[y, mkComb[mkComb[R, x], y]]]]];
+    rhs = Q;
+    eqTh = ASSUME[mkEq[lhs, rhs]];
+    (* Target: (∀x. ∀y. Sf x y) using a different binary predicate Sf. *)
+    target = mkComb[mkConst["∀", forallA],
+              mkAbs[x,
+                mkComb[mkConst["∀", forallAB],
+                  mkAbs[y, mkComb[mkComb[Sf, x], y]]]]];
+    res = REWRCONV[eqTh][target];
+    expected = mkEq[target, Q];
+    HOLTest`assertTrue[aconv[concl[res], expected],
+      "two-arg Miller: (∀x. ∀y. Sf x y) rewrites to Q"];
+]];
+
+HOLTest`runTests["drule: REWRCONV HO Miller rejects inconsistent P bindings",
+  Module[{alpha, x, y, P, Pty, Q, f, g, andC, forallTy, lhs, rhs,
+          eqTh, target},
+    alpha    = mkVarType["a"];
+    Pty      = tyFun[alpha, boolTy];
+    forallTy = tyFun[Pty, boolTy];
+    x        = mkVar["x", alpha];
+    y        = mkVar["y", alpha];
+    P        = mkVar["P", Pty];
+    Q        = mkVar["Q", boolTy];
+    f        = mkVar["f", Pty];
+    g        = mkVar["g", Pty];
+    andC     = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    (* lhs: (∀x. P x) ∧ (∀y. P y) — same P twice.                     *)
+    lhs = mkComb[mkComb[andC,
+            mkComb[mkConst["∀", forallTy], mkAbs[x, mkComb[P, x]]]],
+            mkComb[mkConst["∀", forallTy], mkAbs[y, mkComb[P, y]]]];
+    rhs = Q;
+    eqTh = ASSUME[mkEq[lhs, rhs]];
+    (* Target: (∀x. f x) ∧ (∀y. g y). Match must fail since P would   *)
+    (* need to bind to both f and g.                                  *)
+    target = mkComb[mkComb[andC,
+              mkComb[mkConst["∀", forallTy], mkAbs[x, mkComb[f, x]]]],
+              mkComb[mkConst["∀", forallTy], mkAbs[y, mkComb[g, y]]]];
+    HOLTest`assertThrows[REWRCONV[eqTh][target], "conv",
+      "Miller binding consistency forces match failure"];
+]];
+
+HOLTest`runTests["drule: REWRCONV HO match shows up under DEPTHCONV / REWRITERULE",
+  Module[{alpha, x, y, P, Pty, Q, f, forallTy, andC, lhs, rhs, eqTh,
+          target, th, res, expected},
+    alpha    = mkVarType["a"];
+    Pty      = tyFun[alpha, boolTy];
+    forallTy = tyFun[Pty, boolTy];
+    x        = mkVar["x", alpha];
+    y        = mkVar["y", alpha];
+    P        = mkVar["P", Pty];
+    Q        = mkVar["Q", boolTy];
+    f        = mkVar["f", Pty];
+    andC     = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    lhs = mkComb[mkConst["∀", forallTy], mkAbs[x, mkComb[P, x]]];
+    rhs = Q;
+    eqTh = ASSUME[mkEq[lhs, rhs]];
+    (* (∀y. f y) ∧ (∀y. f y) ⊢ same — REWRITERULE rewrites both copies. *)
+    target = mkComb[mkConst["∀", forallTy], mkAbs[y, mkComb[f, y]]];
+    th = ASSUME[mkComb[mkComb[andC, target], target]];
+    res = REWRITERULE[eqTh, th];
+    expected = mkComb[mkComb[andC, Q], Q];
+    HOLTest`assertEq[concl[res], expected,
+      "REWRITERULE applies HO rule under both ∧ branches"];
+]];

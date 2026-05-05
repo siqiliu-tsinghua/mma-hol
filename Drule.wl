@@ -101,7 +101,8 @@ HOL`Drule`DEPTHCONV[c_][t_] :=
     ]
   ];
 
-$matchFail = "matchFail$" <> ToString[Unique[]];
+$matchFail   = "matchFail$"   <> ToString[Unique[]];
+$millerFail  = "millerFail$"  <> ToString[Unique[]];
 
 tryTypeMatch[tyVar[n_String], tgt_, acc_] :=
   Module[{existing},
@@ -121,45 +122,180 @@ tryTypeMatch[tyApp[name_, args_List], tyApp[name2_, args2_List], acc_] :=
   ];
 tryTypeMatch[_, _, _] := $matchFail;
 
-tryTermMatch[bvar[k_Integer, ty_], tgt_, {tsubst_, tysubst_}] :=
-  If[MatchQ[tgt, bvar[k, _]] && tgt[[2]] === typeSubst[tysubst, ty],
-    {tsubst, tysubst}, $matchFail];
-tryTermMatch[var[n_String, ty_], tgt_, {tsubst_, tysubst_}] :=
-  Module[{tysubst2, existing, key},
-    tysubst2 = tryTypeMatch[ty, typeOf[tgt], tysubst];
-    If[tysubst2 === $matchFail, $matchFail,
-      key = var[n, ty];
-      existing = Lookup[tsubst, key, Missing[]];
-      If[MissingQ[existing],
-        {Append[tsubst, key -> tgt], tysubst2},
-        If[aconv[existing, tgt], {tsubst, tysubst2}, $matchFail]
-      ]
+(* True iff t (interpreted at top depth 0 of a fresh walk) contains any   *)
+(* bvar that references one of the `dep` matching-context binders we     *)
+(* descended through. Used to reject first-order bindings that would     *)
+(* capture an outer binder under INST.                                   *)
+hasContextBvar[t_, dep_Integer] := hasContextBvarWalk[t, dep, 0];
+hasContextBvarWalk[bvar[k_Integer, _], dep_Integer, d_Integer] :=
+  k - d >= 0 && k - d < dep;
+hasContextBvarWalk[var[_, _], _, _]   := False;
+hasContextBvarWalk[const[_, _], _, _] := False;
+hasContextBvarWalk[comb[f_, x_], dep_, d_] :=
+  hasContextBvarWalk[f, dep, d] || hasContextBvarWalk[x, dep, d];
+hasContextBvarWalk[abs[_, body_, _], dep_, d_] :=
+  hasContextBvarWalk[body, dep, d + 1];
+
+collectAppSpine[t_] :=
+  Module[{cur, args},
+    cur = t; args = {};
+    While[MatchQ[cur, comb[_, _]],
+      args = Prepend[args, cur[[2]]];
+      cur  = cur[[1]]];
+    {cur, args}
+  ];
+
+(* Miller args criterion: non-empty, all bvars at distinct levels in     *)
+(* [0, depth).                                                           *)
+isMillerArgs[args_List, depth_Integer] :=
+  Module[{ks},
+    If[args === {}, Return[False]];
+    If[!AllTrue[args,
+        MatchQ[#, bvar[_Integer, _]] && 0 <= #[[1]] < depth &],
+      Return[False]];
+    ks = #[[1]] & /@ args;
+    DuplicateFreeQ[ks]
+  ];
+
+(* Walk t, replacing each bvar referencing matching-context level ki     *)
+(* (ki ∈ keys[mapping]) with mapping[ki] (a fresh free var). Tracks      *)
+(* descent depth so a bvar[k] inside d-deep abstractions corresponds to  *)
+(* context level k - d. Returns $millerFail if any context bvar is       *)
+(* outside the mapping — that bvar can't be abstracted by the Miller    *)
+(* pattern's args, so the HO match must fail.                            *)
+millerSubstWalk[bvar[k_Integer, ty_], mapping_, dep_, d_] :=
+  Module[{level = k - d, fv},
+    If[level < 0 || level >= dep,
+      bvar[k, ty],
+      fv = Lookup[mapping, level, $millerFail];
+      fv
     ]
   ];
-tryTermMatch[const[n_String, ty_], const[n_String, ty2_], {ts_, tys_}] :=
+millerSubstWalk[v : var[_, _], _, _, _]   := v;
+millerSubstWalk[c : const[_, _], _, _, _] := c;
+millerSubstWalk[comb[f_, x_], m_, dep_, d_] :=
+  Module[{r1, r2},
+    r1 = millerSubstWalk[f, m, dep, d];
+    If[r1 === $millerFail, Return[$millerFail]];
+    r2 = millerSubstWalk[x, m, dep, d];
+    If[r2 === $millerFail, $millerFail, comb[r1, r2]]
+  ];
+millerSubstWalk[abs[bv_, body_, o_], m_, dep_, d_] :=
+  Module[{r},
+    r = millerSubstWalk[body, m, dep, d + 1];
+    If[r === $millerFail, $millerFail, abs[bv, r, o]]
+  ];
+
+pickHOFvName[forbidden_List, i_Integer] :=
+  Module[{cand, j},
+    cand = "ho$" <> ToString[i];
+    j = 0;
+    While[MemberQ[forbidden, cand],
+      j++; cand = "ho$" <> ToString[i] <> "$" <> ToString[j]];
+    cand
+  ];
+
+(* Miller HO match. Pattern was `comb[head, a1, …, an]` where head =     *)
+(* var[Pname, Pty] and ai = bvar[ki, ti] are distinct in-scope binders.  *)
+(* Bind P ↦ λfv1…λfvn. tgt' where tgt' replaces the bvars at levels {ki}*)
+(* with fresh fv-vars. The substitute is closed-bvar by construction;    *)
+(* INST + post-beta restores the intended rewrite at the original        *)
+(* application site. Fails if tgt references a context binder not in     *)
+(* {ki}.                                                                  *)
+tryHOMatch[var[Pname_String, Pty_], args_List, tgt_, {tsubst_, tysubst_}, depth_Integer] :=
+  Module[{argLevels, argTypes, substArgTypes, tgtType, expectedPty, tysubst2,
+          existingNames, freshNames, fvVars, mapping, tgtSubbed,
+          body, key, existing, allNames},
+    argLevels = #[[1]] & /@ args;
+    argTypes  = #[[2]] & /@ args;
+    (* Apply the in-progress type substitution to arg types: an outer abs *)
+    (* descent may have already bound the bvar's tyvars (e.g., α := int).  *)
+    substArgTypes = Map[typeSubst[tysubst, #] &, argTypes];
+    tgtType   = typeOf[tgt];
+    expectedPty = Fold[tyFun[#2, #1] &, tgtType, Reverse[substArgTypes]];
+    tysubst2 = tryTypeMatch[Pty, expectedPty, tysubst];
+    If[tysubst2 === $matchFail, Return[$matchFail]];
+    existingNames = First /@ freesIn[tgt];
+    allNames = existingNames;
+    freshNames = Table[
+      Module[{nm = pickHOFvName[allNames, i]},
+        AppendTo[allNames, nm]; nm], {i, 1, Length[args]}];
+    fvVars = Table[
+      var[freshNames[[i]], typeSubst[tysubst2, argTypes[[i]]]],
+      {i, 1, Length[args]}];
+    mapping = Association[
+      Table[argLevels[[i]] -> fvVars[[i]], {i, 1, Length[args]}]];
+    tgtSubbed = millerSubstWalk[tgt, mapping, depth, 0];
+    If[tgtSubbed === $millerFail, Return[$matchFail]];
+    body = Fold[mkAbs[#2, #1] &, tgtSubbed, Reverse[fvVars]];
+    key = var[Pname, Pty];
+    existing = Lookup[tsubst, key, Missing[]];
+    If[MissingQ[existing],
+      {Append[tsubst, key -> body], tysubst2},
+      If[aconv[existing, body], {tsubst, tysubst2}, $matchFail]
+    ]
+  ];
+
+tryTermMatch[bvar[k_Integer, ty_], bvar[k_Integer, ty2_], {tsubst_, tysubst_}, _] :=
+  Module[{tys2},
+    tys2 = tryTypeMatch[ty, ty2, tysubst];
+    If[tys2 === $matchFail, $matchFail, {tsubst, tys2}]
+  ];
+tryTermMatch[bvar[_, _], _, _, _] := $matchFail;
+
+tryTermMatch[var[n_String, ty_], tgt_, {tsubst_, tysubst_}, depth_Integer] :=
+  Module[{tysubst2, key, existing},
+    tysubst2 = tryTypeMatch[ty, typeOf[tgt], tysubst];
+    If[tysubst2 === $matchFail, Return[$matchFail]];
+    If[hasContextBvar[tgt, depth], Return[$matchFail]];
+    key = var[n, ty];
+    existing = Lookup[tsubst, key, Missing[]];
+    If[MissingQ[existing],
+      {Append[tsubst, key -> tgt], tysubst2},
+      If[aconv[existing, tgt], {tsubst, tysubst2}, $matchFail]
+    ]
+  ];
+
+tryTermMatch[const[n_String, ty_], const[n_String, ty2_], {ts_, tys_}, _] :=
   Module[{tys2},
     tys2 = tryTypeMatch[ty, ty2, tys];
     If[tys2 === $matchFail, $matchFail, {ts, tys2}]
   ];
-tryTermMatch[comb[f_, x_], comb[f2_, x2_], subst_] :=
-  Module[{r1},
-    r1 = tryTermMatch[f, f2, subst];
-    If[r1 === $matchFail, $matchFail, tryTermMatch[x, x2, r1]]
+
+tryTermMatch[combTerm : comb[_, _], tgt_, subst_, depth_Integer] :=
+  Module[{head, args},
+    {head, args} = collectAppSpine[combTerm];
+    If[MatchQ[head, var[_String, _]] && isMillerArgs[args, depth],
+      tryHOMatch[head, args, tgt, subst, depth],
+      tryStructComb[combTerm, tgt, subst, depth]
+    ]
   ];
-tryTermMatch[abs[bv_, body_, _], abs[bv2_, body2_, _], subst_] :=
+
+tryStructComb[comb[f_, x_], comb[f2_, x2_], subst_, depth_Integer] :=
   Module[{r1},
-    r1 = tryTermMatch[bv, bv2, subst];
-    If[r1 === $matchFail, $matchFail, tryTermMatch[body, body2, r1]]
+    r1 = tryTermMatch[f, f2, subst, depth];
+    If[r1 === $matchFail, $matchFail,
+      tryTermMatch[x, x2, r1, depth]]
   ];
-tryTermMatch[_, _, _] := $matchFail;
+tryStructComb[_, _, _, _] := $matchFail;
+
+tryTermMatch[abs[bv_, body_, _], abs[bv2_, body2_, _], subst_, depth_Integer] :=
+  Module[{r1},
+    r1 = tryTermMatch[bv, bv2, subst, depth];
+    If[r1 === $matchFail, $matchFail,
+      tryTermMatch[body, body2, r1, depth + 1]]
+  ];
+
+tryTermMatch[_, _, _, _] := $matchFail;
 
 HOL`Drule`REWRCONV[eqTh_][t_] :=
-  Module[{c, lhs, matchRes, tsubst, tysubst, thAfterTy, tsubstKeyed, thFinal, finalLhs},
+  Module[{c, lhs, matchRes, tsubst, tysubst, thAfterTy, tsubstKeyed, thFinal,
+          betaConv},
     c = concl[eqTh];
     If[! MatchQ[c, comb[comb[const["=", _], _], _]],
       convFail["REWRCONV: theorem is not an equation", <|"concl" -> c|>]];
     lhs = c[[1, 2]];
-    matchRes = tryTermMatch[lhs, t, {<||>, <||>}];
+    matchRes = tryTermMatch[lhs, t, {<||>, <||>}, 0];
     If[matchRes === $matchFail,
       convFail["REWRCONV: term does not match LHS",
         <|"lhs" -> lhs, "target" -> t|>]];
@@ -169,7 +305,11 @@ HOL`Drule`REWRCONV[eqTh_][t_] :=
     tsubstKeyed = Map[instType[tysubst, #[[1]]] -> #[[2]] &, Normal[tsubst]];
     thFinal = If[Length[tsubstKeyed] > 0,
       INST[tsubstKeyed, thAfterTy], thAfterTy];
-    thFinal
+    (* HO substitutes introduce (λfv. body) ai redexes wherever P was    *)
+    (* applied to its Miller args; reduce them so the resulting equation *)
+    (* has shape ⊢ t' = rhs', with t' α-equal to the input target.        *)
+    betaConv = HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]];
+    HOL`Drule`CONVRULE[betaConv, thFinal]
   ];
 
 HOL`Drule`CONVRULE[c_, th_] :=

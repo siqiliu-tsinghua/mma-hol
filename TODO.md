@@ -18,11 +18,10 @@ Audit pass against `fusion.ml` / `equal.ml` / `drule.ml` / `bool.ml` / `meson.ml
 
 ## Expressiveness (limits later modules)
 
-### C. `REWRCONV` is first-order match only
-- **Where**: `Drule.wl:154` + `tryTermMatch:122`.
-- **Symptom**: cannot rewrite under binders when the LHS encodes a higher-order pattern (e.g. `∀x. P x ⇒ Q x`). Standard HOL Light rewrite rules rely on Miller-pattern higher-order matching (`term_match` / `PART_MATCH`).
-- **Action**: add HO-pattern matching when M7 SIMP work begins; until then stay with first-order on hand-written schemas.
-- **Status**: pending; blocks SIMP / SET_TAC / REAL_ARITH.
+### C. `REWRCONV` is first-order match only ✓ DONE
+- **Where**: was `Drule.wl:154` + `tryTermMatch:122`.
+- **Resolution**: `tryTermMatch` now threads a `depth` parameter and dispatches at every `comb` node — when the spine is `comb[var[P, _], bvar1, …, bvarn]` with all args distinct in-scope binders, `tryHOMatch` binds `P ↦ λfv1…λfvn. tgt'` where `tgt'` replaces the matching-context bvars with fresh free vars (`millerSubstWalk` walks tgt depth-aware; fails on a context-bvar not in {ki}). First-order `var[_,_]` binding now rejects substitutes that contain matching-context bvars (`hasContextBvar`) so capturing rewrites can't slip through. `REWRCONV` post-INST runs `DEPTHCONV[TRYCONV[BETACONV]]` via `CONVRULE` to reduce the introduced redexes. Tests cover: single-arg Miller (`(∀x. P x) = Q` against `(∀y. f y)` and against `(∀y. y > 0)` with a non-trivial body); two-arg Miller; capturing-FO rejection; vacuous-binder still works when target has no matching-context bvars; inconsistent multi-occurrence `P` rejected; HO match under DEPTHCONV inside REWRITERULE.
+- **Side note** (deferred): no eta-handling — pattern `(λx. P x)` matched against `f` binds `P ↦ λfv. f fv` instead of `P ↦ f`, so a non-Miller occurrence of `P` elsewhere in the same eqTh would fail the aconv consistency check. Term-net indexing for fast rule lookup also still TBD (mentioned in TODO.E side note).
 
 ### D. `INST` / `INSTTYPE` rely on `bvar`/`var` head disjointness for capture-freeness
 - **Where**: `Kernel.wl:224, 231`.
