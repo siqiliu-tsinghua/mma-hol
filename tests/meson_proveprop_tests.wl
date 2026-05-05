@@ -369,3 +369,89 @@ HOLTest`runTests["mesonProve: term-level alias of mesonProveProp",
     HOLTest`assertEq[concl[th1], concl[th2], "same conclusion"];
     HOLTest`assertEq[hyp[th1], hyp[th2], "same hyps"];
   ]];
+
+(* === M7-α-5-a: subsumption pruning === *)
+(* Two premises stating the same universal under different bound-variable *)
+(* names produce α-equivalent clauses that subsume each other; one is    *)
+(* dropped before the search and the proof still goes through.           *)
+
+HOLTest`runTests["MESON: α-equivalent universal premises get subsumption-pruned",
+  Module[{tm, th},
+    tm = HOL`Parser`parseTerm[
+      "(! x. mppP x ==> mppQ x) ==> (! y. mppP y ==> mppQ y) ==> mppP mppA ==> mppQ mppA"];
+    th = HOL`Tactics`prove[tm, MESON[{}]];
+    HOLTest`assertEq[aconv[concl[th], tm], True, "concl ≡ goal"];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+  ]];
+
+HOLTest`runTests["MESON: literal-duplicate unit clauses get subsumption-pruned",
+  Module[{P, a, Pa, premise1, premise2, th},
+    P  = mkConst["mppP", tyFun[indTy, boolTy]];
+    a  = mkConst["mppA", indTy];
+    Pa = mkComb[P, a];
+    (* Two ASSUMEd copies of the same unit clause.  Subsumption keeps    *)
+    (* exactly one in the active clause set.                              *)
+    premise1 = ASSUME[Pa];
+    premise2 = ASSUME[Pa];
+    th = HOL`Tactics`prove[Pa,
+      MESON[{premise1, premise2,
+             ASSUME[HOL`Parser`parseTerm["! x. mppP x ==> mppP x"]]}]];
+    HOLTest`assertEq[concl[th], Pa, "concl ≡ P a"];
+    HOLTest`assertEq[Length[hyp[th]], 1, "exactly one premise hyp survives"];
+  ]];
+
+(* === M7-α-5-b: equality lemmas + MESON === *)
+
+HOLTest`runTests["eqReflThm: ⊢ ∀x:ind. x = x",
+  Module[{th, x},
+    th = HOL`Auto`Meson`eqReflThm[indTy];
+    x  = mkVar["x", indTy];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[concl[th],
+        comb[const["∀", _], abs[bvar[0, _], _, _String]]],
+      "concl is ∀-formula"];
+  ]];
+
+HOLTest`runTests["eqSymThm: ⊢ ∀a b:ind. a = b ⇒ b = a",
+  Module[{th},
+    th = HOL`Auto`Meson`eqSymThm[indTy];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+  ]];
+
+HOLTest`runTests["eqTransThm: ⊢ ∀a b c:ind. a = b ∧ b = c ⇒ a = c",
+  Module[{th},
+    th = HOL`Auto`Meson`eqTransThm[indTy];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+  ]];
+
+If[!MemberQ[HOL`Kernel`listConstants[], "mppC"],
+  HOL`Kernel`newConstant["mppC", indTy]];
+
+HOLTest`runTests["MESON + eqTransThm: a = b ∧ b = c ⇒ a = c",
+  Module[{a, b, c, premise1, premise2, goal, th},
+    a = mkConst["mppA", indTy];
+    b = mkConst["mppB", indTy];
+    c = mkConst["mppC", indTy];
+    premise1 = ASSUME[mkEq[a, b]];
+    premise2 = ASSUME[mkEq[b, c]];
+    goal     = mkEq[a, c];
+    th = HOL`Tactics`prove[goal,
+      MESON[{premise1, premise2, HOL`Auto`Meson`eqTransThm[indTy]}]];
+    HOLTest`assertEq[concl[th], goal, "concl ≡ a = c"];
+    HOLTest`assertEq[Sort[hyp[th]],
+      Sort[{mkEq[a, b], mkEq[b, c]}],
+      "hyps = {a = b, b = c}"];
+  ]];
+
+HOLTest`runTests["MESON + eqSymThm: a = b ⇒ b = a",
+  Module[{a, b, premise, goal, th},
+    a = mkConst["mppA", indTy];
+    b = mkConst["mppB", indTy];
+    premise = ASSUME[mkEq[a, b]];
+    goal    = mkEq[b, a];
+    th = HOL`Tactics`prove[goal,
+      MESON[{premise, HOL`Auto`Meson`eqSymThm[indTy]}]];
+    HOLTest`assertEq[concl[th], goal, "concl ≡ b = a"];
+    HOLTest`assertEq[hyp[th], {mkEq[a, b]}, "hyps = {a = b}"];
+  ]];

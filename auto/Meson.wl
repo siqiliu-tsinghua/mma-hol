@@ -91,6 +91,16 @@ mesonRefute::usage =
 mesonRefuteFailed::usage =
   "mesonRefuteFailed — sentinel returned by mesonRefute when no refutation is found.";
 
+eqReflThm::usage =
+  "eqReflThm[ty] — ⊢ ∀x:ty. x = x.  Standard reflexivity, parameterized " <>
+  "by the carrier type. Pass to MESON when an equality goal needs it.";
+
+eqSymThm::usage =
+  "eqSymThm[ty] — ⊢ ∀a b:ty. a = b ⇒ b = a.";
+
+eqTransThm::usage =
+  "eqTransThm[ty] — ⊢ ∀a b c:ty. a = b ∧ b = c ⇒ a = c.";
+
 mProof::usage =
   "mProof[kind, …] — internal proof-trace node. Four kinds: " <>
   "mProof[\"start\", clause, tag, subTrees] — search picked clause as root with rename-tag tag; subTrees is the list of sub-proofs closing each lit of clause (one per lit, sharing the empty initial ancestor list). " <>
@@ -422,6 +432,74 @@ occursIn[name_String, t_, σ_] :=
   MemberQ[
     Cases[applySubstTerm[σ, t], var[m_String, _] :> m, {0, Infinity}],
     name];
+
+(* ============================================================ *)
+(* One-way matching (M7-α-5-a).  Like unification but only        *)
+(* pattern's non-bool free variables may be bound; target's vars  *)
+(* are rigid.  Bool-typed pattern vars are also rigid (they       *)
+(* represent atomic propositions in propositional MESON).         *)
+
+mesonMatchFailedTag = "$mesonMatchFailed$";
+
+matchImpl[var[n_String, ty_], tgt_, σ_] :=
+  Module[{walked = walkVar[n, ty, σ]},
+    If[MatchQ[walked, var[_String, _]] && walked[[1]] === n,
+      (* unbound *)
+      If[ty === tyApp["bool", {}],
+        If[walked === tgt, σ, mesonMatchFailedTag],
+        If[typeOfFOTerm[tgt] === ty,
+          Append[σ, n -> tgt],
+          mesonMatchFailedTag]],
+      (* bound: previously assigned to walked *)
+      If[walked === tgt, σ, mesonMatchFailedTag]
+    ]
+  ];
+matchImpl[const[n_String, ty_], const[n2_String, ty2_], σ_] :=
+  If[n === n2 && ty === ty2, σ, mesonMatchFailedTag];
+matchImpl[bvar[k_Integer, ty_], bvar[k2_Integer, ty2_], σ_] :=
+  If[k === k2 && ty === ty2, σ, mesonMatchFailedTag];
+matchImpl[comb[f1_, x1_], comb[f2_, x2_], σ_] :=
+  Module[{σ1},
+    σ1 = matchImpl[f1, f2, σ];
+    If[σ1 === mesonMatchFailedTag, mesonMatchFailedTag,
+      matchImpl[x1, x2, σ1]]
+  ];
+matchImpl[_, _, _] := mesonMatchFailedTag;
+
+(* Subsumption: clause c1 subsumes c2 iff c1's literals can each be     *)
+(* matched against some literal in c2 with consistent same-sign σ.       *)
+
+tryMatchLits[{}, _, _] := True;
+tryMatchLits[lits1_List, lits2_List, σ_] :=
+  Module[{l1 = First[lits1], rest1 = Rest[lits1]},
+    AnyTrue[lits2, Function[l2,
+      l1[[1]] === l2[[1]] &&
+      Module[{σ1 = matchImpl[l1[[2]], l2[[2]], σ]},
+        σ1 =!= mesonMatchFailedTag &&
+        tryMatchLits[rest1, lits2, σ1]
+      ]
+    ]]
+  ];
+
+clauseSubsumes[mClause[lits1_List], mClause[lits2_List]] :=
+  Length[lits1] <= Length[lits2] &&
+  tryMatchLits[lits1, lits2, <||>];
+
+(* Forward subsumption pruning: scan in length-ascending order; keep    *)
+(* each clause unless some already-kept clause subsumes it.            *)
+pruneSubsumed[clauseInfos_List] :=
+  Module[{sorted, kept, candidate, dropped, i},
+    sorted = SortBy[clauseInfos, Length[#["lits"]] &];
+    kept = {};
+    Do[
+      candidate = sorted[[i]];
+      dropped = AnyTrue[kept,
+        clauseSubsumes[#["mClause"], candidate["mClause"]] &];
+      If[!dropped, AppendTo[kept, candidate]],
+      {i, 1, Length[sorted]}
+    ];
+    kept
+  ];
 
 (* ============================================================ *)
 (* Renaming apart: append a unique tag to all var names.        *)
@@ -872,6 +950,44 @@ processStartProp[mProof["start", c_, startTag_String, subTrees_List],
     ]
   ];
 
+(* === Standard equality theorems (M7-α-5-b). ================== *)
+(* Built on demand; users pass these to MESON when an equality   *)
+(* goal needs reflexivity / symmetry / transitivity reasoning.   *)
+(* Brand modulation (α-5-c) would obviate explicit injection.    *)
+
+HOL`Auto`Meson`eqReflThm[ty_] :=
+  Module[{x = mkVar["x", ty]},
+    HOL`Bool`GEN[x, REFL[x]]
+  ];
+
+HOL`Auto`Meson`eqSymThm[ty_] :=
+  Module[{a, b, aEqB, sym, disch, genB, genA},
+    a = mkVar["a", ty];
+    b = mkVar["b", ty];
+    aEqB  = ASSUME[mkEq[a, b]];
+    sym   = HOL`Equal`SYM[aEqB];
+    disch = HOL`Bool`DISCH[mkEq[a, b], sym];
+    genB  = HOL`Bool`GEN[b, disch];
+    HOL`Bool`GEN[a, genB]
+  ];
+
+HOL`Auto`Meson`eqTransThm[ty_] :=
+  Module[{a, b, c, andHyp, andAssume, aEqB, bEqC, aEqC,
+          disch, genC, genB, genA},
+    a = mkVar["a", ty];
+    b = mkVar["b", ty];
+    c = mkVar["c", ty];
+    andHyp    = mkAndStruct[mkEq[a, b], mkEq[b, c]];
+    andAssume = ASSUME[andHyp];
+    aEqB      = HOL`Bool`CONJUNCT1[andAssume];
+    bEqC      = HOL`Bool`CONJUNCT2[andAssume];
+    aEqC      = TRANS[aEqB, bEqC];
+    disch     = HOL`Bool`DISCH[andHyp, aEqC];
+    genC      = HOL`Bool`GEN[c, disch];
+    genB      = HOL`Bool`GEN[b, genC];
+    HOL`Bool`GEN[a, genB]
+  ];
+
 (* === FOL clausifier on theorems (M7-α-4-d-β). ================ *)
 (* nnfThm already descends into ∀/∃ bodies via DEPTHCONV+SUBCONV, so   *)
 (* propositional connectives inside binders get normalized.  What this *)
@@ -1023,9 +1139,9 @@ HOL`Auto`Meson`mesonProveProp[goalTm_, premiseThms_List] :=
     negGoalInfos = Map[buildClauseRecord,
                        HOL`Auto`Meson`clausifyFOLThm[assumeNeg]];
     allClauseInfos = Join[premiseInfos, negGoalInfos];
-    (* Unit clauses first as a search heuristic — k=1 starts skip the     *)
-    (* DISJCASES fold and are cheaper to replay.                          *)
-    sortedInfos = SortBy[allClauseInfos, Length[#["lits"]] &];
+    (* α-5-a: forward σ-subsumption + sort by length (unit-first         *)
+    (* heuristic preserved — pruneSubsumed sorts internally).            *)
+    sortedInfos = pruneSubsumed[allClauseInfos];
     mClauses = Map[#["mClause"] &, sortedInfos];
     HOL`Auto`Meson`mesonResetState[];
     traceResult = HOL`Auto`Meson`mesonRefute[mClauses, mesonMaxDepth];
