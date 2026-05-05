@@ -33,12 +33,10 @@ Audit pass against `fusion.ml` / `equal.ml` / `drule.ml` / `bool.ml` / `meson.ml
 
 ## Robustness
 
-### E. `REWRITERULE` has no loop / non-productivity detection
-- **Where**: `Drule.wl:211` via `fixpointConvRule:370`.
-- **Symptom**: cyclic rule sets (e.g. `p = q` and `q = p`) loop; productivity check is concl-stability only — exponential blowup before that fires.
-- **HOL Light reference**: `REWRITE_CONV` analyses each rule and indexes via term nets; rules whose RHS aconv LHS are dropped, term nets prune candidates.
-- **Action**: add (i) per-rule `aconv` non-productivity drop; (ii) eventually a term-net index. Required before SIMP scaling.
-- **Status**: pending; required before SIMP.
+### E. `REWRITERULE` has no loop / non-productivity detection ✓ DONE
+- **Where**: was `Drule.wl:211` + `PropTaut.wl:fixpointConvRule`.
+- **Resolution**: moved `fixpointConvRule` to `Drule.wl` as public, added cycle detection (record concls in a seen-set; break if a concl recurs without being equal to the previous one). Added `productiveEqThm[eqTh]` (returns False when LHS aconv RHS). `REWRITERULE` now accepts a single eq or a list, filters non-productive rules, combines via `ORELSEC`, and iterates to fixpoint via `fixpointConvRule`. Tests cover non-productive filtering and cycle termination on `p ↔ q` rule pairs.
+- **Side note** (deferred): term-net indexing for fast rule lookup is still TBD — needed for SIMP scaling but not soundness.
 
 ### F. `CHOOSE` freshness errors leak to kernel layer
 - **Where**: `Bool.wl:303`.

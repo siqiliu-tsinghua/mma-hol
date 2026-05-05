@@ -412,23 +412,13 @@ ensureSchemata[] :=
 combineConvs[{c_}] := c;
 combineConvs[{c_, rest__}] := HOL`Drule`ORELSEC[c, combineConvs[{rest}]];
 
-fixpointConvRule[conv_, th_] :=
-  Module[{cur, prev},
-    cur = th; prev = Null;
-    While[prev === Null || concl[cur] =!= concl[prev],
-      prev = cur;
-      cur = HOL`Drule`CONVRULE[conv, cur]
-    ];
-    cur
-  ];
-
 (* ============================================================ *)
 (* nnfThm — ⊢ P → ⊢ NNF(P).                                      *)
 
 HOL`Auto`PropTaut`nnfThm[th_] :=
   (
     ensureSchemata[];
-    fixpointConvRule[
+    HOL`Drule`fixpointConvRule[
       HOL`Drule`DEPTHCONV[
         combineConvs[Map[HOL`Drule`REWRCONV, $nnfSchemata]]],
       th]
@@ -440,7 +430,7 @@ HOL`Auto`PropTaut`nnfThm[th_] :=
 HOL`Auto`PropTaut`cnfThm[th_] :=
   (
     ensureSchemata[];
-    fixpointConvRule[
+    HOL`Drule`fixpointConvRule[
       HOL`Drule`DEPTHCONV[
         combineConvs[Map[HOL`Drule`REWRCONV, $cnfSchemata]]],
       th]

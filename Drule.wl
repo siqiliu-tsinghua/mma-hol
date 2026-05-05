@@ -14,7 +14,9 @@ DEPTHCONV::usage = "DEPTHCONV[c][t] — bottom-up depth-first traversal, REPEATC
 REWRCONV::usage  = "REWRCONV[eqTh][t] — given eqTh : Γ ⊢ lhs = rhs, first-order match t against lhs and return Γ' ⊢ t = rhs'.";
 CONVRULE::usage  = "CONVRULE[c, th] — from Γ ⊢ p, apply c to p to get ⊢ p = p', then EQMP to Γ ⊢ p'.";
 ONCEREWRITERULE::usage = "ONCEREWRITERULE[eqTh, th] — rewrite the first applicable subterm in concl[th] using eqTh.";
-REWRITERULE::usage     = "REWRITERULE[eqTh, th] — rewrite concl[th] bottom-up to fixpoint using eqTh.";
+REWRITERULE::usage     = "REWRITERULE[eqTh, th] / REWRITERULE[{eqTh, …}, th] — rewrite concl[th] bottom-up using each productive rule (LHS not aconv RHS), iterating to fixpoint with cycle detection.";
+fixpointConvRule::usage = "fixpointConvRule[conv, th] — apply CONVRULE[conv, ⋅] iteratively to th until concl is stable, or until a previously-seen concl recurs (cycle); returns the last computed theorem either way.";
+productiveEqThm::usage  = "productiveEqThm[eqTh] — True iff eqTh is an equation whose LHS is NOT α-equivalent to its RHS. Non-productive rules (LHS aconv RHS) are silently dropped by REWRITERULE to avoid pointless / cycle-prone rewrites.";
 SUBS::usage      = "SUBS[{eq1, …, eqn}, th] — substitute lhs→rhs in concl[th] for each eqi, top-down, all matching positions, no descent into rewritten subterms.";
 
 Begin["`Private`"];
@@ -208,8 +210,45 @@ onceDepthConv[c_][t_] :=
     ]
   ];
 
-HOL`Drule`REWRITERULE[eqTh_, th_] :=
-  HOL`Drule`CONVRULE[HOL`Drule`DEPTHCONV[HOL`Drule`REWRCONV[eqTh]], th];
+HOL`Drule`productiveEqThm[eqTh_] :=
+  Module[{c, lhs, rhs},
+    c = concl[eqTh];
+    If[! MatchQ[c, comb[comb[const["=", _], _], _]], Return[False]];
+    lhs = c[[1, 2]]; rhs = c[[2]];
+    ! aconv[lhs, rhs]
+  ];
+
+HOL`Drule`fixpointConvRule[conv_, th_] :=
+  Module[{cur, prev, seen},
+    cur  = th;
+    seen = <|concl[cur] -> True|>;
+    While[True,
+      prev = cur;
+      cur  = HOL`Drule`CONVRULE[conv, cur];
+      If[concl[cur] === concl[prev], Break[]];
+      If[KeyExistsQ[seen, concl[cur]], Break[]];
+      seen[concl[cur]] = True
+    ];
+    cur
+  ];
+
+combineRewrConvs[{conv_}] := conv;
+combineRewrConvs[{conv_, rest__}] :=
+  HOL`Drule`ORELSEC[conv, combineRewrConvs[{rest}]];
+
+(* Single-equation form delegates to the list form for productivity     *)
+(* filtering and cycle-aware iteration.                                 *)
+HOL`Drule`REWRITERULE[eqTh_, th_] /; !ListQ[eqTh] :=
+  HOL`Drule`REWRITERULE[{eqTh}, th];
+
+HOL`Drule`REWRITERULE[eqThs_List, th_] :=
+  Module[{productive, conv},
+    productive = Select[eqThs, HOL`Drule`productiveEqThm];
+    If[productive === {}, Return[th]];
+    conv = HOL`Drule`DEPTHCONV[
+      combineRewrConvs[Map[HOL`Drule`REWRCONV, productive]]];
+    HOL`Drule`fixpointConvRule[conv, th]
+  ];
 
 topDownAllConv[c_][t_] :=
   Module[{topRes, leftRes, rightRes, bty, forbidden, name, v, openTh,

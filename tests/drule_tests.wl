@@ -171,6 +171,77 @@ HOLTest`runTests["drule: REWRITERULE rewrites all",
       "REWRITERULE rewrites both ¬p occurrences"];
 ]];
 
+HOLTest`runTests["drule: productiveEqThm — true for distinct LHS/RHS",
+  Module[{p, q, eqTh},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    eqTh = ASSUME[mkEq[p, q]];
+    HOLTest`assertEq[productiveEqThm[eqTh], True,
+      "p = q is productive (lhs ≠ rhs)"];
+  ]];
+
+HOLTest`runTests["drule: productiveEqThm — false for reflexive equation",
+  Module[{p, eqTh},
+    p = mkVar["p", boolTy];
+    eqTh = REFL[p];
+    HOLTest`assertEq[productiveEqThm[eqTh], False,
+      "p = p is non-productive (lhs aconv rhs)"];
+  ]];
+
+HOLTest`runTests["drule: REWRITERULE silently drops non-productive rules",
+  Module[{p, q, eqTh, th, rewritten},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    eqTh = REFL[p];                  (* ⊢ p = p *)
+    th   = ASSUME[mkComb[mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q]];
+    rewritten = REWRITERULE[eqTh, th];
+    HOLTest`assertEq[concl[rewritten], concl[th],
+      "non-productive rule leaves concl unchanged"];
+  ]];
+
+HOLTest`runTests["drule: REWRITERULE list form filters productive rules",
+  Module[{p, q, notP, andC, refl, swap, target, th, rewritten, expected},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    notP = mkComb[mkConst["¬", tyFun[boolTy, boolTy]], p];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    refl   = REFL[notP];                (* non-productive: ¬p = ¬p *)
+    swap   = ASSUME[mkEq[notP, q]];     (* productive: ¬p → q *)
+    target = mkComb[mkComb[andC, notP], notP];
+    th     = ASSUME[target];
+    rewritten = REWRITERULE[{refl, swap}, th];
+    expected  = mkComb[mkComb[andC, q], q];
+    HOLTest`assertEq[concl[rewritten], expected,
+      "list form: refl dropped, swap applied to both ¬p's"];
+  ]];
+
+HOLTest`runTests["drule: REWRITERULE cycle detection terminates p↔q",
+  Module[{p, q, fwd, bwd, th, rewritten},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    fwd = ASSUME[mkEq[p, q]];        (* p → q *)
+    bwd = ASSUME[mkEq[q, p]];        (* q → p *)
+    th  = ASSUME[p];
+    rewritten = REWRITERULE[{fwd, bwd}, th];
+    (* Cycle detection breaks before infinite loop; result's concl is   *)
+    (* either p or q (whichever the loop settles on first revisit). The *)
+    (* essential property is that this terminates and returns a valid   *)
+    (* theorem.                                                         *)
+    HOLTest`assertTrue[
+      concl[rewritten] === p || concl[rewritten] === q,
+      "cycle terminates with concl ∈ {p, q}"];
+  ]];
+
+HOLTest`runTests["drule: fixpointConvRule terminates on cycling conv",
+  Module[{p, q, fwd, bwd, conv, th, rewritten},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    fwd = ASSUME[mkEq[p, q]];
+    bwd = ASSUME[mkEq[q, p]];
+    conv = HOL`Drule`DEPTHCONV[
+      HOL`Drule`ORELSEC[REWRCONV[fwd], REWRCONV[bwd]]];
+    th = ASSUME[p];
+    rewritten = HOL`Drule`fixpointConvRule[conv, th];
+    HOLTest`assertTrue[
+      concl[rewritten] === p || concl[rewritten] === q,
+      "fixpointConvRule terminates under cycle"];
+  ]];
+
 HOLTest`runTests["drule: SUBS empty list is identity",
   Module[{p, th, res},
     p = mkVar["p", boolTy];
