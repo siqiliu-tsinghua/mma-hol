@@ -20,19 +20,19 @@ HOLTest`runTests["meson: skeleton — public symbols exist",
     HOLTest`assertEq[mesonMaxDepth, 50, "default depth cap is 50"];
   ]];
 
-HOLTest`runTests["meson: skeleton — MESON[{}] signs to tactic failure",
+HOLTest`runTests["meson: MESON[{}] on a non-tautology fails with meson-tag",
   Module[{p, g},
     p = mkVar["p", boolTy];
     g = goal[{}, p];
-    HOLTest`assertThrows[MESON[{}][g], "tactic",
-      "MESON skeleton fails as a tactic (signs to noTac)"];
+    HOLTest`assertThrows[MESON[{}][g], "meson",
+      "MESON on bare bool var rejects (no refutation)"];
   ]];
 
-HOLTest`runTests["meson: skeleton — mesonProve throws meson-tag",
+HOLTest`runTests["meson: mesonProve on a non-tautology fails with meson-tag",
   Module[{p},
     p = mkVar["p", boolTy];
     HOLTest`assertThrows[mesonProve[p, {}], "meson",
-      "mesonProve skeleton throws meson tag"];
+      "mesonProve rejects bare bool var"];
   ]];
 
 (* === M7-α-2 preprocessing tests === *)

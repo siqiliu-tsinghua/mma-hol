@@ -328,3 +328,44 @@ HOLTest`runTests["clausifyFOLThm: ∃ under ∀ becomes Skolem-applied function"
       Cases[c, var[_String, _], {0, Infinity}] // DeleteDuplicates // Length,
       1, "exactly one free var (the universal-scope variable)"];
   ]];
+
+(* === M7-α-4-d-γ: MESON tactic + mesonProve === *)
+
+HOLTest`runTests["MESON tactic: prove[(∀x. P x ⇒ Q x) ⇒ P a ⇒ Q a, MESON[{}]]",
+  Module[{tm, th},
+    tm = HOL`Parser`parseTerm["(! x. mppP x ==> mppQ x) ==> mppP mppA ==> mppQ mppA"];
+    th = HOL`Tactics`prove[tm, MESON[{}]];
+    HOLTest`assertEq[aconv[concl[th], tm], True, "concl ≡ goal"];
+    HOLTest`assertEq[hyp[th], {}, "no hyps (closed via prove)"];
+  ]];
+
+HOLTest`runTests["MESON tactic: dischTac sequence then MESON closes",
+  Module[{tm, th, dt, mt},
+    tm = HOL`Parser`parseTerm["(! x. mppP x ==> mppQ x) ==> mppP mppA ==> mppQ mppA"];
+    dt = HOL`Tactics`dischTac;
+    mt = MESON[{}];
+    th = HOL`Tactics`prove[tm, HOL`Tactics`THEN[dt, HOL`Tactics`THEN[dt, mt]]];
+    HOLTest`assertEq[aconv[concl[th], tm], True, "concl ≡ goal"];
+    HOLTest`assertEq[hyp[th], {}, "no hyps after prove"];
+  ]];
+
+HOLTest`runTests["MESON tactic: passes user thms as premises",
+  Module[{Q, a, Qa, premise, th},
+    Q  = mkConst["mppQ", tyFun[indTy, boolTy]];
+    a  = mkConst["mppA", indTy];
+    Qa = mkComb[Q, a];
+    premise = ASSUME[HOL`Parser`parseTerm["! x. mppQ x"]];
+    th = HOL`Tactics`prove[Qa, MESON[{premise}]];
+    HOLTest`assertEq[concl[th], Qa, "concl ≡ Q a"];
+    HOLTest`assertEq[Length[hyp[th]], 1, "premise hyp survives"];
+  ]];
+
+HOLTest`runTests["mesonProve: term-level alias of mesonProveProp",
+  Module[{p, q, tm, th1, th2},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    tm = mppParse["p ⇒ p"];
+    th1 = HOL`Auto`Meson`mesonProve[tm, {}];
+    th2 = HOL`Auto`Meson`mesonProveProp[tm, {}];
+    HOLTest`assertEq[concl[th1], concl[th2], "same conclusion"];
+    HOLTest`assertEq[hyp[th1], hyp[th2], "same hyps"];
+  ]];

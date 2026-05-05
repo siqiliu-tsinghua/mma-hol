@@ -14,14 +14,15 @@ BeginPackage["HOL`Auto`Meson`", {
 }];
 
 MESON::usage =
-  "MESON[thms_List][g_goal] — Model Elimination tactic. Negates the goal, " <>
-  "preprocesses (NNF / Skolemize / CNF), runs iterative-deepening connection " <>
-  "tableaux against the negated goal + thms as oriented clauses, then replays " <>
-  "the refutation as a HOL proof. Skeleton in M7-α-1 signs to noTac.";
+  "MESON[thms_List][g_goal] — Model Elimination tactic (α-4-d-γ).  Joins " <>
+  "the goal's assumption theorems with the user-supplied thms, calls " <>
+  "mesonProveProp on goal's conclusion, and closes the goal via acceptTac. " <>
+  "The full pipeline (clausifyFOLThm + iterative-deepening connection " <>
+  "tableaux + σ-aware contrapositive replay) runs inside mesonProveProp.";
 
 mesonProve::usage =
-  "mesonProve[tm_, thms_List] — proof builder counterpart of MESON. " <>
-  "Skeleton in M7-α-1 throws 'meson' tag.";
+  "mesonProve[tm_, thms_List] — term-level alias of mesonProveProp.  " <>
+  "Returns ⊢ tm under hyps drawn from thms.";
 
 mesonProveProp::usage =
   "mesonProveProp[goal, premiseThms] — propositional MESON proof builder " <>
@@ -1040,15 +1041,21 @@ HOL`Auto`Meson`mesonProveProp[goalTm_, premiseThms_List] :=
   ];
 
 (* ============================================================ *)
-(* M7-α-1 stubs preserved.  Tactic-level integration in α-5+.    *)
-
-HOL`Auto`Meson`MESON[thms_List][g_goal] :=
-  HOL`Tactics`noTac[g];
+(* M7-α-4-d-γ: tactic + term-level entry points.                 *)
+(* mesonProve is a thin alias on mesonProveProp; MESON wraps it  *)
+(* into a tactic that joins the goal's assumption thms with the  *)
+(* user-supplied thms before invoking the prover, then closes    *)
+(* the goal via acceptTac.                                       *)
 
 HOL`Auto`Meson`mesonProve[tm_, thms_List] :=
-  HOL`Error`holError["meson",
-    "mesonProve: tactic-level integration not implemented yet (use mesonProveProp)",
-    <|"goal" -> tm|>];
+  HOL`Auto`Meson`mesonProveProp[tm, thms];
+
+HOL`Auto`Meson`MESON[thms_List][g : goal[asms_, c_]] :=
+  Module[{premises, fThm},
+    premises = Join[asms, thms];
+    fThm = HOL`Auto`Meson`mesonProveProp[c, premises];
+    HOL`Tactics`acceptTac[fThm][g]
+  ];
 
 End[];
 EndPackage[];
