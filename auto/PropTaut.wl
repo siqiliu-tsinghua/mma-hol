@@ -254,6 +254,34 @@ propFreeBoolVars[t_] :=
   DeleteDuplicates[
     Cases[t, var[_String, ty_] /; ty === ptBoolTy, {0, Infinity}]];
 
+(* For FOL inputs, propositional atoms may be compound bool-typed terms  *)
+(* (e.g. P(x), Q(f y)) rather than bool vars.  collectCompoundBoolAtoms  *)
+(* finds those at any depth.  An "atomic" bool term is one whose head is *)
+(* not a propositional connective and which is not itself a bool var.    *)
+propBoolAtomQ[t_] :=
+  typeOf[t] === ptBoolTy &&
+  ! MatchQ[t, var[_String, _]] &&
+  ! (isPtT[t] || isPtF[t] || isPtNot[t] || isPtAnd[t] ||
+     isPtOr[t] || isPtImp[t] || isPtIff[t]);
+
+collectCompoundBoolAtoms[t_] :=
+  DeleteDuplicates[Cases[t, _?propBoolAtomQ, {0, Infinity}]];
+
+allVarNames[t_] :=
+  DeleteDuplicates[Cases[t, var[n_String, _] :> n, {0, Infinity}]];
+
+freshBoolVarNames[atoms_List, forbidden_List] :=
+  Module[{used = forbidden, names = {}, i, base, cand},
+    Do[
+      base = "_pa"; cand = base <> ToString[i]; i = 1;
+      While[MemberQ[used, cand], i++; cand = base <> ToString[i]];
+      AppendTo[used, cand];
+      AppendTo[names, cand],
+      {Length[atoms]}
+    ];
+    names
+  ];
+
 (* ============================================================ *)
 (* Combine ⊢ t[T/p] and ⊢ t[F/p] into ⊢ t via excluded middle.  *)
 
@@ -280,28 +308,45 @@ caseSplit[pVar_, t_, thmT_, thmF_] :=
 
 HOL`Auto`PropTaut`propTaut[t_] := propTautImpl[t];
 
+(* propTautImpl: detect compound bool atoms (FOL atoms like P(x)), abstract *)
+(* them with fresh bool vars, run the bool-vars-only driver, INST back.     *)
 propTautImpl[t_] :=
-  (
+  Module[{atoms, freshNames, freshVars, abstractRules, instBack,
+          abstractedT, abstractedThm},
     If[typeOf[t] =!= ptBoolTy,
       HOL`Error`holError["propTaut", "propTaut: term must be of type bool",
         <|"t" -> t, "type" -> typeOf[t]|>]];
-    Module[{vars},
-      vars = propFreeBoolVars[t];
-      If[vars === {},
-        Module[{ev},
-          ev = propEvalClosed[t];
-          If[ev[[1]] === "T", ev[[2]],
-            HOL`Error`holError["propTaut", "propTaut: not a tautology",
-              <|"t" -> t|>]]],
-        Module[{p, tT, tF, thmT, thmF},
-          p    = First[vars];
-          tT   = t /. p -> ptT[];
-          tF   = t /. p -> ptF[];
-          thmT = propTautImpl[tT];
-          thmF = propTautImpl[tF];
-          caseSplit[p, t, thmT, thmF]]]
-    ]
-  );
+    atoms = collectCompoundBoolAtoms[t];
+    If[atoms === {},
+      Return[propTautBoolVars[t]]];
+    freshNames    = freshBoolVarNames[atoms, allVarNames[t]];
+    freshVars     = Map[mkVar[#, ptBoolTy] &, freshNames];
+    abstractRules = MapThread[Rule, {atoms, freshVars}];
+    instBack      = MapThread[Rule, {freshVars, atoms}];
+    abstractedT   = t /. abstractRules;
+    abstractedThm = propTautBoolVars[abstractedT];
+    INST[instBack, abstractedThm]
+  ];
+
+(* propTautBoolVars: original logic — assumes every bool atom in t is a *)
+(* bool variable.  Recursive case-split + closed-formula evaluation.    *)
+propTautBoolVars[t_] :=
+  Module[{vars},
+    vars = propFreeBoolVars[t];
+    If[vars === {},
+      Module[{ev},
+        ev = propEvalClosed[t];
+        If[ev[[1]] === "T", ev[[2]],
+          HOL`Error`holError["propTaut", "propTaut: not a tautology",
+            <|"t" -> t|>]]],
+      Module[{p, tT, tF, thmT, thmF},
+        p    = First[vars];
+        tT   = t /. p -> ptT[];
+        tF   = t /. p -> ptF[];
+        thmT = propTautBoolVars[tT];
+        thmF = propTautBoolVars[tF];
+        caseSplit[p, t, thmT, thmF]]]
+  ];
 
 (* ============================================================ *)
 (* Schema lemmas for clausify rewriting.  Built lazily on first  *)

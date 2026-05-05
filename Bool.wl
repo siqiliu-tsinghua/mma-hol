@@ -74,7 +74,7 @@ HOL`Bool`SPEC[t_, th_] :=
       HOL`Error`holError["rule", "SPEC: expected ⊢ ∀(λx. p)",
         <|"concl" -> c|>]];
     lamTm = c[[2]];
-    {bv, _, _} = destAbs[lamTm];
+    bv = First[destAbs[lamTm]];
     xTy = typeOf[bv];
     If[typeOf[t] =!= xTy,
       HOL`Error`holError["rule", "SPEC: term type does not match binder",

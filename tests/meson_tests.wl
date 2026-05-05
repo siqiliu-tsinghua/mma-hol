@@ -366,28 +366,27 @@ HOLTest`runTests["meson: refute — depth bound respected",
 
 (* === M7-α-4-a proof-tree shape tests === *)
 
-HOLTest`runTests["meson: trace — root is mProof start",
+HOLTest`runTests["meson: trace — root is mProof start with tag slot",
   Module[{p, clauses, tree},
     p = mkVar["p", boolTy];
     clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
     tree = mesonRefute[clauses, 5];
     HOLTest`assertTrue[
-      MatchQ[tree, mProof["start", _, _]],
-      "refutation tree's root is mProof[\"start\", clause, sub]"];
+      MatchQ[tree, mProof["start", _mClause, _String, _List]],
+      "refutation tree's root is mProof[\"start\", clause, tag, subTrees]"];
   ]];
 
-HOLTest`runTests["meson: trace — unit refutation has extension + closed",
-  Module[{p, clauses, tree, ext, closed},
+HOLTest`runTests["meson: trace — unit refutation has extension with empty subTrees",
+  Module[{p, clauses, tree},
     p = mkVar["p", boolTy];
     clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
     tree = mesonRefute[clauses, 5];
-    (* tree = mProof["start", c, mProof["extension", lit, c', litC, σ, mProof["closed", {}]]] *)
+    (* tree = mProof["start", c, tag, {mProof["extension", lit, c', cTag, litC, σ, {}]}] *)
     HOLTest`assertTrue[
       MatchQ[tree,
-        mProof["start", _,
-          mProof["extension", _mLit, _mClause, _mLit, _Association,
-            mProof["closed", {}]]]],
-      "{p}, {¬p} refutation: start → extension → closed"];
+        mProof["start", _, _String,
+          {mProof["extension", _mLit, _mClause, _String, _mLit, _Association, {}]}]],
+      "{p}, {¬p}: start[c, tag, [extension(lit, c', cTag, litC, σ, [])]]"];
   ]];
 
 HOLTest`runTests["meson: trace — extension records original (un-renamed) clause",
@@ -395,7 +394,7 @@ HOLTest`runTests["meson: trace — extension records original (un-renamed) claus
     p = mkVar["p", boolTy];
     clauses = {mClause[{mLit[True, p]}], mClause[{mLit[False, p]}]};
     tree = mesonRefute[clauses, 5];
-    ext = tree[[3]];
+    ext = tree[[4, 1]];
     sourceClause = ext[[3]];
     HOLTest`assertTrue[MemberQ[clauses, sourceClause],
       "the extension's clause field is one of the input clauses (un-renamed)"];
