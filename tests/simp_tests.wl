@@ -163,6 +163,117 @@ HOLTest`runTests["simp: SIMP tactic closes a goal that reduces to T",
       "SIMP[{p = T}] closes goal p"];
 ]];
 
+(* ===== β-2: conditional rewriting ===== *)
+
+HOLTest`runTests["simp: condRewr discharges T antecedent (TRUTH path)",
+  Module[{p, q, T, notC, impC, lhs, rule, target, res},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    T = mkConst["T", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    lhs = mkComb[notC, p];
+    (* rule : ⊢ T ⇒ (¬p = q) — the antecedent T is auto-discharged. *)
+    rule = ASSUME[mkComb[mkComb[impC, T], mkEq[lhs, q]]];
+    target = mkComb[notC, p];
+    res = HOL`Auto`Simp`simpConv[{rule}][target];
+    HOLTest`assertEq[concl[res][[2]], q,
+      "T-antecedent rule rewrites ¬p to q"];
+]];
+
+HOLTest`runTests["simp: condRewr discharges via fact-as-hypothesis (direct lookup)",
+  Module[{A, p, q, notC, impC, notA, lhs, rule, fact, target, res},
+    A = mkVar["A", boolTy]; p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notA = mkComb[notC, A];
+    lhs  = mkComb[notC, p];
+    (* rule : ⊢ ¬A ⇒ (¬p = q); fact : ⊢ ¬A. Direct lookup discharges ¬A. *)
+    rule = ASSUME[mkComb[mkComb[impC, notA], mkEq[lhs, q]]];
+    fact = ASSUME[notA];
+    target = mkComb[notC, p];
+    res = HOL`Auto`Simp`simpConv[{rule, fact}][target];
+    HOLTest`assertEq[concl[res][[2]], q,
+      "¬A-antecedent rule fires when ⊢ ¬A is supplied"];
+]];
+
+HOLTest`runTests["simp: condRewr leaves target alone when antecedent unprovable",
+  Module[{A, p, q, notC, impC, notA, lhs, rule, target, res},
+    A = mkVar["A", boolTy]; p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notA = mkComb[notC, A];
+    lhs  = mkComb[notC, p];
+    rule = ASSUME[mkComb[mkComb[impC, notA], mkEq[lhs, q]]];
+    target = mkComb[notC, p];
+    (* Without ⊢ ¬A in the simpset, prover cannot discharge — rule is   *)
+    (* skipped, target survives unchanged.                              *)
+    res = HOL`Auto`Simp`simpConv[{rule}][target];
+    HOLTest`assertEq[concl[res][[2]], target,
+      "unprovable antecedent ⇒ rule skipped, target unchanged"];
+]];
+
+HOLTest`runTests["simp: condRewr discharges multiple preconditions in order",
+  Module[{A, B, p, q, notC, impC, notA, notB, lhs, rule, factA, factB,
+          target, res},
+    A = mkVar["A", boolTy]; B = mkVar["B", boolTy];
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notA = mkComb[notC, A]; notB = mkComb[notC, B];
+    lhs  = mkComb[notC, p];
+    (* ⊢ ¬A ⇒ ¬B ⇒ (¬p = q) *)
+    rule = ASSUME[mkComb[mkComb[impC, notA],
+            mkComb[mkComb[impC, notB], mkEq[lhs, q]]]];
+    factA = ASSUME[notA];
+    factB = ASSUME[notB];
+    target = mkComb[notC, p];
+    res = HOL`Auto`Simp`simpConv[{rule, factA, factB}][target];
+    HOLTest`assertEq[concl[res][[2]], q,
+      "two preconditions both discharged via direct lookup"];
+]];
+
+HOLTest`runTests["simp: condRewr does not fire on F antecedent",
+  Module[{p, q, F, notC, impC, lhs, rule, target, res},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    F = mkConst["F", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    lhs = mkComb[notC, p];
+    (* ⊢ F ⇒ (¬p = q) — antecedent is the literal constant F, not a    *)
+    (* free var, so the prover cannot trivially over-match it via any *)
+    (* EQT-coerced fact rewrite. The rule must be skipped.            *)
+    rule = ASSUME[mkComb[mkComb[impC, F], mkEq[lhs, q]]];
+    target = mkComb[notC, p];
+    res = HOL`Auto`Simp`simpConv[{rule}][target];
+    HOLTest`assertEq[concl[res][[2]], target,
+      "F antecedent → rule never fires, target preserved"];
+]];
+
+HOLTest`runTests["simp: condRewr through ∀-stripped rule",
+  Module[{p, q, x, notC, impC, T, lhs, ruleSchema, ruleQuant, target, res},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    x = mkVar["x", boolTy];
+    T = mkConst["T", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    lhs = mkComb[notC, x];
+    (* ⊢ T ⇒ (¬x = q) — close over x via GEN, then prepareRule strips ∀x.*)
+    ruleSchema = ASSUME[mkComb[mkComb[impC, T], mkEq[lhs, q]]];
+    (* The hyp `T ⇒ ¬x = q` contains x; GEN[x, ...] would fail. Use a    *)
+    (* hyp-free schema: build ⊢ T ⇒ (¬p = T) via propTaut.               *)
+    Module[{schemaThm, genThm, target2, resB},
+      schemaThm = HOL`Auto`PropTaut`propTaut[
+        mkComb[mkComb[impC, T],
+          mkEq[mkComb[notC, mkComb[notC, p]], p]]];
+      (* schemaThm : ⊢ T ⇒ (¬¬p = p) — propositional tautology *)
+      genThm = GEN[p, schemaThm];   (* ⊢ ∀p. T ⇒ ¬¬p = p *)
+      target2 = mkComb[notC, mkComb[notC, q]];   (* ¬¬q *)
+      resB = HOL`Auto`Simp`simpConv[{genThm}][target2];
+      HOLTest`assertEq[concl[resB][[2]], q,
+        "∀-stripped conditional rule rewrites ¬¬q to q"];
+    ];
+]];
+
 HOLTest`runTests["simp: SIMP tactic leaves residual goal when not T",
   Module[{p, q, eqTh, g, r, sg},
     p = mkVar["p", boolTy]; q = mkVar["q", boolTy];

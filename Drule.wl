@@ -18,6 +18,7 @@ REWRITERULE::usage     = "REWRITERULE[eqTh, th] / REWRITERULE[{eqTh, …}, th] �
 fixpointConvRule::usage = "fixpointConvRule[conv, th] — apply CONVRULE[conv, ⋅] iteratively to th until concl is stable, or until a previously-seen concl recurs (cycle); returns the last computed theorem either way.";
 productiveEqThm::usage  = "productiveEqThm[eqTh] — True iff eqTh is an equation whose LHS is NOT α-equivalent to its RHS. Non-productive rules (LHS aconv RHS) are silently dropped by REWRITERULE to avoid pointless / cycle-prone rewrites.";
 SUBS::usage      = "SUBS[{eq1, …, eqn}, th] — substitute lhs→rhs in concl[th] for each eqi, top-down, all matching positions, no descent into rewritten subterms.";
+matchPattern::usage = "matchPattern[pat, tgt] returns {tsubst, tysubst} (Associations) such that pat[σ] α-equals tgt under HO Miller-pattern matching. Returns Missing[] when no match exists.";
 
 Begin["`Private`"];
 
@@ -314,6 +315,12 @@ HOL`Drule`REWRCONV[eqTh_][t_] :=
 
 HOL`Drule`CONVRULE[c_, th_] :=
   Module[{eqTh}, eqTh = c[concl[th]]; EQMP[eqTh, th]];
+
+HOL`Drule`matchPattern[pat_, tgt_] :=
+  Module[{r},
+    r = tryTermMatch[pat, tgt, {<||>, <||>}, 0];
+    If[r === $matchFail, Missing[], r]
+  ];
 
 HOL`Drule`ONCEREWRITERULE[eqTh_, th_] :=
   HOL`Drule`CONVRULE[onceDepthConv[HOL`Drule`REWRCONV[eqTh]], th];
