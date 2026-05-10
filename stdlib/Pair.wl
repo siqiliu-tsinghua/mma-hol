@@ -22,7 +22,8 @@
 
 BeginPackage["HOL`Stdlib`Pair`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
-  "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`"
+  "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
+  "HOL`Auto`Simp`"
 }];
 
 mkPairConst::usage =
@@ -50,6 +51,34 @@ repAbsProdThm::usage =
 isPairPredicate::usage =
   "isPairPredicate[] — the closed predicate `λp. ∃x y. p = mkPair x y` " <>
   "used to carve out the product type. Returned as a term, not a constant.";
+
+pairConsConst::usage =
+  "pairConsConst[] — the pair constructor constant `,` : α → β → α × β.";
+
+pairConsDefThm::usage =
+  "pairConsDefThm — ⊢ , = (λx y. ABS_prod (mkPair x y)).";
+
+pairCons::usage =
+  "pairCons[a, b] — build the pair term `(a, b)` = `mkComb[mkComb[,, a], b]`.";
+
+destPair::usage =
+  "destPair[t] — for a term of form `,` x y, return {x, y}; throw otherwise.";
+
+mkPairInjThm::usage =
+  "mkPairInjThm — ⊢ (mkPair x y = mkPair x' y') ⇒ (x = x' ∧ y = y'). " <>
+  "Extensional injectivity of the underlying mkPair encoding, derived by " <>
+  "applying both sides at (x, y) and reducing via mkPairDefThm + " <>
+  "EQTINTRO[REFL[v]].";
+
+pairInjThm::usage =
+  "pairInjThm — ⊢ ((x, y) = (x', y')) ⇒ (x = x' ∧ y = y'). " <>
+  "Injectivity of the `,` constructor. Chain: PAIR equality → apply " <>
+  "REP_prod → mkPair equality (via repAbsProdThm + isPairWitness) → " <>
+  "mkPair injectivity.";
+
+repPairThm::usage =
+  "repPairThm — ⊢ REP_prod (x, y) = mkPair x y. The bridge from the " <>
+  "constructor down to the underlying characteristic function.";
 
 Begin["`Private`"];
 
@@ -166,6 +195,184 @@ absProdConst[] :=
 repProdConst[] :=
   mkConst["REP_prod",
     tyFun[prodTy[αTy, βTy], charTy]];
+
+(* ============================================================ *)
+(* Pair constructor  `,` : α → β → α × β                        *)
+(*                                                              *)
+(*   , = λx y. ABS_prod (mkPair x y)                            *)
+(* ============================================================ *)
+
+pairConsTy = tyFun[αTy, tyFun[βTy, prodTy[αTy, βTy]]];
+
+pairConsDefBody[] :=
+  Module[{xV, yV},
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    mkAbs[xV, mkAbs[yV,
+      mkComb[absProdConst[],
+        mkComb[mkComb[mkPairConst[], xV], yV]]]]
+  ];
+
+pairConsDefThm = newDefinition[
+  mkEq[mkVar[",", pairConsTy], pairConsDefBody[]]];
+
+pairConsConst[] := mkConst[",", pairConsTy];
+
+pairCons[a_, b_] := mkComb[mkComb[pairConsConst[], a], b];
+
+destPair[comb[comb[const[",", _], a_], b_]] := {a, b};
+destPair[other_] :=
+  HOL`Error`holError["pair", "destPair: not a `,` application",
+    <|"got" -> other|>];
+
+(* ============================================================ *)
+(* repPairThm : ⊢ REP_prod (x, y) = mkPair x y                  *)
+(*                                                              *)
+(* Chain:                                                       *)
+(*   (a) PAIR x y = ABS_prod (mkPair x y)   — unfold + beta     *)
+(*   (b) REP_prod (PAIR x y) =                                  *)
+(*           REP_prod (ABS_prod (mkPair x y))   — APTERM        *)
+(*   (c) isPair (mkPair x y) ⇔                                  *)
+(*           REP_prod (ABS_prod (mkPair x y)) = mkPair x y      *)
+(*       — INST r ↦ mkPair x y in repAbsProdThm                 *)
+(*   (d) ⊢ REP_prod (ABS_prod (mkPair x y)) = mkPair x y        *)
+(*       — EQMP[(c), isPairWitness INST'd]                      *)
+(*   (e) TRANS[(b), (d)]                                        *)
+(* ============================================================ *)
+
+repPairThm =
+  Module[{xV, yV, mkP, mkPairXY, pairXY,
+          stepAx, stepAxRhs, stepAxBeta, stepA,
+          stepAxy, stepAxyRhs, stepAxyBeta, unfoldStep,
+          repAppliedTh, instIsPair, instRepAbs, repAbsMkPair,
+          x0v, y0v},
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    mkP = mkPairConst[];
+    mkPairXY = mkComb[mkComb[mkP, xV], yV];     (* mkPair x y *)
+    pairXY   = pairCons[xV, yV];                 (* (x, y) *)
+
+    (* (a) Unfold `,` via two APTHM + BETACONV steps to get               *)
+    (*     ⊢ (x, y) = ABS_prod (mkPair x y).                              *)
+    stepAx = HOL`Equal`APTHM[pairConsDefThm, xV];
+    (* ⊢ , xV = (λx y. ABS_prod (mkPair x y)) xV *)
+    stepAxRhs = concl[stepAx][[2]];
+    stepAxBeta = BETACONV[stepAxRhs];
+    (* ⊢ (λx y. ...) xV = (λy. ABS_prod (mkPair xV y)) *)
+    stepA = TRANS[stepAx, stepAxBeta];
+
+    stepAxy = HOL`Equal`APTHM[stepA, yV];
+    stepAxyRhs = concl[stepAxy][[2]];
+    stepAxyBeta = BETACONV[stepAxyRhs];
+    unfoldStep = TRANS[stepAxy, stepAxyBeta];
+    (* unfoldStep : ⊢ (x, y) = ABS_prod (mkPair x y) *)
+
+    (* (b) Apply REP_prod to both sides via APTERM. *)
+    repAppliedTh = HOL`Equal`APTERM[repProdConst[], unfoldStep];
+    (* repAppliedTh : ⊢ REP_prod (x, y) = REP_prod (ABS_prod (mkPair x y)) *)
+
+    (* (c) Instantiate repAbsProdThm: r ↦ mkPair x y. *)
+    instRepAbs = INST[
+      {mkVar["r", charTy] -> mkPairXY},
+      repAbsProdThm];
+    (* instRepAbs : ⊢ (predicate) (mkPair x y) =
+                        (REP_prod (ABS_prod (mkPair x y)) = mkPair x y) *)
+
+    (* (d) Instantiate isPairWitnessThm: x₀ ↦ x, y₀ ↦ y. *)
+    x0v = mkVar["x0", αTy]; y0v = mkVar["y0", βTy];
+    instIsPair = INST[{x0v -> xV, y0v -> yV}, isPairWitnessThm];
+
+    repAbsMkPair = EQMP[instRepAbs, instIsPair];
+    (* repAbsMkPair : ⊢ REP_prod (ABS_prod (mkPair x y)) = mkPair x y *)
+
+    (* (e) TRANS *)
+    TRANS[repAppliedTh, repAbsMkPair]
+  ];
+
+(* ============================================================ *)
+(* mkPairInjThm : ⊢ (mkPair x y = mkPair x' y') ⇒                *)
+(*                       (x = x' ∧ y = y')                       *)
+(*                                                              *)
+(* Apply both sides at (x, y) and simplify via mkPairDefThm     *)
+(* + EQTINTRO[REFL[x/y]].                                        *)
+(* ============================================================ *)
+
+mkPairInjThm =
+  Module[{xV, yV, xPV, yPV, hypEq, lhsAppX, lhsAppXY,
+          xEqxTh, yEqyTh, simplifiedEq, conjPart, dischargedTh},
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    xPV = mkVar["xP", αTy]; yPV = mkVar["yP", βTy];
+
+    hypEq = ASSUME[mkEq[
+      mkComb[mkComb[mkPairConst[], xV], yV],
+      mkComb[mkComb[mkPairConst[], xPV], yPV]]];
+    (* (mkPair x y = mkPair xP yP) ⊢ mkPair x y = mkPair xP yP *)
+
+    lhsAppX = MKCOMB[hypEq, REFL[xV]];
+    (* ⊢ mkPair x y x = mkPair xP yP x  (under same hyp) *)
+    lhsAppXY = MKCOMB[lhsAppX, REFL[yV]];
+    (* ⊢ mkPair x y x y = mkPair xP yP x y *)
+
+    (* Unfold mkPair on both sides + beta-reduce; result:                  *)
+    (*   ⊢ (x = x ∧ y = y) = (x = xP ∧ y = yP)                              *)
+    simplifiedEq = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{mkPairDefThm}], lhsAppXY];
+
+    (* Now collapse LHS (x = x ∧ y = y) to T using EQTINTRO[REFL[v]],     *)
+    (* then basic `(T = p) = p` flips the result to the bare conjunction.*)
+    xEqxTh = HOL`Bool`EQTINTRO[REFL[xV]];   (* ⊢ (x = x) = T *)
+    yEqyTh = HOL`Bool`EQTINTRO[REFL[yV]];   (* ⊢ (y = y) = T *)
+    conjPart = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{xEqxTh, yEqyTh}],
+      simplifiedEq];
+    (* ⊢ x = xP ∧ y = yP, with hyp = (mkPair x y = mkPair xP yP) *)
+
+    dischargedTh = HOL`Bool`DISCH[concl[hypEq], conjPart];
+    (* ⊢ (mkPair x y = mkPair xP yP) ⇒ (x = xP ∧ y = yP) *)
+    dischargedTh
+  ];
+
+(* ============================================================ *)
+(* pairInjThm : ⊢ ((x, y) = (x', y')) ⇒ (x = x' ∧ y = y')         *)
+(*                                                              *)
+(* Apply REP_prod on the hypothesis, use repPairThm to bridge   *)
+(* to mkPair equality, then MP with mkPairInjThm.               *)
+(* ============================================================ *)
+
+pairInjThm =
+  Module[{xV, yV, xPV, yPV, hypEq, repEq, repXYTh, repXPYPTh,
+          mkPairEq, mkPairInjInst, finalImp, x0, y0, xP0, yP0,
+          mkPairImp, mkPairImpInst},
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    xPV = mkVar["xP", αTy]; yPV = mkVar["yP", βTy];
+
+    hypEq = ASSUME[mkEq[pairCons[xV, yV], pairCons[xPV, yPV]]];
+    (* ((x,y)=(xP,yP)) ⊢ (x,y) = (xP,yP) *)
+
+    (* Apply REP_prod to both sides *)
+    repEq = HOL`Equal`APTERM[repProdConst[], hypEq];
+    (* ⊢ REP_prod (x,y) = REP_prod (xP,yP) *)
+
+    (* repPairThm with x ↦ x, y ↦ y: ⊢ REP_prod (x, y) = mkPair x y.
+       repPairThm was built with free x, y. INST to rebuild for our       *)
+    (* current vars (they happen to match — same names — so trivial).     *)
+    repXYTh = repPairThm;
+    repXPYPTh = INST[{xV -> xPV, yV -> yPV}, repPairThm];
+
+    (* TRANS the chain:                                                  *)
+    (*   mkPair x y = REP_prod (x,y) = REP_prod (xP,yP) = mkPair xP yP   *)
+    mkPairEq = TRANS[
+      TRANS[HOL`Equal`SYM[repXYTh], repEq],
+      repXPYPTh];
+    (* mkPairEq : ⊢ mkPair x y = mkPair xP yP  (under same hyp) *)
+
+    (* mkPairInjThm was built with free x, y, xP, yP. Same names → trivial *)
+    (* INST. Discharge the antecedent via MP.                             *)
+    mkPairImp = mkPairInjThm;
+    finalImp = HOL`Bool`MP[mkPairImp, mkPairEq];
+    (* finalImp : ⊢ x = xP ∧ y = yP (under (x,y)=(xP,yP) hyp) *)
+
+    HOL`Bool`DISCH[concl[hypEq], finalImp]
+    (* ⊢ ((x,y) = (xP,yP)) ⇒ (x = xP ∧ y = yP) *)
+  ];
 
 End[];
 EndPackage[];

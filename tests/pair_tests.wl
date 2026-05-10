@@ -82,6 +82,106 @@ HOLTest`runTests["pair: absRepProdThm is ABS_prod (REP_prod a) = a",
       "no hyps"];
 ]];
 
+(* ===== `,` constructor + injectivity ===== *)
+
+HOLTest`runTests["pair: `,` has correct generic type",
+  Module[{alpha, beta, expected, ty},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    expected = tyFun[alpha, tyFun[beta, tyApp["prod", {alpha, beta}]]];
+    ty = constType[","];
+    HOLTest`assertEq[ty, expected,
+      ", : A → B → prod[A, B]"];
+]];
+
+HOLTest`runTests["pair: pairCons builds a comb-of-comb term",
+  Module[{alpha, beta, a, b, t},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    a = mkVar["a", alpha]; b = mkVar["b", beta];
+    t = pairCons[a, b];
+    HOLTest`assertEq[t,
+      mkComb[mkComb[mkConst[",", constType[","]], a], b],
+      "pairCons[a, b] = comb[comb[`,`, a], b]"];
+]];
+
+HOLTest`runTests["pair: destPair inverts pairCons",
+  Module[{alpha, beta, a, b, parts},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    a = mkVar["a", alpha]; b = mkVar["b", beta];
+    parts = destPair[pairCons[a, b]];
+    HOLTest`assertEq[parts, {a, b}, "destPair[(a, b)] = {a, b}"];
+]];
+
+HOLTest`runTests["pair: pairConsDefThm is `,` = (λx y. ABS_prod (mkPair x y))",
+  Module[{c, lhs},
+    c = concl[pairConsDefThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["=", _], const[",", _]], _]],
+      "concl is `,` = <lambda>"];
+    HOLTest`assertEq[hyp[pairConsDefThm], {},
+      "no hyps"];
+]];
+
+HOLTest`runTests["pair: repPairThm is REP_prod (x, y) = mkPair x y",
+  Module[{alpha, beta, x, y, c, expectedLhs, expectedRhs},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    x = mkVar["x", alpha]; y = mkVar["y", beta];
+    expectedLhs = mkComb[
+      mkConst["REP_prod", constType["REP_prod"]],
+      pairCons[x, y]];
+    expectedRhs = mkComb[mkComb[mkConst["mkPair", constType["mkPair"]], x], y];
+    c = concl[repPairThm];
+    HOLTest`assertEq[c, mkEq[expectedLhs, expectedRhs],
+      "⊢ REP_prod (x, y) = mkPair x y"];
+    HOLTest`assertEq[hyp[repPairThm], {},
+      "no hyps"];
+]];
+
+HOLTest`runTests["pair: mkPairInjThm is (mkPair x y = mkPair xP yP) ⇒ (x = xP ∧ y = yP)",
+  Module[{c, alpha, beta, x, y, xP, yP, ant, conseq},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    x = mkVar["x", alpha]; y = mkVar["y", beta];
+    xP = mkVar["xP", alpha]; yP = mkVar["yP", beta];
+    c = concl[mkPairInjThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["⇒", _], _], _]],
+      "concl is an implication"];
+    ant = c[[1, 2]];
+    conseq = c[[2]];
+    HOLTest`assertTrue[
+      MatchQ[ant, comb[comb[const["=", _],
+        comb[comb[const["mkPair", _], x_], y_]],
+        comb[comb[const["mkPair", _], xP_], yP_]]],
+      "antecedent is mkPair x y = mkPair xP yP"];
+    HOLTest`assertTrue[
+      MatchQ[conseq, comb[comb[const["∧", _], _], _]],
+      "consequent is a conjunction"];
+    HOLTest`assertEq[hyp[mkPairInjThm], {},
+      "no hyps"];
+]];
+
+HOLTest`runTests["pair: pairInjThm is ((x, y) = (xP, yP)) ⇒ (x = xP ∧ y = yP)",
+  Module[{c, alpha, beta, x, y, xP, yP, ant, conseq},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    x = mkVar["x", alpha]; y = mkVar["y", beta];
+    xP = mkVar["xP", alpha]; yP = mkVar["yP", beta];
+    c = concl[pairInjThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["⇒", _], _], _]],
+      "concl is an implication"];
+    ant = c[[1, 2]];
+    conseq = c[[2]];
+    HOLTest`assertEq[ant,
+      mkEq[pairCons[x, y], pairCons[xP, yP]],
+      "antecedent is (x, y) = (xP, yP)"];
+    HOLTest`assertEq[conseq,
+      mkComb[mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+        mkEq[x, xP]],
+        mkEq[y, yP]],
+      "consequent is (x = xP) ∧ (y = yP)"];
+    HOLTest`assertEq[hyp[pairInjThm], {},
+      "no hyps"];
+]];
+
 HOLTest`runTests["pair: repAbsProdThm is (isPair r) = (REP_prod (ABS_prod r) = r)",
   Module[{c, lhs, rhs},
     c = concl[repAbsProdThm];
