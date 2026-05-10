@@ -3,20 +3,31 @@
 (* M7-β SIMP — simplification tactic over rewriting + β.
 
    β-1: strip ∀ from each input thm via specWithFreshName, EQT-coerce
-   non-(equational|conditional) concl into ⊢ p = T; DEPTHCONV[ORELSEC[
-   rule-convs, BETACONV]] to fixpoint with cycle detection.
+   non-(equational|conditional) concl into ⊢ p = T; iterate to fixpoint
+   with cycle detection.
+
+   β-1.5: built-in basicSimpset of 19 propositional schemas (T∧p=p,
+   ¬¬p=p, p⇒p=T, …) proved once via propTaut and cached.
 
    β-2: support conditional rules `⊢ P1 ⇒ … ⇒ Pn ⇒ lhs = rhs`. After
    matching the equation's LHS against a target, INST σ into the whole
    theorem, beta-reduce, then prove each σ(Pi) by recursive simpProve
-   (depth-limited to prevent loops) and MP it in. Built on `matchPattern`
-   from Drule.wl which uses the same depth-aware HO Miller matcher
-   REWRCONV uses.
+   (depth-limited to prevent loops) and MP it in.
 
-   Trust boundary: rule normalization runs in untrusted code; every rule
-   ends as a kernel-validated theorem (SPEC / EQTINTRO / user-supplied),
-   so a bug in normalization can only mean "rule discarded", never "false
-   theorem". *)
+   β-3: context-aware congruence descent at ⇒ / ∧ / ∨ positions. The
+   simplification of `q` under `(p ⇒ q)` (resp. `(p ∧ q)`) runs with
+   the simplified left-hand p' added to the assumption context; under
+   `(p ∨ q)` the right-hand context is `¬p'`. ctxAsms appear in the
+   inner simpFixpointConv as: (1) ctxRewrConv exact-match rewriters
+   that turn an aconv-equal subterm into ⊢ subterm = T, and (2) facts
+   for the prover's direct lookup when discharging conditional-rule
+   antecedents. Each congruence is realised via a propTaut-derived
+   schema lemma plus DISCH/CONJ/INST/MP plumbing.
+
+   Trust boundary: rule normalization runs in untrusted code; every
+   rule ends as a kernel-validated theorem (SPEC / EQTINTRO /
+   user-supplied), so a bug in normalization can only mean "rule
+   discarded", never "false theorem". *)
 
 BeginPackage["HOL`Auto`Simp`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
@@ -26,9 +37,10 @@ BeginPackage["HOL`Auto`Simp`", {
 
 simpConv::usage =
   "simpConv[thms_List][t_] — runs the user thms (∀-stripped, =T-coerced "<>
-  "for non-rule concl's) plus BETACONV at every subterm, iterating to "  <>
+  "for non-rule concl's) plus BETACONV at every subterm; iterates to "   <>
   "fixpoint with cycle detection. Conditional rules `P1 ⇒ … ⇒ lhs = rhs` "<>
-  "discharge their preconditions by recursive simpProve (depth-limited).";
+  "discharge their preconditions by recursive simpProve. Descends with " <>
+  "context-aware congruence at ⇒ / ∧ / ∨.";
 
 simpProve::usage =
   "simpProve[t_, thms_List] — if simpConv reduces t to T, returns Γ ⊢ t " <>
@@ -53,7 +65,9 @@ basicSimpset::usage =
 
 Begin["`Private`"];
 
-(* ------------- shape predicates ------------- *)
+(* ============================================================ *)
+(* shape predicates                                             *)
+(* ============================================================ *)
 
 isEquation[t_] :=
   MatchQ[t, comb[comb[const["=", _], _], _]];
@@ -61,11 +75,15 @@ isEquation[t_] :=
 isImp[t_] :=
   MatchQ[t, comb[comb[const["⇒", _], _], _]];
 
+isAndForm[t_] :=
+  MatchQ[t, comb[comb[const["∧", _], _], _]];
+
+isOrForm[t_] :=
+  MatchQ[t, comb[comb[const["∨", _], _], _]];
+
 isForall[t_] :=
   MatchQ[t, comb[const["∀", _], abs[bvar[0, _], _, _]]];
 
-(* Strip implications until the conseq is no longer an implication.       *)
-(* Returns {antecedents-in-order, finalConseq}.                          *)
 stripImps[t_] :=
   Module[{cur = t, ants = {}, a, c},
     While[isImp[cur],
@@ -80,9 +98,6 @@ stripImps[t_] :=
 isConditionalRule[t_] :=
   isImp[t] && isEquation[stripImps[t][[2]]];
 
-(* Productivity: the underlying equation's LHS is not aconv RHS.         *)
-(* Eq-rule: check the concl directly. Conditional: check the final        *)
-(* equation slot. Anything else returns False (filtered out).            *)
 productiveSimpRule[ruleTh_] :=
   Module[{c, eqPart, lhs, rhs},
     c = concl[ruleTh];
@@ -92,7 +107,9 @@ productiveSimpRule[ruleTh_] :=
     !aconv[lhs, rhs]
   ];
 
-(* ------------- rule preparation ------------- *)
+(* ============================================================ *)
+(* rule preparation                                             *)
+(* ============================================================ *)
 
 HOL`Auto`Simp`simpPrepareRule[th_] :=
   Module[{cur = th, c},
@@ -104,30 +121,112 @@ HOL`Auto`Simp`simpPrepareRule[th_] :=
       HOL`Bool`EQTINTRO[cur]]
   ];
 
-(* ------------- fixpoint CONV iterator ------------- *)
+(* ============================================================ *)
+(* canonical bool constants (factored to keep schema code tight)*)
+(* ============================================================ *)
 
-fixpointConv[conv_, t_] :=
-  Module[{cur, rhs, next, newRhs, seen},
-    cur = conv[t];
-    rhs = concl[cur][[2]];
-    seen = <|t -> True, rhs -> True|>;
-    While[True,
-      next = conv[rhs];
-      newRhs = concl[next][[2]];
-      If[newRhs === rhs, Break[]];
-      If[KeyExistsQ[seen, newRhs], Break[]];
-      cur = TRANS[cur, next];
-      rhs = newRhs;
-      seen[newRhs] = True
-    ];
-    cur
+andConst[] := mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+orConst[]  := mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+impConst[] := mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+notConst[] := mkConst["¬", tyFun[boolTy, boolTy]];
+eqConst[]  := mkConst["=", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+tConst[]   := mkConst["T", boolTy];
+fConst[]   := mkConst["F", boolTy];
+
+mkAnd[a_, b_] := mkComb[mkComb[andConst[], a], b];
+mkOr[a_, b_]  := mkComb[mkComb[orConst[], a], b];
+mkImp[a_, b_] := mkComb[mkComb[impConst[], a], b];
+mkNot[a_]     := mkComb[notConst[], a];
+
+(* ============================================================ *)
+(* built-in propositional simpset (β-1.5)                       *)
+(* ============================================================ *)
+
+computeBasicSimpset[] :=
+  Module[{p, T, F, schemas},
+    p = mkVar["p", boolTy];
+    T = tConst[]; F = fConst[];
+    schemas = {
+      mkEq[mkAnd[T, p], p],            (* T ∧ p = p     *)
+      mkEq[mkAnd[p, T], p],            (* p ∧ T = p     *)
+      mkEq[mkAnd[F, p], F],            (* F ∧ p = F     *)
+      mkEq[mkAnd[p, F], F],            (* p ∧ F = F     *)
+      mkEq[mkAnd[p, p], p],            (* p ∧ p = p     *)
+      mkEq[mkOr[T, p], T],             (* T ∨ p = T     *)
+      mkEq[mkOr[p, T], T],             (* p ∨ T = T     *)
+      mkEq[mkOr[F, p], p],             (* F ∨ p = p     *)
+      mkEq[mkOr[p, F], p],             (* p ∨ F = p     *)
+      mkEq[mkOr[p, p], p],             (* p ∨ p = p     *)
+      mkEq[mkImp[T, p], p],            (* T ⇒ p = p     *)
+      mkEq[mkImp[F, p], T],            (* F ⇒ p = T     *)
+      mkEq[mkImp[p, T], T],            (* p ⇒ T = T     *)
+      mkEq[mkImp[p, p], T],            (* p ⇒ p = T     *)
+      mkEq[mkNot[T], F],               (* ¬T = F        *)
+      mkEq[mkNot[F], T],               (* ¬F = T        *)
+      mkEq[mkNot[mkNot[p]], p],        (* ¬¬p = p       *)
+      mkEq[mkComb[mkComb[eqConst[], T], p], p],   (* (T = p) = p *)
+      mkEq[mkComb[mkComb[eqConst[], p], T], p]    (* (p = T) = p *)
+    };
+    Map[HOL`Auto`PropTaut`propTaut, schemas]
   ];
 
-(* ------------- conditional rewrite ------------- *)
+HOL`Auto`Simp`basicSimpset[] := HOL`Auto`Simp`basicSimpset[] = computeBasicSimpset[];
 
-(* Match the final equation's LHS, INST σ into the entire conditional   *)
-(* rule, beta-reduce, then for each surviving antecedent (in order)      *)
-(* invoke `prover` to obtain ⊢ ant[σ] and MP it through.                 *)
+(* ============================================================ *)
+(* congruence schema lemmas (β-3) — propTaut, lazy-cached       *)
+(* ============================================================ *)
+
+computeImpCongLemma[] :=
+  Module[{p1, p2, q1, q2},
+    p1 = mkVar["p1", boolTy]; p2 = mkVar["p2", boolTy];
+    q1 = mkVar["q1", boolTy]; q2 = mkVar["q2", boolTy];
+    HOL`Auto`PropTaut`propTaut[
+      mkImp[
+        mkAnd[mkEq[p1, p2], mkImp[p2, mkEq[q1, q2]]],
+        mkEq[mkImp[p1, q1], mkImp[p2, q2]]]]
+  ];
+
+computeAndCongLemma[] :=
+  Module[{p1, p2, q1, q2},
+    p1 = mkVar["p1", boolTy]; p2 = mkVar["p2", boolTy];
+    q1 = mkVar["q1", boolTy]; q2 = mkVar["q2", boolTy];
+    HOL`Auto`PropTaut`propTaut[
+      mkImp[
+        mkAnd[mkEq[p1, p2], mkImp[p2, mkEq[q1, q2]]],
+        mkEq[mkAnd[p1, q1], mkAnd[p2, q2]]]]
+  ];
+
+computeOrCongLemma[] :=
+  Module[{p1, p2, q1, q2},
+    p1 = mkVar["p1", boolTy]; p2 = mkVar["p2", boolTy];
+    q1 = mkVar["q1", boolTy]; q2 = mkVar["q2", boolTy];
+    HOL`Auto`PropTaut`propTaut[
+      mkImp[
+        mkAnd[mkEq[p1, p2], mkImp[mkNot[p2], mkEq[q1, q2]]],
+        mkEq[mkOr[p1, q1], mkOr[p2, q2]]]]
+  ];
+
+impCongLemma[] := impCongLemma[] = computeImpCongLemma[];
+andCongLemma[] := andCongLemma[] = computeAndCongLemma[];
+orCongLemma[]  := orCongLemma[]  = computeOrCongLemma[];
+
+(* ============================================================ *)
+(* fresh-name picker for abs descent                            *)
+(* ============================================================ *)
+
+pickFreshNm[preferred_String, forbidden_List] :=
+  Module[{i, cand},
+    If[!MemberQ[forbidden, preferred], Return[preferred]];
+    cand = "z"; i = 0;
+    While[MemberQ[forbidden, cand],
+      i++; cand = "z" <> ToString[i]];
+    cand
+  ];
+
+(* ============================================================ *)
+(* per-rule conv dispatch                                       *)
+(* ============================================================ *)
+
 condRewrConv[ruleTh_, prover_][t_] :=
   Module[{c, ants, eqPart, lhs, matchRes, tsubst, tysubst,
           thAfterTy, tsubstKeyed, thFinal, betaConv, antTm, antThm,
@@ -150,21 +249,17 @@ condRewrConv[ruleTh_, prover_][t_] :=
     tsubstKeyed = Map[instType[tysubst, #[[1]]] -> #[[2]] &, Normal[tsubst]];
     thFinal = If[Length[tsubstKeyed] > 0,
       INST[tsubstKeyed, thAfterTy], thAfterTy];
-    (* Beta-reduce HO redexes introduced by INST before discharging      *)
-    (* antecedents — the prover should see beta-normal terms.            *)
     betaConv = HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]];
     thFinal = HOL`Drule`CONVRULE[betaConv, thFinal];
     Do[
       currentConcl = concl[thFinal];
       If[!isImp[currentConcl], Break[]];
       antTm = currentConcl[[1, 2]];
-      antThm = prover[antTm];   (* throws on failure → ORELSEC catches *)
+      antThm = prover[antTm];
       thFinal = HOL`Bool`MP[thFinal, antThm];
       , {k, 1, Length[ants]}];
     thFinal
   ];
-
-(* ------------- per-rule dispatcher ------------- *)
 
 simpRuleConv[ruleTh_, prover_][t_] :=
   Module[{c},
@@ -179,77 +274,37 @@ simpRuleConv[ruleTh_, prover_][t_] :=
     ]
   ];
 
+(* Exact-match assumption rewrite: turns ⊢ asm = T into a conv that *)
+(* fires only when the target is α-equal to asm. Uses ASSUME[asm]   *)
+(* internally so the resulting equation carries asm as a hypothesis. *)
+ctxRewrConv[asm_][t_] :=
+  If[aconv[t, asm],
+    HOL`Bool`EQTINTRO[ASSUME[asm]],
+    Throw[HOL`Error`holError["conv",
+      "ctxRewrConv: target not α-equal to context assumption",
+      <|"target" -> t, "asm" -> asm|>], HOL`Error`holErrorTag]];
+
 combineSimpConvs[{}]         := BETACONV;
 combineSimpConvs[{conv_}]    := HOL`Drule`ORELSEC[conv, BETACONV];
 combineSimpConvs[{conv_, rest__}] :=
   HOL`Drule`ORELSEC[conv, combineSimpConvs[{rest}]];
 
-(* ------------- depth-limited driver ------------- *)
-
-(* Each conditional discharge through `prover` re-enters simpConvImpl at *)
-(* depth - 1; once depth hits 0 the prover is replaced by a stub that   *)
-(* always fails, blocking further conditional rule firings. This caps    *)
-(* recursion in the presence of mutually-conditional rule sets.          *)
-(* ------------- built-in propositional simpset (β-1.5) ------------- *)
-
-(* Computed lazily on first use so propTaut isn't invoked at module     *)
-(* load. Cached via the `:=` self-rebinding idiom: the first call       *)
-(* evaluates the RHS and replaces the definition with its result.       *)
-computeBasicSimpset[] :=
-  Module[{p, T, F, andC, orC, impC, notC, eqC, schemas},
-    p    = mkVar["p", boolTy];
-    T    = mkConst["T", boolTy];
-    F    = mkConst["F", boolTy];
-    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
-    orC  = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
-    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
-    notC = mkConst["¬", tyFun[boolTy, boolTy]];
-    eqC  = mkConst["=", tyFun[boolTy, tyFun[boolTy, boolTy]]];
-    schemas = {
-      mkEq[mkComb[mkComb[andC, T], p], p],          (* T ∧ p = p     *)
-      mkEq[mkComb[mkComb[andC, p], T], p],          (* p ∧ T = p     *)
-      mkEq[mkComb[mkComb[andC, F], p], F],          (* F ∧ p = F     *)
-      mkEq[mkComb[mkComb[andC, p], F], F],          (* p ∧ F = F     *)
-      mkEq[mkComb[mkComb[andC, p], p], p],          (* p ∧ p = p     *)
-      mkEq[mkComb[mkComb[orC,  T], p], T],          (* T ∨ p = T     *)
-      mkEq[mkComb[mkComb[orC,  p], T], T],          (* p ∨ T = T     *)
-      mkEq[mkComb[mkComb[orC,  F], p], p],          (* F ∨ p = p     *)
-      mkEq[mkComb[mkComb[orC,  p], F], p],          (* p ∨ F = p     *)
-      mkEq[mkComb[mkComb[orC,  p], p], p],          (* p ∨ p = p     *)
-      mkEq[mkComb[mkComb[impC, T], p], p],          (* T ⇒ p = p     *)
-      mkEq[mkComb[mkComb[impC, F], p], T],          (* F ⇒ p = T     *)
-      mkEq[mkComb[mkComb[impC, p], T], T],          (* p ⇒ T = T     *)
-      mkEq[mkComb[mkComb[impC, p], p], T],          (* p ⇒ p = T     *)
-      mkEq[mkComb[notC, T], F],                      (* ¬T = F        *)
-      mkEq[mkComb[notC, F], T],                      (* ¬F = T        *)
-      mkEq[mkComb[notC, mkComb[notC, p]], p],        (* ¬¬p = p       *)
-      mkEq[mkComb[mkComb[eqC, T], p], p],           (* (T = p) = p   *)
-      mkEq[mkComb[mkComb[eqC, p], T], p]            (* (p = T) = p   *)
-    };
-    Map[HOL`Auto`PropTaut`propTaut, schemas]
-  ];
-
-HOL`Auto`Simp`basicSimpset[] := HOL`Auto`Simp`basicSimpset[] = computeBasicSimpset[];
+(* ============================================================ *)
+(* prover for conditional-rule antecedents                      *)
+(* ============================================================ *)
 
 $simpDepthLimit = 4;
 
-(* The prover discharges antecedents in conditional rules. Tries:        *)
-(*   1. direct lookup of antTm against original-thm concls (avoids       *)
-(*      bare-var LHS over-matching that would happen if we always went   *)
-(*      through simpConv → REWRCONV);                                    *)
-(*   2. T-shortcut → TRUTH;                                              *)
-(*   3. recursive simpProve at depth - 1.                                *)
-(* When depth has hit zero only the lookup paths are tried — recursive   *)
-(* simpProve is disabled.                                                *)
-makeProver[origThms_List, depth_Integer] :=
+makeProver[origThms_List, ctxAsms_List, depth_Integer] :=
   Function[{antTm},
-    Module[{direct, T},
-      direct = SelectFirst[origThms, aconv[concl[#], antTm] &, Missing[]];
-      T = mkConst["T", boolTy];
+    Module[{allFacts, direct, T},
+      allFacts = Join[origThms, ASSUME /@ ctxAsms];
+      direct = SelectFirst[allFacts, aconv[concl[#], antTm] &, Missing[]];
+      T = tConst[];
       Which[
         !MissingQ[direct], direct,
         antTm === T,       HOL`Bool`TRUTH,
-        depth > 0,         simpProveImpl[origThms, depth - 1, antTm],
+        depth > 0,         simpProveImpl[origThms, ctxAsms, depth - 1, antTm],
         True,
           Throw[HOL`Error`holError["simp",
             "simp: cannot discharge antecedent (depth exhausted)",
@@ -258,22 +313,146 @@ makeProver[origThms_List, depth_Integer] :=
     ]
   ];
 
-simpConvImpl[thms_List, depth_Integer][t_] :=
-  Module[{prepared, productive, prover, ruleConvs, baseConv, depthConv},
-    prepared = HOL`Auto`Simp`simpPrepareRule /@ thms;
+(* ============================================================ *)
+(* baseConv: assemble conv stack for one (rules, ctx, depth)    *)
+(* ============================================================ *)
+
+buildBaseConv[ruleThms_List, ctxAsms_List, depth_Integer] :=
+  Module[{prepared, productive, prover, ruleConvs, ctxConvs},
+    prepared = HOL`Auto`Simp`simpPrepareRule /@ ruleThms;
     productive = Select[prepared, productiveSimpRule];
-    prover = makeProver[thms, depth];
+    prover = makeProver[ruleThms, ctxAsms, depth];
     ruleConvs = simpRuleConv[#, prover] & /@ productive;
-    baseConv  = combineSimpConvs[ruleConvs];
-    depthConv = HOL`Drule`DEPTHCONV[baseConv];
-    fixpointConv[depthConv, t]
+    ctxConvs = ctxRewrConv /@ ctxAsms;
+    (* Order: ctx-rewrites first (cheap aconv), then user/basic rules,    *)
+    (* then BETACONV at the deepest fallback.                             *)
+    combineSimpConvs[Join[ctxConvs, ruleConvs]]
   ];
 
-simpProveImpl[thms_List, depth_Integer, t_] :=
+(* ============================================================ *)
+(* congruence descents (β-3)                                    *)
+(* ============================================================ *)
+
+doImpCong[ruleThms_, ctxAsms_, depth_][t_] :=
+  Module[{p1Tm, q1Tm, eq1, p2Tm, eq2, q2Tm, dischEq2, conjAx,
+          p1V, p2V, q1V, q2V, instLemma},
+    p1Tm = t[[1, 2]]; q1Tm = t[[2]];
+    eq1 = simpFixpointConv[ruleThms, ctxAsms, depth][p1Tm];
+    p2Tm = concl[eq1][[2]];
+    eq2 = simpFixpointConv[ruleThms, Append[ctxAsms, p2Tm], depth][q1Tm];
+    q2Tm = concl[eq2][[2]];
+    dischEq2 = HOL`Bool`DISCH[p2Tm, eq2];
+    conjAx = HOL`Bool`CONJ[eq1, dischEq2];
+    p1V = mkVar["p1", boolTy]; p2V = mkVar["p2", boolTy];
+    q1V = mkVar["q1", boolTy]; q2V = mkVar["q2", boolTy];
+    instLemma = INST[
+      {p1V -> p1Tm, p2V -> p2Tm, q1V -> q1Tm, q2V -> q2Tm},
+      impCongLemma[]];
+    HOL`Bool`MP[instLemma, conjAx]
+  ];
+
+doAndCong[ruleThms_, ctxAsms_, depth_][t_] :=
+  Module[{p1Tm, q1Tm, eq1, p2Tm, eq2, q2Tm, dischEq2, conjAx,
+          p1V, p2V, q1V, q2V, instLemma},
+    p1Tm = t[[1, 2]]; q1Tm = t[[2]];
+    eq1 = simpFixpointConv[ruleThms, ctxAsms, depth][p1Tm];
+    p2Tm = concl[eq1][[2]];
+    eq2 = simpFixpointConv[ruleThms, Append[ctxAsms, p2Tm], depth][q1Tm];
+    q2Tm = concl[eq2][[2]];
+    dischEq2 = HOL`Bool`DISCH[p2Tm, eq2];
+    conjAx = HOL`Bool`CONJ[eq1, dischEq2];
+    p1V = mkVar["p1", boolTy]; p2V = mkVar["p2", boolTy];
+    q1V = mkVar["q1", boolTy]; q2V = mkVar["q2", boolTy];
+    instLemma = INST[
+      {p1V -> p1Tm, p2V -> p2Tm, q1V -> q1Tm, q2V -> q2Tm},
+      andCongLemma[]];
+    HOL`Bool`MP[instLemma, conjAx]
+  ];
+
+doOrCong[ruleThms_, ctxAsms_, depth_][t_] :=
+  Module[{p1Tm, q1Tm, eq1, p2Tm, notP2, eq2, q2Tm, dischEq2, conjAx,
+          p1V, p2V, q1V, q2V, instLemma},
+    p1Tm = t[[1, 2]]; q1Tm = t[[2]];
+    eq1 = simpFixpointConv[ruleThms, ctxAsms, depth][p1Tm];
+    p2Tm = concl[eq1][[2]];
+    notP2 = mkNot[p2Tm];
+    eq2 = simpFixpointConv[ruleThms, Append[ctxAsms, notP2], depth][q1Tm];
+    q2Tm = concl[eq2][[2]];
+    dischEq2 = HOL`Bool`DISCH[notP2, eq2];
+    conjAx = HOL`Bool`CONJ[eq1, dischEq2];
+    p1V = mkVar["p1", boolTy]; p2V = mkVar["p2", boolTy];
+    q1V = mkVar["q1", boolTy]; q2V = mkVar["q2", boolTy];
+    instLemma = INST[
+      {p1V -> p1Tm, p2V -> p2Tm, q1V -> q1Tm, q2V -> q2Tm},
+      orCongLemma[]];
+    HOL`Bool`MP[instLemma, conjAx]
+  ];
+
+(* ============================================================ *)
+(* one-pass descent: congruence dispatch, else MKCOMB / ABS     *)
+(* ============================================================ *)
+
+descendOnce[ruleThms_, ctxAsms_, depth_][t_] :=
+  Which[
+    isImp[t],     doImpCong[ruleThms, ctxAsms, depth][t],
+    isAndForm[t], doAndCong[ruleThms, ctxAsms, depth][t],
+    isOrForm[t],  doOrCong[ruleThms, ctxAsms, depth][t],
+    MatchQ[t, comb[_, _]],
+      Module[{f = t[[1]], x = t[[2]], fEq, xEq},
+        fEq = simpFixpointConv[ruleThms, ctxAsms, depth][f];
+        xEq = simpFixpointConv[ruleThms, ctxAsms, depth][x];
+        MKCOMB[fEq, xEq]
+      ],
+    MatchQ[t, abs[bvar[0, _], _, _]],
+      Module[{bty, body, origin, forbidden, name, v, openTh, opened, innerEq},
+        bty = t[[1, 2]]; body = t[[2]]; origin = t[[3]];
+        forbidden = First /@ freesIn[body];
+        name = pickFreshNm[origin, forbidden];
+        v = mkVar[name, bty];
+        openTh = BETA[mkComb[abs[bvar[0, bty], body, name], v]];
+        opened = concl[openTh][[2]];
+        innerEq = simpFixpointConv[ruleThms, ctxAsms, depth][opened];
+        ABS[v, innerEq]
+      ],
+    True, REFL[t]
+  ];
+
+(* ============================================================ *)
+(* one step + fixpoint                                          *)
+(* ============================================================ *)
+
+simpStepConv[baseConv_, ruleThms_, ctxAsms_, depth_][t_] :=
+  Module[{topTh, rhs1, descTh},
+    topTh = HOL`Drule`TRYCONV[HOL`Drule`REPEATC[baseConv]][t];
+    rhs1 = concl[topTh][[2]];
+    descTh = descendOnce[ruleThms, ctxAsms, depth][rhs1];
+    TRANS[topTh, descTh]
+  ];
+
+simpFixpointConv[ruleThms_, ctxAsms_, depth_][t_] :=
+  Module[{baseConv, stepConv, cur, rhs, next, newRhs, seen},
+    baseConv = buildBaseConv[ruleThms, ctxAsms, depth];
+    stepConv = simpStepConv[baseConv, ruleThms, ctxAsms, depth];
+    cur = stepConv[t];
+    rhs = concl[cur][[2]];
+    seen = <|t -> True, rhs -> True|>;
+    While[True,
+      next = stepConv[rhs];
+      newRhs = concl[next][[2]];
+      If[newRhs === rhs, Break[]];
+      If[KeyExistsQ[seen, newRhs], Break[]];
+      cur = TRANS[cur, next];
+      rhs = newRhs;
+      seen[newRhs] = True
+    ];
+    cur
+  ];
+
+simpProveImpl[thms_List, ctxAsms_List, depth_Integer, t_] :=
   Module[{eqTh, rhs, T},
-    eqTh = simpConvImpl[thms, depth][t];
+    eqTh = simpFixpointConv[thms, ctxAsms, depth][t];
     rhs = concl[eqTh][[2]];
-    T = mkConst["T", boolTy];
+    T = tConst[];
     If[rhs =!= T,
       Throw[HOL`Error`holError["simp",
         "simpProve: simplification did not reach T",
@@ -281,22 +460,23 @@ simpProveImpl[thms_List, depth_Integer, t_] :=
     HOL`Bool`EQTELIM[eqTh]
   ];
 
-(* User thms come FIRST so they take ORELSEC priority over the basic   *)
-(* schemas; combineSimpConvs preserves left-to-right order via right-  *)
-(* associated ORELSEC.                                                  *)
+(* ============================================================ *)
+(* public API                                                   *)
+(* ============================================================ *)
+
 withBasic[thms_List] := Join[thms, HOL`Auto`Simp`basicSimpset[]];
 
 HOL`Auto`Simp`simpConv[thms_List][t_] :=
-  simpConvImpl[withBasic[thms], $simpDepthLimit][t];
+  simpFixpointConv[withBasic[thms], {}, $simpDepthLimit][t];
 
 HOL`Auto`Simp`simpProve[t_, thms_List] :=
-  simpProveImpl[withBasic[thms], $simpDepthLimit, t];
+  simpProveImpl[withBasic[thms], {}, $simpDepthLimit, t];
 
 HOL`Auto`Simp`SIMP[thms_List][g : HOL`Tactics`goal[asms_, conclTm_]] :=
   Module[{eqTh, rhs, T, just},
     eqTh = HOL`Auto`Simp`simpConv[thms][conclTm];
     rhs = concl[eqTh][[2]];
-    T = mkConst["T", boolTy];
+    T = tConst[];
     If[rhs === T,
       just = Function[{ths}, HOL`Bool`EQTELIM[eqTh]];
       HOL`Tactics`tacResult[{}, just],

@@ -356,6 +356,90 @@ HOLTest`runTests["simp: condRewr through ∀-stripped rule",
     ];
 ]];
 
+(* ===== β-3: congruence rules (IMP / AND / OR) ===== *)
+
+HOLTest`runTests["simp: IMP_CONG enables conditional rule via context",
+  Module[{A, q, qp, impC, notC, ruleAnt, ruleEq, rule, target, res, expected},
+    A = mkVar["A", boolTy];
+    q = mkVar["q", boolTy];
+    qp = mkVar["qp", boolTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    (* ⊢ A ⇒ (¬q = qp) — conditional, fires only when A is in context. *)
+    rule = ASSUME[mkComb[mkComb[impC, A], mkEq[mkComb[notC, q], qp]]];
+    (* target = A ⇒ ¬q. IMP_CONG descends into ¬q with ctxAsms = {A}. *)
+    target = mkComb[mkComb[impC, A], mkComb[notC, q]];
+    res = HOL`Auto`Simp`simpConv[{rule}][target];
+    expected = mkComb[mkComb[impC, A], qp];
+    HOLTest`assertEq[concl[res][[2]], expected,
+      "(A ⇒ ¬q) rewrites to (A ⇒ qp) after discharging A in ctx"];
+]];
+
+HOLTest`runTests["simp: IMP_CONG + ctxRewrConv proves p ⇒ p",
+  Module[{p, impC, target, th},
+    p = mkVar["p", boolTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    target = mkComb[mkComb[impC, p], p];
+    (* Even without basic's `p ⇒ p = T`, IMP_CONG + ctxRewrConv would   *)
+    (* reduce the right p to T then basic `p ⇒ T = T` finishes. With   *)
+    (* basic in scope this still closes — verifies the chain works.    *)
+    th = HOL`Auto`Simp`simpProve[target, {}];
+    HOLTest`assertEq[concl[th], target,
+      "p ⇒ p closes (basic+congruence both can reach this)"];
+]];
+
+HOLTest`runTests["simp: OR_CONG proves LEM p ∨ ¬p",
+  Module[{p, orC, notC, target, th},
+    p = mkVar["p", boolTy];
+    orC = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    target = mkComb[mkComb[orC, p], mkComb[notC, p]];
+    (* OR_CONG: descend (p ∨ ¬p). Right ¬p simplifies under ctxAsm = ¬p, *)
+    (* ctxRewrConv rewrites ¬p → T. Basic `p ∨ T = T` finishes.          *)
+    th = HOL`Auto`Simp`simpProve[target, {}];
+    HOLTest`assertEq[concl[th], target,
+      "Law of Excluded Middle proved by OR_CONG + ctxRewrConv + basic"];
+    HOLTest`assertEq[hyp[th], {}, "no hypotheses leak through"];
+]];
+
+HOLTest`runTests["simp: AND_CONG sequential simplification (left context for right)",
+  Module[{A, q, qp, impC, andC, rule, target, res, expected},
+    A = mkVar["A", boolTy];
+    q = mkVar["q", boolTy];
+    qp = mkVar["qp", boolTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    (* ⊢ A ⇒ (q = qp) *)
+    rule = ASSUME[mkComb[mkComb[impC, A], mkEq[q, qp]]];
+    (* target = A ∧ q. AND_CONG: left A first; right q under ctxAsm A. *)
+    target = mkComb[mkComb[andC, A], q];
+    res = HOL`Auto`Simp`simpConv[{rule}][target];
+    expected = mkComb[mkComb[andC, A], qp];
+    HOLTest`assertEq[concl[res][[2]], expected,
+      "AND_CONG carries left as ctx into right; rule fires on q"];
+]];
+
+HOLTest`runTests["simp: nested IMP / AND congruence",
+  Module[{A, B, q, qp, impC, andC, rule, target, res, expected},
+    A = mkVar["A", boolTy];
+    B = mkVar["B", boolTy];
+    q = mkVar["q", boolTy];
+    qp = mkVar["qp", boolTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    (* ⊢ B ⇒ (q = qp) — needs B in ctx for the inner conditional rule. *)
+    rule = ASSUME[mkComb[mkComb[impC, B], mkEq[q, qp]]];
+    (* target = (A ∧ B) ⇒ q. After IMP_CONG, ctxAsm = (A ∧ B); but the *)
+    (* prover's recursive simpProve[B] needs to discharge B given ctx   *)
+    (* (A ∧ B). With current MVP we don't break A ∧ B into A and B, so  *)
+    (* this test verifies the rule does NOT fire — target unchanged.   *)
+    target = mkComb[mkComb[impC, mkComb[mkComb[andC, A], B]], q];
+    res = HOL`Auto`Simp`simpConv[{rule}][target];
+    expected = target;
+    HOLTest`assertEq[concl[res][[2]], expected,
+      "nested A ∧ B as single ctx fact doesn't auto-split — rule doesn't fire"];
+]];
+
 HOLTest`runTests["simp: SIMP tactic leaves residual goal when not T",
   Module[{p, q, eqTh, g, r, sg},
     p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
