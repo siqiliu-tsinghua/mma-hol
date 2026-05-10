@@ -17,7 +17,7 @@
    β-3: context-aware congruence descent at ⇒ / ∧ / ∨ positions. The
    simplification of `q` under `(p ⇒ q)` (resp. `(p ∧ q)`) runs with
    the simplified left-hand p' added to the assumption context; under
-   `(p ∨ q)` the right-hand context is `¬p'`. ctxAsms appear in the
+   `(p ∨ q)` the right-hand context is `¬p'`. ctxThms appear in the
    inner simpFixpointConv as: (1) ctxRewrConv exact-match rewriters
    that turn an aconv-equal subterm into ⊢ subterm = T, and (2) facts
    for the prover's direct lookup when discharging conditional-rule
@@ -50,6 +50,13 @@ SIMP::usage =
   "SIMP[thms_List][g_goal] — tactic that runs simpConv on the goal's "   <>
   "conclusion. If the result is T, closes via TRUTH; else replaces the " <>
   "goal with the simplified concl.";
+
+asmSimp::usage =
+  "asmSimp[thms_List][g_goal] — like SIMP but the goal's assumption "   <>
+  "theorems are joined into the rule list. Each asm is first walked "    <>
+  "by splitConjThm so a `⊢ A ∧ B` assumption contributes both `⊢ A` "   <>
+  "and `⊢ B` as facts, fixing the β-3 limitation that conjunctive "     <>
+  "ctxThms aren't auto-split during congruence discharge.";
 
 simpPrepareRule::usage =
   "simpPrepareRule[th] — strip leading ∀'s via specWithFreshName; if "   <>
@@ -274,15 +281,19 @@ simpRuleConv[ruleTh_, prover_][t_] :=
     ]
   ];
 
-(* Exact-match assumption rewrite: turns ⊢ asm = T into a conv that *)
-(* fires only when the target is α-equal to asm. Uses ASSUME[asm]   *)
-(* internally so the resulting equation carries asm as a hypothesis. *)
-ctxRewrConv[asm_][t_] :=
-  If[aconv[t, asm],
-    HOL`Bool`EQTINTRO[ASSUME[asm]],
+(* Exact-match assumption rewrite: takes a *theorem* (whose concl is   *)
+(* the assumption) and fires only when the target is α-equal to that   *)
+(* concl. Returns EQTINTRO[asmTh] so the original thm's hyps are       *)
+(* preserved — important for asmSimp, where asms come from a goalstack*)
+(* that already tracks the hyps elsewhere. Compare with ctxAsms-as-    *)
+(* term: that flavour fabricated a fresh ASSUME[term] which would lose *)
+(* the original asm's derivation chain.                                 *)
+ctxRewrConv[asmTh_][t_] :=
+  If[aconv[t, concl[asmTh]],
+    HOL`Bool`EQTINTRO[asmTh],
     Throw[HOL`Error`holError["conv",
       "ctxRewrConv: target not α-equal to context assumption",
-      <|"target" -> t, "asm" -> asm|>], HOL`Error`holErrorTag]];
+      <|"target" -> t, "asm" -> concl[asmTh]|>], HOL`Error`holErrorTag]];
 
 combineSimpConvs[{}]         := BETACONV;
 combineSimpConvs[{conv_}]    := HOL`Drule`ORELSEC[conv, BETACONV];
@@ -295,16 +306,16 @@ combineSimpConvs[{conv_, rest__}] :=
 
 $simpDepthLimit = 4;
 
-makeProver[origThms_List, ctxAsms_List, depth_Integer] :=
+makeProver[origThms_List, ctxThms_List, depth_Integer] :=
   Function[{antTm},
     Module[{allFacts, direct, T},
-      allFacts = Join[origThms, ASSUME /@ ctxAsms];
+      allFacts = Join[origThms, ctxThms];
       direct = SelectFirst[allFacts, aconv[concl[#], antTm] &, Missing[]];
       T = tConst[];
       Which[
         !MissingQ[direct], direct,
         antTm === T,       HOL`Bool`TRUTH,
-        depth > 0,         simpProveImpl[origThms, ctxAsms, depth - 1, antTm],
+        depth > 0,         simpProveImpl[origThms, ctxThms, depth - 1, antTm],
         True,
           Throw[HOL`Error`holError["simp",
             "simp: cannot discharge antecedent (depth exhausted)",
@@ -317,13 +328,13 @@ makeProver[origThms_List, ctxAsms_List, depth_Integer] :=
 (* baseConv: assemble conv stack for one (rules, ctx, depth)    *)
 (* ============================================================ *)
 
-buildBaseConv[ruleThms_List, ctxAsms_List, depth_Integer] :=
+buildBaseConv[ruleThms_List, ctxThms_List, depth_Integer] :=
   Module[{prepared, productive, prover, ruleConvs, ctxConvs},
     prepared = HOL`Auto`Simp`simpPrepareRule /@ ruleThms;
     productive = Select[prepared, productiveSimpRule];
-    prover = makeProver[ruleThms, ctxAsms, depth];
+    prover = makeProver[ruleThms, ctxThms, depth];
     ruleConvs = simpRuleConv[#, prover] & /@ productive;
-    ctxConvs = ctxRewrConv /@ ctxAsms;
+    ctxConvs = ctxRewrConv /@ ctxThms;
     (* Order: ctx-rewrites first (cheap aconv), then user/basic rules,    *)
     (* then BETACONV at the deepest fallback.                             *)
     combineSimpConvs[Join[ctxConvs, ruleConvs]]
@@ -333,13 +344,14 @@ buildBaseConv[ruleThms_List, ctxAsms_List, depth_Integer] :=
 (* congruence descents (β-3)                                    *)
 (* ============================================================ *)
 
-doImpCong[ruleThms_, ctxAsms_, depth_][t_] :=
+doImpCong[ruleThms_, ctxThms_, depth_][t_] :=
   Module[{p1Tm, q1Tm, eq1, p2Tm, eq2, q2Tm, dischEq2, conjAx,
           p1V, p2V, q1V, q2V, instLemma},
     p1Tm = t[[1, 2]]; q1Tm = t[[2]];
-    eq1 = simpFixpointConv[ruleThms, ctxAsms, depth][p1Tm];
+    eq1 = simpFixpointConv[ruleThms, ctxThms, depth][p1Tm];
     p2Tm = concl[eq1][[2]];
-    eq2 = simpFixpointConv[ruleThms, Append[ctxAsms, p2Tm], depth][q1Tm];
+    eq2 = simpFixpointConv[ruleThms,
+            Append[ctxThms, ASSUME[p2Tm]], depth][q1Tm];
     q2Tm = concl[eq2][[2]];
     dischEq2 = HOL`Bool`DISCH[p2Tm, eq2];
     conjAx = HOL`Bool`CONJ[eq1, dischEq2];
@@ -351,13 +363,14 @@ doImpCong[ruleThms_, ctxAsms_, depth_][t_] :=
     HOL`Bool`MP[instLemma, conjAx]
   ];
 
-doAndCong[ruleThms_, ctxAsms_, depth_][t_] :=
+doAndCong[ruleThms_, ctxThms_, depth_][t_] :=
   Module[{p1Tm, q1Tm, eq1, p2Tm, eq2, q2Tm, dischEq2, conjAx,
           p1V, p2V, q1V, q2V, instLemma},
     p1Tm = t[[1, 2]]; q1Tm = t[[2]];
-    eq1 = simpFixpointConv[ruleThms, ctxAsms, depth][p1Tm];
+    eq1 = simpFixpointConv[ruleThms, ctxThms, depth][p1Tm];
     p2Tm = concl[eq1][[2]];
-    eq2 = simpFixpointConv[ruleThms, Append[ctxAsms, p2Tm], depth][q1Tm];
+    eq2 = simpFixpointConv[ruleThms,
+            Append[ctxThms, ASSUME[p2Tm]], depth][q1Tm];
     q2Tm = concl[eq2][[2]];
     dischEq2 = HOL`Bool`DISCH[p2Tm, eq2];
     conjAx = HOL`Bool`CONJ[eq1, dischEq2];
@@ -369,14 +382,15 @@ doAndCong[ruleThms_, ctxAsms_, depth_][t_] :=
     HOL`Bool`MP[instLemma, conjAx]
   ];
 
-doOrCong[ruleThms_, ctxAsms_, depth_][t_] :=
+doOrCong[ruleThms_, ctxThms_, depth_][t_] :=
   Module[{p1Tm, q1Tm, eq1, p2Tm, notP2, eq2, q2Tm, dischEq2, conjAx,
           p1V, p2V, q1V, q2V, instLemma},
     p1Tm = t[[1, 2]]; q1Tm = t[[2]];
-    eq1 = simpFixpointConv[ruleThms, ctxAsms, depth][p1Tm];
+    eq1 = simpFixpointConv[ruleThms, ctxThms, depth][p1Tm];
     p2Tm = concl[eq1][[2]];
     notP2 = mkNot[p2Tm];
-    eq2 = simpFixpointConv[ruleThms, Append[ctxAsms, notP2], depth][q1Tm];
+    eq2 = simpFixpointConv[ruleThms,
+            Append[ctxThms, ASSUME[notP2]], depth][q1Tm];
     q2Tm = concl[eq2][[2]];
     dischEq2 = HOL`Bool`DISCH[notP2, eq2];
     conjAx = HOL`Bool`CONJ[eq1, dischEq2];
@@ -392,15 +406,15 @@ doOrCong[ruleThms_, ctxAsms_, depth_][t_] :=
 (* one-pass descent: congruence dispatch, else MKCOMB / ABS     *)
 (* ============================================================ *)
 
-descendOnce[ruleThms_, ctxAsms_, depth_][t_] :=
+descendOnce[ruleThms_, ctxThms_, depth_][t_] :=
   Which[
-    isImp[t],     doImpCong[ruleThms, ctxAsms, depth][t],
-    isAndForm[t], doAndCong[ruleThms, ctxAsms, depth][t],
-    isOrForm[t],  doOrCong[ruleThms, ctxAsms, depth][t],
+    isImp[t],     doImpCong[ruleThms, ctxThms, depth][t],
+    isAndForm[t], doAndCong[ruleThms, ctxThms, depth][t],
+    isOrForm[t],  doOrCong[ruleThms, ctxThms, depth][t],
     MatchQ[t, comb[_, _]],
       Module[{f = t[[1]], x = t[[2]], fEq, xEq},
-        fEq = simpFixpointConv[ruleThms, ctxAsms, depth][f];
-        xEq = simpFixpointConv[ruleThms, ctxAsms, depth][x];
+        fEq = simpFixpointConv[ruleThms, ctxThms, depth][f];
+        xEq = simpFixpointConv[ruleThms, ctxThms, depth][x];
         MKCOMB[fEq, xEq]
       ],
     MatchQ[t, abs[bvar[0, _], _, _]],
@@ -411,7 +425,7 @@ descendOnce[ruleThms_, ctxAsms_, depth_][t_] :=
         v = mkVar[name, bty];
         openTh = BETA[mkComb[abs[bvar[0, bty], body, name], v]];
         opened = concl[openTh][[2]];
-        innerEq = simpFixpointConv[ruleThms, ctxAsms, depth][opened];
+        innerEq = simpFixpointConv[ruleThms, ctxThms, depth][opened];
         ABS[v, innerEq]
       ],
     True, REFL[t]
@@ -421,18 +435,18 @@ descendOnce[ruleThms_, ctxAsms_, depth_][t_] :=
 (* one step + fixpoint                                          *)
 (* ============================================================ *)
 
-simpStepConv[baseConv_, ruleThms_, ctxAsms_, depth_][t_] :=
+simpStepConv[baseConv_, ruleThms_, ctxThms_, depth_][t_] :=
   Module[{topTh, rhs1, descTh},
     topTh = HOL`Drule`TRYCONV[HOL`Drule`REPEATC[baseConv]][t];
     rhs1 = concl[topTh][[2]];
-    descTh = descendOnce[ruleThms, ctxAsms, depth][rhs1];
+    descTh = descendOnce[ruleThms, ctxThms, depth][rhs1];
     TRANS[topTh, descTh]
   ];
 
-simpFixpointConv[ruleThms_, ctxAsms_, depth_][t_] :=
+simpFixpointConv[ruleThms_, ctxThms_, depth_][t_] :=
   Module[{baseConv, stepConv, cur, rhs, next, newRhs, seen},
-    baseConv = buildBaseConv[ruleThms, ctxAsms, depth];
-    stepConv = simpStepConv[baseConv, ruleThms, ctxAsms, depth];
+    baseConv = buildBaseConv[ruleThms, ctxThms, depth];
+    stepConv = simpStepConv[baseConv, ruleThms, ctxThms, depth];
     cur = stepConv[t];
     rhs = concl[cur][[2]];
     seen = <|t -> True, rhs -> True|>;
@@ -448,9 +462,9 @@ simpFixpointConv[ruleThms_, ctxAsms_, depth_][t_] :=
     cur
   ];
 
-simpProveImpl[thms_List, ctxAsms_List, depth_Integer, t_] :=
+simpProveImpl[thms_List, ctxThms_List, depth_Integer, t_] :=
   Module[{eqTh, rhs, T},
-    eqTh = simpFixpointConv[thms, ctxAsms, depth][t];
+    eqTh = simpFixpointConv[thms, ctxThms, depth][t];
     rhs = concl[eqTh][[2]];
     T = tConst[];
     If[rhs =!= T,
@@ -475,6 +489,46 @@ HOL`Auto`Simp`simpProve[t_, thms_List] :=
 HOL`Auto`Simp`SIMP[thms_List][g : HOL`Tactics`goal[asms_, conclTm_]] :=
   Module[{eqTh, rhs, T, just},
     eqTh = HOL`Auto`Simp`simpConv[thms][conclTm];
+    rhs = concl[eqTh][[2]];
+    T = tConst[];
+    If[rhs === T,
+      just = Function[{ths}, HOL`Bool`EQTELIM[eqTh]];
+      HOL`Tactics`tacResult[{}, just],
+      just = Function[{ths},
+        EQMP[HOL`Equal`SYM[eqTh], First[ths]]];
+      HOL`Tactics`tacResult[
+        {HOL`Tactics`goal[asms, rhs]}, just]
+    ]
+  ];
+
+(* asmSimp: walk each asm through splitConjThm so a conjunctive      *)
+(* assumption contributes its components individually. Each component *)
+(* is then classified — equation/conditional asms join the user thms  *)
+(* as proper rewrite rules; everything else (the bare-fact case) is   *)
+(* threaded into ctxThms so it acts as an exact-match (α-equal) ctx   *)
+(* rewrite + prover-direct-lookup fact, never as a pattern-matching   *)
+(* rule that would over-match against arbitrary subterms and pollute  *)
+(* the result's hyp set with non-asm hypotheses.                       *)
+classifyAsm[th_] :=
+  Module[{cur, c, kind},
+    cur = th;
+    While[isForall[concl[cur]],
+      cur = HOL`Auto`Meson`specWithFreshName[cur]];
+    c = concl[cur];
+    kind = If[isEquation[c] || isConditionalRule[c], "rule", "fact"];
+    {kind, cur}
+  ];
+
+HOL`Auto`Simp`asmSimp[thms_List][g : HOL`Tactics`goal[asms_, conclTm_]] :=
+  Module[{splitAsms, classified, ruleAsms, factAsms, allRules,
+          eqTh, rhs, T, just},
+    splitAsms  = Flatten[Map[HOL`Auto`PropTaut`splitConjThm, asms]];
+    classified = classifyAsm /@ splitAsms;
+    ruleAsms   = Cases[classified, {"rule", th_} :> th];
+    factAsms   = Cases[classified, {"fact", th_} :> th];
+    allRules   = Join[ruleAsms, thms];
+    eqTh = simpFixpointConv[
+      withBasic[allRules], factAsms, $simpDepthLimit][conclTm];
     rhs = concl[eqTh][[2]];
     T = tConst[];
     If[rhs === T,

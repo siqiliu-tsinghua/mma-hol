@@ -356,6 +356,88 @@ HOLTest`runTests["simp: condRewr through ∀-stripped rule",
     ];
 ]];
 
+(* ===== β-4: asmSimp tactic + auto conjunction split ===== *)
+
+HOLTest`runTests["simp: asmSimp closes goal whose asm matches concl",
+  Module[{A, asThm, g, res, sg, just, finalTh},
+    A = mkVar["A", boolTy];
+    asThm = ASSUME[A];                         (* (A) ⊢ A *)
+    g = HOL`Tactics`goal[{asThm}, A];
+    res = HOL`Auto`Simp`asmSimp[{}][g];
+    sg = res[[1]]; just = res[[2]];
+    HOLTest`assertEq[sg, {}, "no residual subgoal"];
+    finalTh = just[{}];
+    HOLTest`assertEq[concl[finalTh], A, "concl is A"];
+    HOLTest`assertEq[hyp[finalTh], {A}, "hyp set is exactly {A}"];
+]];
+
+HOLTest`runTests["simp: asmSimp splits A ∧ B asm and uses each conjunct",
+  Module[{A, B, andC, asConj, asThm, g, res, sg, just, finalTh},
+    A = mkVar["A", boolTy]; B = mkVar["B", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    asConj = mkComb[mkComb[andC, A], B];        (* A ∧ B *)
+    asThm = ASSUME[asConj];                      (* (A ∧ B) ⊢ A ∧ B *)
+    g = HOL`Tactics`goal[{asThm}, B];           (* prove B *)
+    res = HOL`Auto`Simp`asmSimp[{}][g];
+    sg = res[[1]]; just = res[[2]];
+    HOLTest`assertEq[sg, {}, "no residual subgoal"];
+    finalTh = just[{}];
+    HOLTest`assertEq[concl[finalTh], B, "concl is B"];
+    HOLTest`assertEq[hyp[finalTh], {asConj},
+      "hyp is the original conjunctive assumption"];
+]];
+
+HOLTest`runTests["simp: asmSimp enables conditional rule via asm-as-context",
+  Module[{A, q, qp, impC, ruleCond, asThm, g, res, sg, just, finalTh},
+    A = mkVar["A", boolTy];
+    q = mkVar["q", boolTy];
+    qp = mkVar["qp", boolTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    (* ⊢ A ⇒ (q = qp) — conditional rule *)
+    ruleCond = ASSUME[mkComb[mkComb[impC, A], mkEq[q, qp]]];
+    (* asm: ⊢ A *)
+    asThm = ASSUME[A];
+    (* goal: prove q given asm A and rule A ⇒ q = qp *)
+    g = HOL`Tactics`goal[{asThm}, q];
+    res = HOL`Auto`Simp`asmSimp[{ruleCond}][g];
+    sg = res[[1]]; just = res[[2]];
+    HOLTest`assertEq[sg, {HOL`Tactics`goal[{asThm}, qp]},
+      "subgoal is the simplified concl qp"];
+    finalTh = just[{ASSUME[qp]}];
+    HOLTest`assertEq[concl[finalTh], q, "just returns ⊢ q"];
+]];
+
+HOLTest`runTests["simp: asmSimp doesn't over-match an atomic asm onto a different var",
+  Module[{A, B, asThm, g, res, eqTh, sg},
+    A = mkVar["A", boolTy]; B = mkVar["B", boolTy];
+    asThm = ASSUME[A];
+    (* goal concl is B (different var). asmSimp must not pretend B = T *)
+    (* via over-matching the EQT-coerced ⊢ A = T; with the fact-as-ctx *)
+    (* path the rewrite is exact-match only, so target B is left alone.*)
+    g = HOL`Tactics`goal[{asThm}, B];
+    res = HOL`Auto`Simp`asmSimp[{}][g];
+    sg = res[[1]];
+    HOLTest`assertEq[Length[sg], 1, "exactly one residual subgoal"];
+    HOLTest`assertEq[sg[[1]], HOL`Tactics`goal[{asThm}, B],
+      "B is not rewritten (no over-match against A asm)"];
+]];
+
+HOLTest`runTests["simp: asmSimp closes p ⇒ p ∧ p via dischTac chain",
+  Module[{p, andC, impC, target, th},
+    p = mkVar["p", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    target = mkComb[mkComb[impC, p], mkComb[mkComb[andC, p], p]];
+    (* Prove ⊢ p ⇒ p ∧ p: dischTac introduces ⊢ p as asm; asmSimp   *)
+    (* uses it (exact-match) to rewrite both p's in (p ∧ p) to T,    *)
+    (* basic finishes T ∧ T = T.                                      *)
+    th = HOL`Tactics`prove[target,
+      HOL`Tactics`THEN[HOL`Tactics`dischTac, HOL`Auto`Simp`asmSimp[{}]]];
+    HOLTest`assertEq[concl[th], target,
+      "p ⇒ p ∧ p closes via dischTac + asmSimp"];
+    HOLTest`assertEq[hyp[th], {}, "no residual hyps"];
+]];
+
 (* ===== β-3: congruence rules (IMP / AND / OR) ===== *)
 
 HOLTest`runTests["simp: IMP_CONG enables conditional rule via context",
