@@ -163,6 +163,88 @@ HOLTest`runTests["simp: SIMP tactic closes a goal that reduces to T",
       "SIMP[{p = T}] closes goal p"];
 ]];
 
+(* ===== β-1.5: built-in propositional simpset ===== *)
+
+HOLTest`runTests["simp: basicSimpset reduces T ∧ p to p with no user rules",
+  Module[{p, T, andC, target, res},
+    p = mkVar["p", boolTy];
+    T = mkConst["T", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    target = mkComb[mkComb[andC, T], p];          (* T ∧ p *)
+    res = HOL`Auto`Simp`simpConv[{}][target];
+    HOLTest`assertEq[concl[res][[2]], p,
+      "T ∧ p simplifies to p"];
+]];
+
+HOLTest`runTests["simp: basicSimpset reduces ¬¬¬¬x without user rules",
+  Module[{x, notC, target, res},
+    x = mkVar["x", boolTy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    target = mkComb[notC, mkComb[notC,
+              mkComb[notC, mkComb[notC, x]]]];   (* ¬¬¬¬x *)
+    res = HOL`Auto`Simp`simpConv[{}][target];
+    HOLTest`assertEq[concl[res][[2]], x,
+      "¬¬¬¬x reduces to x via two ¬¬p = p rewrites"];
+]];
+
+HOLTest`runTests["simp: basicSimpset closes p ⇒ p",
+  Module[{p, impC, target, th},
+    p = mkVar["p", boolTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    target = mkComb[mkComb[impC, p], p];          (* p ⇒ p *)
+    th = HOL`Auto`Simp`simpProve[target, {}];
+    HOLTest`assertEq[concl[th], target,
+      "simpProve discharges p ⇒ p via basicSimpset"];
+    HOLTest`assertEq[hyp[th], {}, "no hyps in the result"];
+]];
+
+HOLTest`runTests["simp: basicSimpset closes nested propositional formula",
+  Module[{p, T, F, andC, orC, notC, target, th},
+    p = mkVar["p", boolTy];
+    T = mkConst["T", boolTy];
+    F = mkConst["F", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    orC  = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    (* ¬F ∧ (T ∨ p) = T ∧ T = T *)
+    target = mkComb[mkComb[andC, mkComb[notC, F]],
+              mkComb[mkComb[orC, T], p]];
+    th = HOL`Auto`Simp`simpProve[target, {}];
+    HOLTest`assertEq[concl[th], target,
+      "¬F ∧ (T ∨ p) simplifies to T and is proved"];
+]];
+
+HOLTest`runTests["simp: basicSimpset enables conditional rule with F ⇒ p antecedent",
+  Module[{p, q, F, impC, notC, lhs, ruleAnt, rule, target, res},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    F = mkConst["F", boolTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    lhs = mkComb[notC, p];
+    ruleAnt = mkComb[mkComb[impC, F], p];          (* F ⇒ p — a tautology *)
+    (* ⊢ (F ⇒ p) ⇒ (¬p = q): the antecedent is provable via basicSimpset's *)
+    (* `F ⇒ p = T`, so the recursive simpProve discharges it.              *)
+    rule = ASSUME[mkComb[mkComb[impC, ruleAnt], mkEq[lhs, q]]];
+    target = mkComb[notC, p];
+    res = HOL`Auto`Simp`simpConv[{rule}][target];
+    HOLTest`assertEq[concl[res][[2]], q,
+      "basic F ⇒ p = T discharges antecedent → ¬p rewrites to q"];
+]];
+
+HOLTest`runTests["simp: user rule wins over basic when both match",
+  Module[{p, T, andC, lhs, userRule, target, res},
+    p = mkVar["p", boolTy];
+    T = mkConst["T", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    lhs = mkComb[mkComb[andC, T], p];
+    (* User rule: T ∧ p = T (overrides basic T ∧ p = p). User goes first. *)
+    userRule = ASSUME[mkEq[lhs, T]];
+    target = lhs;
+    res = HOL`Auto`Simp`simpConv[{userRule}][target];
+    HOLTest`assertEq[concl[res][[2]], T,
+      "user rule overrides basic for T ∧ p"];
+]];
+
 (* ===== β-2: conditional rewriting ===== *)
 
 HOLTest`runTests["simp: condRewr discharges T antecedent (TRUTH path)",

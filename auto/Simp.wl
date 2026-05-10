@@ -21,7 +21,7 @@
 BeginPackage["HOL`Auto`Simp`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
-  "HOL`Tactics`", "HOL`Auto`Meson`"
+  "HOL`Tactics`", "HOL`Auto`PropTaut`", "HOL`Auto`Meson`"
 }];
 
 simpConv::usage =
@@ -43,6 +43,13 @@ simpPrepareRule::usage =
   "simpPrepareRule[th] — strip leading ∀'s via specWithFreshName; if "   <>
   "the resulting concl is neither an equation nor a conditional rule, "  <>
   "EQT-coerce to ⊢ p = T. Returns the prepared rule theorem.";
+
+basicSimpset::usage =
+  "basicSimpset[] — list of propositional simplification theorems "      <>
+  "(T∧p=p, ¬¬p=p, p⇒p=T, …) proved once via propTaut and cached. SIMP " <>
+  "and simpProve prepend this list AFTER the user's thms so user rules " <>
+  "are tried first; combineSimpConvs preserves the order via right-"     <>
+  "associated ORELSEC.";
 
 Begin["`Private`"];
 
@@ -183,6 +190,47 @@ combineSimpConvs[{conv_, rest__}] :=
 (* depth - 1; once depth hits 0 the prover is replaced by a stub that   *)
 (* always fails, blocking further conditional rule firings. This caps    *)
 (* recursion in the presence of mutually-conditional rule sets.          *)
+(* ------------- built-in propositional simpset (β-1.5) ------------- *)
+
+(* Computed lazily on first use so propTaut isn't invoked at module     *)
+(* load. Cached via the `:=` self-rebinding idiom: the first call       *)
+(* evaluates the RHS and replaces the definition with its result.       *)
+computeBasicSimpset[] :=
+  Module[{p, T, F, andC, orC, impC, notC, eqC, schemas},
+    p    = mkVar["p", boolTy];
+    T    = mkConst["T", boolTy];
+    F    = mkConst["F", boolTy];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    orC  = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    eqC  = mkConst["=", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    schemas = {
+      mkEq[mkComb[mkComb[andC, T], p], p],          (* T ∧ p = p     *)
+      mkEq[mkComb[mkComb[andC, p], T], p],          (* p ∧ T = p     *)
+      mkEq[mkComb[mkComb[andC, F], p], F],          (* F ∧ p = F     *)
+      mkEq[mkComb[mkComb[andC, p], F], F],          (* p ∧ F = F     *)
+      mkEq[mkComb[mkComb[andC, p], p], p],          (* p ∧ p = p     *)
+      mkEq[mkComb[mkComb[orC,  T], p], T],          (* T ∨ p = T     *)
+      mkEq[mkComb[mkComb[orC,  p], T], T],          (* p ∨ T = T     *)
+      mkEq[mkComb[mkComb[orC,  F], p], p],          (* F ∨ p = p     *)
+      mkEq[mkComb[mkComb[orC,  p], F], p],          (* p ∨ F = p     *)
+      mkEq[mkComb[mkComb[orC,  p], p], p],          (* p ∨ p = p     *)
+      mkEq[mkComb[mkComb[impC, T], p], p],          (* T ⇒ p = p     *)
+      mkEq[mkComb[mkComb[impC, F], p], T],          (* F ⇒ p = T     *)
+      mkEq[mkComb[mkComb[impC, p], T], T],          (* p ⇒ T = T     *)
+      mkEq[mkComb[mkComb[impC, p], p], T],          (* p ⇒ p = T     *)
+      mkEq[mkComb[notC, T], F],                      (* ¬T = F        *)
+      mkEq[mkComb[notC, F], T],                      (* ¬F = T        *)
+      mkEq[mkComb[notC, mkComb[notC, p]], p],        (* ¬¬p = p       *)
+      mkEq[mkComb[mkComb[eqC, T], p], p],           (* (T = p) = p   *)
+      mkEq[mkComb[mkComb[eqC, p], T], p]            (* (p = T) = p   *)
+    };
+    Map[HOL`Auto`PropTaut`propTaut, schemas]
+  ];
+
+HOL`Auto`Simp`basicSimpset[] := HOL`Auto`Simp`basicSimpset[] = computeBasicSimpset[];
+
 $simpDepthLimit = 4;
 
 (* The prover discharges antecedents in conditional rules. Tries:        *)
@@ -233,11 +281,16 @@ simpProveImpl[thms_List, depth_Integer, t_] :=
     HOL`Bool`EQTELIM[eqTh]
   ];
 
+(* User thms come FIRST so they take ORELSEC priority over the basic   *)
+(* schemas; combineSimpConvs preserves left-to-right order via right-  *)
+(* associated ORELSEC.                                                  *)
+withBasic[thms_List] := Join[thms, HOL`Auto`Simp`basicSimpset[]];
+
 HOL`Auto`Simp`simpConv[thms_List][t_] :=
-  simpConvImpl[thms, $simpDepthLimit][t];
+  simpConvImpl[withBasic[thms], $simpDepthLimit][t];
 
 HOL`Auto`Simp`simpProve[t_, thms_List] :=
-  simpProveImpl[thms, $simpDepthLimit, t];
+  simpProveImpl[withBasic[thms], $simpDepthLimit, t];
 
 HOL`Auto`Simp`SIMP[thms_List][g : HOL`Tactics`goal[asms_, conclTm_]] :=
   Module[{eqTh, rhs, T, just},
