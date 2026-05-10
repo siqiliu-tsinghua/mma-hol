@@ -80,6 +80,20 @@ repPairThm::usage =
   "repPairThm — ⊢ REP_prod (x, y) = mkPair x y. The bridge from the " <>
   "constructor down to the underlying characteristic function.";
 
+fstConst::usage = "fstConst[] — the projection constant `FST : α × β → α`.";
+sndConst::usage = "sndConst[] — the projection constant `SND : α × β → β`.";
+
+fstDefThm::usage =
+  "fstDefThm — ⊢ FST = (λp. ε x. ∃ y. p = (x, y)).";
+sndDefThm::usage =
+  "sndDefThm — ⊢ SND = (λp. ε y. ∃ x. p = (x, y)).";
+
+fstPairEqThm::usage =
+  "fstPairEqThm — ⊢ FST (a, b) = a. " <>
+  "Derived via selectAx + pairInjThm chain.";
+sndPairEqThm::usage =
+  "sndPairEqThm — ⊢ SND (a, b) = b. Mirror of fstPairEqThm.";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -372,6 +386,188 @@ pairInjThm =
 
     HOL`Bool`DISCH[concl[hypEq], finalImp]
     (* ⊢ ((x,y) = (xP,yP)) ⇒ (x = xP ∧ y = yP) *)
+  ];
+
+(* ============================================================ *)
+(* FST : α × β → α   = λp. ε x. ∃ y. p = (x, y)                  *)
+(* SND : α × β → β   = λp. ε y. ∃ x. p = (x, y)                  *)
+(* ============================================================ *)
+
+fstTy = tyFun[prodTy[αTy, βTy], αTy];
+sndTy = tyFun[prodTy[αTy, βTy], βTy];
+
+selectCα[] := mkConst["@", tyFun[tyFun[αTy, boolTy], αTy]];
+selectCβ[] := mkConst["@", tyFun[tyFun[βTy, boolTy], βTy]];
+
+fstDefBody[] :=
+  Module[{pV, xV, yV},
+    pV = mkVar["p", prodTy[αTy, βTy]];
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    mkAbs[pV,
+      mkComb[selectCα[],
+        mkAbs[xV,
+          mkComb[existsC[βTy],
+            mkAbs[yV,
+              mkEq[pV, pairCons[xV, yV]]]]]]]
+  ];
+
+sndDefBody[] :=
+  Module[{pV, xV, yV},
+    pV = mkVar["p", prodTy[αTy, βTy]];
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    mkAbs[pV,
+      mkComb[selectCβ[],
+        mkAbs[yV,
+          mkComb[existsC[αTy],
+            mkAbs[xV,
+              mkEq[pV, pairCons[xV, yV]]]]]]]
+  ];
+
+fstDefThm = newDefinition[mkEq[mkVar["FST", fstTy], fstDefBody[]]];
+sndDefThm = newDefinition[mkEq[mkVar["SND", sndTy], sndDefBody[]]];
+
+fstConst[] := mkConst["FST", fstTy];
+sndConst[] := mkConst["SND", sndTy];
+
+(* ============================================================ *)
+(* fstPairEqThm : ⊢ FST (a, b) = a                              *)
+(*                                                              *)
+(* Chain:                                                       *)
+(*   (1) APTHM[fstDefThm, (a, b)] + BETACONV + TRANS:           *)
+(*         ⊢ FST (a, b) = ε x. ∃y. (a, b) = (x, y)              *)
+(*   (2) SPEC selectAx at P = λx. ∃y. (a, b) = (x, y), then     *)
+(*       at x = a, beta-reduce both sides:                      *)
+(*         ⊢ (∃y. (a, b) = (a, y)) ⇒                            *)
+(*           (∃y. (a, b) = (@P, y))                             *)
+(*   (3) Build antecedent ∃y. (a, b) = (a, y) via               *)
+(*       EXISTS[exTm, b, REFL[(a, b)]]. MP gives                *)
+(*         ⊢ ∃y. (a, b) = (@P, y).                              *)
+(*   (4) CHOOSE with fresh yC; under assumption                 *)
+(*       (a, b) = (@P, yC), pairInjThm gives a = @P.            *)
+(*   (5) SYM + TRANS with step (1).                             *)
+(* ============================================================ *)
+
+fstPairEqThm =
+  Module[{aV, bV, pairAB, fstAB,
+          step1, step2, step3,
+          xV, yV, predLambda, atP,
+          specP, specPa, specPaBeta,
+          reflAB, exTm, antThm, mpStep,
+          yChoose, assumePair, instInj, mpInj, conj1,
+          chooseRes, symEq},
+    aV = mkVar["a", αTy]; bV = mkVar["b", βTy];
+    pairAB = pairCons[aV, bV];
+    fstAB = mkComb[fstConst[], pairAB];
+
+    (* (1) Unfold FST def + beta. *)
+    step1 = HOL`Equal`APTHM[fstDefThm, pairAB];
+    step2 = BETACONV[concl[step1][[2]]];
+    step3 = TRANS[step1, step2];
+    (* step3 : ⊢ FST (a, b) = ε x. ∃y. (a, b) = (x, y) *)
+
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    predLambda = mkAbs[xV,
+      mkComb[existsC[βTy],
+        mkAbs[yV,
+          mkEq[pairAB, pairCons[xV, yV]]]]];
+    atP = mkComb[selectCα[], predLambda];
+
+    (* (2) selectAx specialized at P = predLambda and x = aV; beta-reduce. *)
+    (* selectAx uses tyVar["a"]; instantiate to αTy to match predLambda.   *)
+    specP = HOL`Bool`SPEC[predLambda,
+      INSTTYPE[{tyVar["a"] -> αTy}, HOL`Bootstrap`selectAx]];
+    specPa = HOL`Bool`SPEC[aV, specP];
+    specPaBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]],
+      specPa];
+    (* specPaBeta : ⊢ (∃y. (a, b) = (a, y)) ⇒ (∃y. (a, b) = (@P, y)) *)
+
+    (* (3) Build the antecedent and MP through. *)
+    reflAB = REFL[pairAB];
+    exTm = mkComb[existsC[βTy],
+      mkAbs[yV, mkEq[pairAB, pairCons[aV, yV]]]];
+    antThm = HOL`Bool`EXISTS[exTm, bV, reflAB];
+    mpStep = HOL`Bool`MP[specPaBeta, antThm];
+    (* mpStep : ⊢ ∃y. (a, b) = (@P, y) *)
+
+    (* (4) CHOOSE with fresh yC and pairInjThm to extract a = @P. *)
+    yChoose = mkVar["yChoose", βTy];
+    assumePair = ASSUME[mkEq[pairAB, pairCons[atP, yChoose]]];
+    instInj = INST[
+      {mkVar["x", αTy] -> aV,
+       mkVar["y", βTy] -> bV,
+       mkVar["xP", αTy] -> atP,
+       mkVar["yP", βTy] -> yChoose},
+      pairInjThm];
+    mpInj = HOL`Bool`MP[instInj, assumePair];
+    conj1 = HOL`Bool`CONJUNCT1[mpInj];
+    chooseRes = HOL`Bool`CHOOSE[yChoose, mpStep, conj1];
+    (* chooseRes : ⊢ a = @P *)
+
+    (* (5) SYM + TRANS. *)
+    symEq = HOL`Equal`SYM[chooseRes];   (* ⊢ @P = a *)
+    TRANS[step3, symEq]
+    (* ⊢ FST (a, b) = a *)
+  ];
+
+(* ============================================================ *)
+(* sndPairEqThm : ⊢ SND (a, b) = b — mirror of fstPairEqThm     *)
+(* ============================================================ *)
+
+sndPairEqThm =
+  Module[{aV, bV, pairAB, sndAB,
+          step1, step2, step3,
+          xV, yV, predLambda, atP,
+          specP, specPb, specPbBeta,
+          reflAB, exTm, antThm, mpStep,
+          xChoose, assumePair, instInj, mpInj, conj2,
+          chooseRes, symEq},
+    aV = mkVar["a", αTy]; bV = mkVar["b", βTy];
+    pairAB = pairCons[aV, bV];
+    sndAB = mkComb[sndConst[], pairAB];
+
+    step1 = HOL`Equal`APTHM[sndDefThm, pairAB];
+    step2 = BETACONV[concl[step1][[2]]];
+    step3 = TRANS[step1, step2];
+    (* step3 : ⊢ SND (a, b) = ε y. ∃x. (a, b) = (x, y) *)
+
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    predLambda = mkAbs[yV,
+      mkComb[existsC[αTy],
+        mkAbs[xV,
+          mkEq[pairAB, pairCons[xV, yV]]]]];
+    atP = mkComb[selectCβ[], predLambda];
+
+    specP = HOL`Bool`SPEC[predLambda,
+      INSTTYPE[{tyVar["a"] -> βTy}, HOL`Bootstrap`selectAx]];
+    specPb = HOL`Bool`SPEC[bV, specP];
+    specPbBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]],
+      specPb];
+    (* specPbBeta : ⊢ (∃x. (a, b) = (x, b)) ⇒ (∃x. (a, b) = (x, @P)) *)
+
+    reflAB = REFL[pairAB];
+    exTm = mkComb[existsC[αTy],
+      mkAbs[xV, mkEq[pairAB, pairCons[xV, bV]]]];
+    antThm = HOL`Bool`EXISTS[exTm, aV, reflAB];
+    mpStep = HOL`Bool`MP[specPbBeta, antThm];
+    (* mpStep : ⊢ ∃x. (a, b) = (x, @P) *)
+
+    xChoose = mkVar["xChoose", αTy];
+    assumePair = ASSUME[mkEq[pairAB, pairCons[xChoose, atP]]];
+    instInj = INST[
+      {mkVar["x", αTy] -> aV,
+       mkVar["y", βTy] -> bV,
+       mkVar["xP", αTy] -> xChoose,
+       mkVar["yP", βTy] -> atP},
+      pairInjThm];
+    mpInj = HOL`Bool`MP[instInj, assumePair];
+    conj2 = HOL`Bool`CONJUNCT2[mpInj];
+    chooseRes = HOL`Bool`CHOOSE[xChoose, mpStep, conj2];
+    (* chooseRes : ⊢ b = @P *)
+
+    symEq = HOL`Equal`SYM[chooseRes];
+    TRANS[step3, symEq]
   ];
 
 End[];

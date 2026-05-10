@@ -182,6 +182,62 @@ HOLTest`runTests["pair: pairInjThm is ((x, y) = (xP, yP)) ⇒ (x = xP ∧ y = yP
       "no hyps"];
 ]];
 
+(* ===== FST / SND projections + equation theorems ===== *)
+
+HOLTest`runTests["pair: FST has correct generic type",
+  Module[{alpha, beta, expected, ty},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    expected = tyFun[tyApp["prod", {alpha, beta}], alpha];
+    ty = constType["FST"];
+    HOLTest`assertEq[ty, expected,
+      "FST : prod[A, B] → A"];
+]];
+
+HOLTest`runTests["pair: SND has correct generic type",
+  Module[{alpha, beta, expected, ty},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    expected = tyFun[tyApp["prod", {alpha, beta}], beta];
+    ty = constType["SND"];
+    HOLTest`assertEq[ty, expected,
+      "SND : prod[A, B] → B"];
+]];
+
+HOLTest`runTests["pair: fstDefThm and sndDefThm are equations",
+  Module[{},
+    HOLTest`assertTrue[
+      MatchQ[concl[fstDefThm], comb[comb[const["=", _], const["FST", _]], _]],
+      "fstDefThm concl is FST = <λ>"];
+    HOLTest`assertTrue[
+      MatchQ[concl[sndDefThm], comb[comb[const["=", _], const["SND", _]], _]],
+      "sndDefThm concl is SND = <λ>"];
+    HOLTest`assertEq[hyp[fstDefThm], {}, "fstDefThm has no hyps"];
+    HOLTest`assertEq[hyp[sndDefThm], {}, "sndDefThm has no hyps"];
+]];
+
+HOLTest`runTests["pair: fstPairEqThm is FST (a, b) = a",
+  Module[{alpha, beta, a, b, expected},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    a = mkVar["a", alpha]; b = mkVar["b", beta];
+    expected = mkEq[
+      mkComb[mkConst["FST", constType["FST"]], pairCons[a, b]],
+      a];
+    HOLTest`assertEq[concl[fstPairEqThm], expected,
+      "⊢ FST (a, b) = a"];
+    HOLTest`assertEq[hyp[fstPairEqThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["pair: sndPairEqThm is SND (a, b) = b",
+  Module[{alpha, beta, a, b, expected},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    a = mkVar["a", alpha]; b = mkVar["b", beta];
+    expected = mkEq[
+      mkComb[mkConst["SND", constType["SND"]], pairCons[a, b]],
+      b];
+    HOLTest`assertEq[concl[sndPairEqThm], expected,
+      "⊢ SND (a, b) = b"];
+    HOLTest`assertEq[hyp[sndPairEqThm], {}, "no hyps"];
+]];
+
 HOLTest`runTests["pair: repAbsProdThm is (isPair r) = (REP_prod (ABS_prod r) = r)",
   Module[{c, lhs, rhs},
     c = concl[repAbsProdThm];
