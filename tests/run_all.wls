@@ -49,6 +49,7 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "stdlib", "Pair.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Sum.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Option.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Set.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
 
