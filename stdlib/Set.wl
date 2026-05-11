@@ -89,6 +89,32 @@ inPowThm::usage      = "inPowThm      — ⊢ T ∈ POW S = T ⊆ S.";
 inImageThm::usage    = "inImageThm    — ⊢ y ∈ IMAGE f S = ∃x. x ∈ S ∧ y = f x.";
 inPreimageThm::usage = "inPreimageThm — ⊢ x ∈ PREIMAGE f T = f x ∈ T.";
 
+ballConst::usage = "ballConst[] — BALL : set → (α → bool) → bool. Bounded ∀: BALL S P = ∀x. x ∈ S ⇒ P x.";
+bexConst::usage  = "bexConst[]  — BEX : set → (α → bool) → bool. Bounded ∃: BEX S P = ∃x. x ∈ S ∧ P x.";
+
+ballDefThm::usage = "ballDefThm — ⊢ BALL = (λS P. ∀x. x ∈ S ⇒ P x).";
+bexDefThm::usage  = "bexDefThm  — ⊢ BEX  = (λS P. ∃x. x ∈ S ∧ P x).";
+
+ballTerm::usage = "ballTerm[S, P] — build `BALL S P` (= ∀x ∈ S. P x).";
+bexTerm::usage  = "bexTerm[S, P]  — build `BEX S P` (= ∃x ∈ S. P x).";
+
+idConst::usage = "idConst[] — I : α → α, the identity function `λx. x`.";
+composeConst::usage = "composeConst[] — COMPOSE : (β → γ) → (α → β) → (α → γ).";
+
+idDefThm::usage = "idDefThm — ⊢ I = (λx. x).";
+composeDefThm::usage = "composeDefThm — ⊢ COMPOSE = (λf g. λx. f (g x)).";
+
+idApplyThm::usage     = "idApplyThm     — ⊢ I x = x.";
+composeApplyThm::usage = "composeApplyThm — ⊢ COMPOSE f g x = f (g x).";
+
+injConst::usage  = "injConst[] — INJ : (α → β) → α-set → β-set → bool.";
+surjConst::usage = "surjConst[] — SURJ : (α → β) → α-set → β-set → bool.";
+bijConst::usage  = "bijConst[] — BIJ : (α → β) → α-set → β-set → bool.";
+
+injDefThm::usage  = "injDefThm  — ⊢ INJ  f S T = (∀x. x ∈ S ⇒ f x ∈ T) ∧ (∀x y. x ∈ S ∧ y ∈ S ∧ f x = f y ⇒ x = y).";
+surjDefThm::usage = "surjDefThm — ⊢ SURJ f S T = (∀x. x ∈ S ⇒ f x ∈ T) ∧ (∀y. y ∈ T ⇒ ∃x. x ∈ S ∧ f x = y).";
+bijDefThm::usage  = "bijDefThm  — ⊢ BIJ  f S T = INJ f S T ∧ SURJ f S T.";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -519,6 +545,177 @@ inPreimageThm =
     rhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm}][rhsTerm];
     TRANS[lhsRedTh, HOL`Equal`SYM[rhsRedTh]]
   ];
+
+(* ============================================================ *)
+(* Helpers for building ∀x. body and ∃x. body                   *)
+(* ============================================================ *)
+
+forallTerm[xV_, body_] :=
+  mkComb[forallC[typeOf[xV]], mkAbs[xV, body]];
+
+existsTerm[xV_, body_] :=
+  mkComb[existsC[typeOf[xV]], mkAbs[xV, body]];
+
+(* ============================================================ *)
+(* Bounded quantifiers — BALL, BEX                              *)
+(*                                                              *)
+(*   BALL S P = ∀x. x ∈ S ⇒ P x                                 *)
+(*   BEX  S P = ∃x. x ∈ S ∧ P x                                 *)
+(* ============================================================ *)
+
+predTy = tyFun[αTy, boolTy];   (* predicate over α, same shape as setTy *)
+boundedTy = tyFun[setTy, tyFun[predTy, boolTy]];
+
+ballDefBody[] :=
+  Module[{SV, PV, xV, body},
+    SV = mkVar["S", setTy]; PV = mkVar["P", predTy];
+    xV = mkVar["x", αTy];
+    body = mkComb[mkComb[impC[], inTerm[xV, SV]], mkComb[PV, xV]];
+    mkAbs[SV, mkAbs[PV, forallTerm[xV, body]]]
+  ];
+
+bexDefBody[] :=
+  Module[{SV, PV, xV, body},
+    SV = mkVar["S", setTy]; PV = mkVar["P", predTy];
+    xV = mkVar["x", αTy];
+    body = mkComb[mkComb[andC[], inTerm[xV, SV]], mkComb[PV, xV]];
+    mkAbs[SV, mkAbs[PV, existsTerm[xV, body]]]
+  ];
+
+ballDefThm = newDefinition[mkEq[mkVar["BALL", boundedTy], ballDefBody[]]];
+bexDefThm  = newDefinition[mkEq[mkVar["BEX",  boundedTy], bexDefBody[]]];
+
+ballConst[] := mkConst["BALL", boundedTy];
+bexConst[]  := mkConst["BEX",  boundedTy];
+
+ballTerm[s_, p_] := mkComb[mkComb[ballConst[], s], p];
+bexTerm[s_, p_]  := mkComb[mkComb[bexConst[],  s], p];
+
+(* ============================================================ *)
+(* I (identity) and COMPOSE                                     *)
+(*                                                              *)
+(*   I        = λx. x                                            *)
+(*   COMPOSE  = λf g. λx. f (g x)                                *)
+(* ============================================================ *)
+
+idTy = tyFun[αTy, αTy];
+
+idDefBody[] :=
+  Module[{xV},
+    xV = mkVar["x", αTy];
+    mkAbs[xV, xV]
+  ];
+
+idDefThm = newDefinition[mkEq[mkVar["I", idTy], idDefBody[]]];
+idConst[] := mkConst["I", idTy];
+
+(* COMPOSE introduces a third type variable γ. *)
+γTy = mkVarType["C"];
+
+composeTy = tyFun[tyFun[βTy, γTy], tyFun[tyFun[αTy, βTy], tyFun[αTy, γTy]]];
+
+composeDefBody[] :=
+  Module[{fV, gV, xV},
+    fV = mkVar["f", tyFun[βTy, γTy]];
+    gV = mkVar["g", tyFun[αTy, βTy]];
+    xV = mkVar["x", αTy];
+    mkAbs[fV, mkAbs[gV, mkAbs[xV,
+      mkComb[fV, mkComb[gV, xV]]]]]
+  ];
+
+composeDefThm = newDefinition[mkEq[mkVar["COMPOSE", composeTy], composeDefBody[]]];
+composeConst[] := mkConst["COMPOSE", composeTy];
+
+(* Apply-style theorems — simpConv unfolds + beta-reduces.       *)
+
+idApplyThm =
+  Module[{xV, lhsTerm},
+    xV = mkVar["x", αTy];
+    lhsTerm = mkComb[idConst[], xV];
+    HOL`Auto`Simp`simpConv[{idDefThm}][lhsTerm]
+  ];
+
+composeApplyThm =
+  Module[{fV, gV, xV, lhsTerm, rhsTerm, lhsRedTh},
+    fV = mkVar["f", tyFun[βTy, γTy]];
+    gV = mkVar["g", tyFun[αTy, βTy]];
+    xV = mkVar["x", αTy];
+    lhsTerm = mkComb[mkComb[mkComb[composeConst[], fV], gV], xV];
+    lhsRedTh = HOL`Auto`Simp`simpConv[{composeDefThm}][lhsTerm];
+    (* simpConv reduces COMPOSE f g x → f (g x). *)
+    lhsRedTh
+  ];
+
+(* ============================================================ *)
+(* INJ, SURJ, BIJ — function properties on a domain S → T       *)
+(*                                                              *)
+(*   INJ  f S T = (∀x. x ∈ S ⇒ f x ∈ T)                          *)
+(*             ∧ (∀x y. x ∈ S ∧ y ∈ S ∧ f x = f y ⇒ x = y)       *)
+(*   SURJ f S T = (∀x. x ∈ S ⇒ f x ∈ T)                          *)
+(*             ∧ (∀y. y ∈ T ⇒ ∃x. x ∈ S ∧ f x = y)               *)
+(*   BIJ  f S T = INJ f S T ∧ SURJ f S T                         *)
+(* ============================================================ *)
+
+setFnPropTy = tyFun[tyFun[αTy, βTy], tyFun[setTy, tyFun[setBTy, boolTy]]];
+
+mapsIntoTerm[f_, S_, T_] :=
+  Module[{xV},
+    xV = mkVar["x", αTy];
+    forallTerm[xV,
+      mkComb[mkComb[impC[], inTerm[xV, S]],
+        inTerm[mkComb[f, xV], T]]]
+  ];
+
+injDefBody[] :=
+  Module[{fV, SV, TV, xV, yV, mapsIn, injectivePart, body},
+    fV = mkVar["f", tyFun[αTy, βTy]];
+    SV = mkVar["S", setTy]; TV = mkVar["T", setBTy];
+    xV = mkVar["x", αTy]; yV = mkVar["y", αTy];
+    mapsIn = mapsIntoTerm[fV, SV, TV];
+    injectivePart =
+      forallTerm[xV, forallTerm[yV,
+        mkComb[mkComb[impC[],
+          mkComb[mkComb[andC[], inTerm[xV, SV]],
+            mkComb[mkComb[andC[], inTerm[yV, SV]],
+              mkEq[mkComb[fV, xV], mkComb[fV, yV]]]]],
+          mkEq[xV, yV]]]];
+    body = mkComb[mkComb[andC[], mapsIn], injectivePart];
+    mkAbs[fV, mkAbs[SV, mkAbs[TV, body]]]
+  ];
+
+surjDefBody[] :=
+  Module[{fV, SV, TV, xV, yV, mapsIn, surjectivePart, body, innerEx},
+    fV = mkVar["f", tyFun[αTy, βTy]];
+    SV = mkVar["S", setTy]; TV = mkVar["T", setBTy];
+    xV = mkVar["x", αTy]; yV = mkVar["y", βTy];
+    mapsIn = mapsIntoTerm[fV, SV, TV];
+    innerEx = existsTerm[xV,
+      mkComb[mkComb[andC[], inTerm[xV, SV]],
+        mkEq[mkComb[fV, xV], yV]]];
+    surjectivePart =
+      forallTerm[yV,
+        mkComb[mkComb[impC[], inTerm[yV, TV]], innerEx]];
+    body = mkComb[mkComb[andC[], mapsIn], surjectivePart];
+    mkAbs[fV, mkAbs[SV, mkAbs[TV, body]]]
+  ];
+
+bijDefBody[] :=
+  Module[{fV, SV, TV, injTerm, surjTerm, body},
+    fV = mkVar["f", tyFun[αTy, βTy]];
+    SV = mkVar["S", setTy]; TV = mkVar["T", setBTy];
+    injTerm  = mkComb[mkComb[mkComb[mkConst["INJ",  setFnPropTy], fV], SV], TV];
+    surjTerm = mkComb[mkComb[mkComb[mkConst["SURJ", setFnPropTy], fV], SV], TV];
+    body = mkComb[mkComb[andC[], injTerm], surjTerm];
+    mkAbs[fV, mkAbs[SV, mkAbs[TV, body]]]
+  ];
+
+injDefThm  = newDefinition[mkEq[mkVar["INJ",  setFnPropTy], injDefBody[]]];
+surjDefThm = newDefinition[mkEq[mkVar["SURJ", setFnPropTy], surjDefBody[]]];
+bijDefThm  = newDefinition[mkEq[mkVar["BIJ",  setFnPropTy], bijDefBody[]]];
+
+injConst[]  := mkConst["INJ",  setFnPropTy];
+surjConst[] := mkConst["SURJ", setFnPropTy];
+bijConst[]  := mkConst["BIJ",  setFnPropTy];
 
 End[];
 EndPackage[];

@@ -315,3 +315,105 @@ HOLTest`runTests["set: inPreimageThm — x ∈ PREIMAGE f T = f x ∈ T",
       "⊢ x ∈ PREIMAGE f T = f x ∈ T"];
     HOLTest`assertEq[hyp[inPreimageThm], {}, "no hyps"];
 ]];
+
+(* ===== M7-2-d: bounded quantifiers + COMPOSE / I + INJ/SURJ/BIJ ===== *)
+
+HOLTest`runTests["set: BALL / BEX have correct generic types",
+  Module[{alpha, setT, predT, expectedTy},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    predT = tyFun[alpha, boolTy];
+    expectedTy = tyFun[setT, tyFun[predT, boolTy]];
+    HOLTest`assertEq[constType["BALL"], expectedTy,
+      "BALL : set → (α → bool) → bool"];
+    HOLTest`assertEq[constType["BEX"], expectedTy,
+      "BEX : set → (α → bool) → bool"];
+]];
+
+HOLTest`runTests["set: ballDefThm / bexDefThm are equations",
+  Module[{},
+    Scan[
+      Function[{pair},
+        HOLTest`assertTrue[
+          MatchQ[concl[pair[[1]]],
+            comb[comb[const["=", _], const[pair[[2]], _]], _]],
+          pair[[2]] <> " = <lambda>"];
+        HOLTest`assertEq[hyp[pair[[1]]], {},
+          pair[[2]] <> " no hyps"];
+      ],
+      {{ballDefThm, "BALL"}, {bexDefThm, "BEX"}}];
+]];
+
+HOLTest`runTests["set: ballTerm / bexTerm builders",
+  Module[{alpha, setT, predT, S, P},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy]; predT = setT;
+    S = mkVar["S", setT]; P = mkVar["P", predT];
+    HOLTest`assertEq[ballTerm[S, P],
+      mkComb[mkComb[mkConst["BALL", constType["BALL"]], S], P],
+      "ballTerm[S, P] = BALL S P"];
+    HOLTest`assertEq[bexTerm[S, P],
+      mkComb[mkComb[mkConst["BEX", constType["BEX"]], S], P],
+      "bexTerm[S, P] = BEX S P"];
+]];
+
+(* ===== I and COMPOSE ===== *)
+
+HOLTest`runTests["set: I has type α → α; COMPOSE has the right shape",
+  Module[{alpha, beta, gamma, idTyExpect, composeTyExpect},
+    alpha = mkVarType["A"]; beta = mkVarType["B"]; gamma = mkVarType["C"];
+    idTyExpect = tyFun[alpha, alpha];
+    composeTyExpect = tyFun[tyFun[beta, gamma],
+      tyFun[tyFun[alpha, beta], tyFun[alpha, gamma]]];
+    HOLTest`assertEq[constType["I"], idTyExpect, "I : A → A"];
+    HOLTest`assertEq[constType["COMPOSE"], composeTyExpect,
+      "COMPOSE : (B → C) → (A → B) → (A → C)"];
+]];
+
+HOLTest`runTests["set: idApplyThm — I x = x",
+  Module[{alpha, x, expected},
+    alpha = mkVarType["A"]; x = mkVar["x", alpha];
+    expected = mkEq[mkComb[mkConst["I", constType["I"]], x], x];
+    HOLTest`assertEq[concl[idApplyThm], expected, "⊢ I x = x"];
+    HOLTest`assertEq[hyp[idApplyThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: composeApplyThm — COMPOSE f g x = f (g x)",
+  Module[{alpha, beta, gamma, f, g, x, expected},
+    alpha = mkVarType["A"]; beta = mkVarType["B"]; gamma = mkVarType["C"];
+    f = mkVar["f", tyFun[beta, gamma]];
+    g = mkVar["g", tyFun[alpha, beta]];
+    x = mkVar["x", alpha];
+    expected = mkEq[
+      mkComb[mkComb[mkComb[mkConst["COMPOSE", constType["COMPOSE"]], f], g], x],
+      mkComb[f, mkComb[g, x]]];
+    HOLTest`assertEq[concl[composeApplyThm], expected,
+      "⊢ COMPOSE f g x = f (g x)"];
+    HOLTest`assertEq[hyp[composeApplyThm], {}, "no hyps"];
+]];
+
+(* ===== INJ / SURJ / BIJ ===== *)
+
+HOLTest`runTests["set: INJ / SURJ / BIJ have correct generic types",
+  Module[{alpha, beta, setT, setB, expectedTy},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    setT = tyFun[alpha, boolTy]; setB = tyFun[beta, boolTy];
+    expectedTy = tyFun[tyFun[alpha, beta],
+      tyFun[setT, tyFun[setB, boolTy]]];
+    HOLTest`assertEq[constType["INJ"], expectedTy,
+      "INJ : (α → β) → α-set → β-set → bool"];
+    HOLTest`assertEq[constType["SURJ"], expectedTy, "SURJ same shape"];
+    HOLTest`assertEq[constType["BIJ"], expectedTy, "BIJ same shape"];
+]];
+
+HOLTest`runTests["set: INJ / SURJ / BIJ def thms are equations",
+  Module[{},
+    Scan[
+      Function[{pair},
+        HOLTest`assertTrue[
+          MatchQ[concl[pair[[1]]],
+            comb[comb[const["=", _], const[pair[[2]], _]], _]],
+          pair[[2]] <> " = <lambda>"];
+        HOLTest`assertEq[hyp[pair[[1]]], {},
+          pair[[2]] <> " no hyps"];
+      ],
+      {{injDefThm, "INJ"}, {surjDefThm, "SURJ"}, {bijDefThm, "BIJ"}}];
+]];
