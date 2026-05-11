@@ -73,6 +73,22 @@ interSubsetRightThm::usage = "interSubsetRightThm — ⊢ A ∩ B ⊆ B.";
 emptySubsetThm::usage = "emptySubsetThm — ⊢ EMPTY ⊆ A.";
 subsetUnivThm::usage  = "subsetUnivThm  — ⊢ A ⊆ UNIV.";
 
+powConst::usage      = "powConst[] — POW : set → (set → bool). POW S is the set of all subsets of S.";
+imageConst::usage    = "imageConst[] — IMAGE : (α → β) → (α-set) → (β-set).";
+preimageConst::usage = "preimageConst[] — PREIMAGE : (α → β) → (β-set) → (α-set).";
+
+powDefThm::usage      = "powDefThm — ⊢ POW = (λS T. T ⊆ S).";
+imageDefThm::usage    = "imageDefThm — ⊢ IMAGE = (λf S. λy. ∃x. S x ∧ y = f x).";
+preimageDefThm::usage = "preimageDefThm — ⊢ PREIMAGE = (λf T. λx. T (f x)).";
+
+powTerm::usage      = "powTerm[S] — build `POW S`.";
+imageTerm::usage    = "imageTerm[f, S] — build `IMAGE f S`.";
+preimageTerm::usage = "preimageTerm[f, T] — build `PREIMAGE f T`.";
+
+inPowThm::usage      = "inPowThm      — ⊢ T ∈ POW S = T ⊆ S.";
+inImageThm::usage    = "inImageThm    — ⊢ y ∈ IMAGE f S = ∃x. x ∈ S ∧ y = f x.";
+inPreimageThm::usage = "inPreimageThm — ⊢ x ∈ PREIMAGE f T = f x ∈ T.";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -87,6 +103,7 @@ andC[]   := mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
 impC[]   := mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
 notC[]   := mkConst["¬", tyFun[boolTy, boolTy]];
 forallC[ty_] := mkConst["∀", tyFun[tyFun[ty, boolTy], boolTy]];
+existsC[ty_] := mkConst["∃", tyFun[tyFun[ty, boolTy], boolTy]];
 
 (* ============================================================ *)
 (* IN : α → set → bool,  IN x S = S x                            *)
@@ -102,7 +119,17 @@ inDefBody[] :=
 
 inDefThm = newDefinition[mkEq[mkVar["IN", inTy], inDefBody[]]];
 inConst[] := mkConst["IN", inTy];
-inTerm[x_, s_] := mkComb[mkComb[inConst[], x], s];
+
+(* Type-polymorphic inTerm: pick the IN instance whose element type      *)
+(* matches typeOf[x]. Needed because IN at an α-set element (e.g.        *)
+(* T ∈ POW S) is at a different tyvar instance than IN at a "ground"     *)
+(* α element.                                                            *)
+inTerm[x_, s_] :=
+  Module[{xTy, sTy, inTyInst},
+    xTy = typeOf[x]; sTy = typeOf[s];
+    inTyInst = tyFun[xTy, tyFun[sTy, boolTy]];
+    mkComb[mkComb[mkConst["IN", inTyInst], x], s]
+  ];
 
 (* ============================================================ *)
 (* SUBSET : set → set → bool, SUBSET S T = ∀x. x ∈ S ⇒ x ∈ T     *)
@@ -380,6 +407,117 @@ subsetUnivThm =
     impForX = HOL`Bool`DISCH[inTerm[xV, AV], inUniv];
     genTh = HOL`Bool`GEN[xV, impForX];
     packSubset[genTh, AV, univConst[]]
+  ];
+
+(* ============================================================ *)
+(* POW : set → (set → bool)                                     *)
+(*                                                              *)
+(*   POW = λS T. T ⊆ S                                          *)
+(*                                                              *)
+(* "T is in POW S" iff T ⊆ S.                                   *)
+(* ============================================================ *)
+
+powTy = tyFun[setTy, tyFun[setTy, boolTy]];
+
+powDefBody[] :=
+  Module[{SV, TV},
+    SV = mkVar["S", setTy]; TV = mkVar["T", setTy];
+    mkAbs[SV, mkAbs[TV, subsetTerm[TV, SV]]]
+  ];
+
+powDefThm = newDefinition[mkEq[mkVar["POW", powTy], powDefBody[]]];
+powConst[] := mkConst["POW", powTy];
+powTerm[s_] := mkComb[powConst[], s];
+
+(* inPowThm: single simpConv unfolds IN and POW. RHS `T ⊆ S` is left    *)
+(* opaque (subsetDefThm not in our rule set), so the result is exactly   *)
+(* the membership theorem ⊢ T ∈ POW S = T ⊆ S.                          *)
+inPowThm =
+  Module[{SV, TV, lhsTerm},
+    SV = mkVar["S", setTy]; TV = mkVar["T", setTy];
+    lhsTerm = inTerm[TV, powTerm[SV]];
+    HOL`Auto`Simp`simpConv[{inDefThm, powDefThm}][lhsTerm]
+  ];
+
+(* ============================================================ *)
+(* IMAGE : (α → β) → set[α] → set[β]                            *)
+(*                                                              *)
+(*   IMAGE = λf S. λy. ∃x. S x ∧ y = f x                        *)
+(* ============================================================ *)
+
+βTy = mkVarType["B"];
+setBTy = tyFun[βTy, boolTy];
+
+imageTy = tyFun[tyFun[αTy, βTy], tyFun[setTy, setBTy]];
+
+imageDefBody[] :=
+  Module[{fV, SV, yV, xV, body, exForm},
+    fV = mkVar["f", tyFun[αTy, βTy]];
+    SV = mkVar["S", setTy];
+    yV = mkVar["y", βTy];
+    xV = mkVar["x", αTy];
+    body = mkComb[mkComb[andC[], mkComb[SV, xV]],
+      mkEq[yV, mkComb[fV, xV]]];
+    exForm = mkComb[existsC[αTy], mkAbs[xV, body]];
+    mkAbs[fV, mkAbs[SV, mkAbs[yV, exForm]]]
+  ];
+
+imageDefThm = newDefinition[mkEq[mkVar["IMAGE", imageTy], imageDefBody[]]];
+imageConst[] := mkConst["IMAGE", imageTy];
+imageTerm[f_, s_] := mkComb[mkComb[imageConst[], f], s];
+
+(* inImageThm: both sides reduce via simpConv to a common form           *)
+(*   ∃x. S x ∧ y = f x                                                   *)
+(* (LHS via IMAGE def + beta + IN def; RHS via just IN def). TRANS-chain *)
+(* gives the desired membership theorem with IN preserved on the RHS.    *)
+inImageThm =
+  Module[{fV, SV, yV, xV, lhsTerm, rhsTerm, lhsRedTh, rhsRedTh},
+    fV = mkVar["f", tyFun[αTy, βTy]];
+    SV = mkVar["S", setTy];
+    yV = mkVar["y", βTy];
+    xV = mkVar["x", αTy];
+    lhsTerm = inTerm[yV, imageTerm[fV, SV]];
+    rhsTerm = mkComb[existsC[αTy], mkAbs[xV,
+      mkComb[mkComb[andC[], inTerm[xV, SV]],
+        mkEq[yV, mkComb[fV, xV]]]]];
+    lhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm, imageDefThm}][lhsTerm];
+    rhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm}][rhsTerm];
+    TRANS[lhsRedTh, HOL`Equal`SYM[rhsRedTh]]
+  ];
+
+(* ============================================================ *)
+(* PREIMAGE : (α → β) → set[β] → set[α]                         *)
+(*                                                              *)
+(*   PREIMAGE = λf T. λx. T (f x)                               *)
+(* ============================================================ *)
+
+preimageTy = tyFun[tyFun[αTy, βTy], tyFun[setBTy, setTy]];
+
+preimageDefBody[] :=
+  Module[{fV, TV, xV},
+    fV = mkVar["f", tyFun[αTy, βTy]];
+    TV = mkVar["T", setBTy];
+    xV = mkVar["x", αTy];
+    mkAbs[fV, mkAbs[TV, mkAbs[xV,
+      mkComb[TV, mkComb[fV, xV]]]]]
+  ];
+
+preimageDefThm = newDefinition[
+  mkEq[mkVar["PREIMAGE", preimageTy], preimageDefBody[]]];
+preimageConst[] := mkConst["PREIMAGE", preimageTy];
+preimageTerm[f_, t_] := mkComb[mkComb[preimageConst[], f], t];
+
+(* inPreimageThm: both sides reduce to `T (f x)`. *)
+inPreimageThm =
+  Module[{fV, TV, xV, lhsTerm, rhsTerm, lhsRedTh, rhsRedTh},
+    fV = mkVar["f", tyFun[αTy, βTy]];
+    TV = mkVar["T", setBTy];
+    xV = mkVar["x", αTy];
+    lhsTerm = inTerm[xV, preimageTerm[fV, TV]];
+    rhsTerm = inTerm[mkComb[fV, xV], TV];
+    lhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm, preimageDefThm}][lhsTerm];
+    rhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm}][rhsTerm];
+    TRANS[lhsRedTh, HOL`Equal`SYM[rhsRedTh]]
   ];
 
 End[];

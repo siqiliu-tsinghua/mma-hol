@@ -218,3 +218,100 @@ HOLTest`runTests["set: subsetUnivThm — A ⊆ UNIV",
     HOLTest`assertEq[concl[subsetUnivThm], expected, "⊢ A ⊆ UNIV"];
     HOLTest`assertEq[hyp[subsetUnivThm], {}, "no hyps"];
 ]];
+
+(* ===== POW / IMAGE / PREIMAGE: types + def thms ===== *)
+
+HOLTest`runTests["set: POW / IMAGE / PREIMAGE have correct generic types",
+  Module[{alpha, beta, setT, setB, powTyExpect, imageTyExpect, preimageTyExpect},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    setT = tyFun[alpha, boolTy]; setB = tyFun[beta, boolTy];
+    powTyExpect      = tyFun[setT, tyFun[setT, boolTy]];
+    imageTyExpect    = tyFun[tyFun[alpha, beta], tyFun[setT, setB]];
+    preimageTyExpect = tyFun[tyFun[alpha, beta], tyFun[setB, setT]];
+    HOLTest`assertEq[constType["POW"], powTyExpect,
+      "POW : set → (set → bool)"];
+    HOLTest`assertEq[constType["IMAGE"], imageTyExpect,
+      "IMAGE : (α → β) → α-set → β-set"];
+    HOLTest`assertEq[constType["PREIMAGE"], preimageTyExpect,
+      "PREIMAGE : (α → β) → β-set → α-set"];
+]];
+
+HOLTest`runTests["set: def thms for POW / IMAGE / PREIMAGE",
+  Module[{},
+    Scan[
+      Function[{pair},
+        HOLTest`assertTrue[
+          MatchQ[concl[pair[[1]]],
+            comb[comb[const["=", _], const[pair[[2]], _]], _]],
+          pair[[2]] <> " is a defining equation"];
+        HOLTest`assertEq[hyp[pair[[1]]], {},
+          pair[[2]] <> " has no hyps"];
+      ],
+      {{powDefThm, "POW"}, {imageDefThm, "IMAGE"},
+       {preimageDefThm, "PREIMAGE"}}];
+]];
+
+(* ===== POW / IMAGE / PREIMAGE: term builders ===== *)
+
+HOLTest`runTests["set: term builders for POW / IMAGE / PREIMAGE",
+  Module[{alpha, beta, setT, setB, f, S, T},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    setT = tyFun[alpha, boolTy]; setB = tyFun[beta, boolTy];
+    f = mkVar["f", tyFun[alpha, beta]];
+    S = mkVar["S", setT]; T = mkVar["T", setB];
+    HOLTest`assertEq[powTerm[S],
+      mkComb[mkConst["POW", constType["POW"]], S],
+      "powTerm[S] = POW S"];
+    HOLTest`assertEq[imageTerm[f, S],
+      mkComb[mkComb[mkConst["IMAGE", constType["IMAGE"]], f], S],
+      "imageTerm[f, S] = IMAGE f S"];
+    HOLTest`assertEq[preimageTerm[f, T],
+      mkComb[mkComb[mkConst["PREIMAGE", constType["PREIMAGE"]], f], T],
+      "preimageTerm[f, T] = PREIMAGE f T"];
+]];
+
+(* ===== Membership theorems ===== *)
+
+HOLTest`runTests["set: inPowThm — T ∈ POW S = T ⊆ S",
+  Module[{alpha, setT, S, T, expected},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    S = mkVar["S", setT]; T = mkVar["T", setT];
+    expected = mkEq[inTerm[T, powTerm[S]], subsetTerm[T, S]];
+    HOLTest`assertEq[concl[inPowThm], expected,
+      "⊢ T ∈ POW S = T ⊆ S"];
+    HOLTest`assertEq[hyp[inPowThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: inImageThm — y ∈ IMAGE f S = ∃x. x ∈ S ∧ y = f x",
+  Module[{alpha, beta, setT, f, S, y, x, andCop, expected},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    setT = tyFun[alpha, boolTy];
+    f = mkVar["f", tyFun[alpha, beta]];
+    S = mkVar["S", setT];
+    y = mkVar["y", beta]; x = mkVar["x", alpha];
+    andCop = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    expected = mkEq[
+      inTerm[y, imageTerm[f, S]],
+      mkComb[
+        mkConst["∃", tyFun[tyFun[alpha, boolTy], boolTy]],
+        mkAbs[x,
+          mkComb[mkComb[andCop, inTerm[x, S]],
+            mkEq[y, mkComb[f, x]]]]]];
+    HOLTest`assertEq[concl[inImageThm], expected,
+      "⊢ y ∈ IMAGE f S = ∃x. x ∈ S ∧ y = f x"];
+    HOLTest`assertEq[hyp[inImageThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: inPreimageThm — x ∈ PREIMAGE f T = f x ∈ T",
+  Module[{alpha, beta, setB, f, T, x, expected},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    setB = tyFun[beta, boolTy];
+    f = mkVar["f", tyFun[alpha, beta]];
+    T = mkVar["T", setB]; x = mkVar["x", alpha];
+    expected = mkEq[
+      inTerm[x, preimageTerm[f, T]],
+      inTerm[mkComb[f, x], T]];
+    HOLTest`assertEq[concl[inPreimageThm], expected,
+      "⊢ x ∈ PREIMAGE f T = f x ∈ T"];
+    HOLTest`assertEq[hyp[inPreimageThm], {}, "no hyps"];
+]];
