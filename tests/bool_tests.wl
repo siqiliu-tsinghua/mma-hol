@@ -95,6 +95,52 @@ HOLTest`runTests["bool: GEN/SPEC round-trip", Module[{alpha, x, t, gen, spec},
   HOLTest`assertEq[concl[spec], mkEq[x, x], "GEN then SPEC at x recovers"];
 ]];
 
+HOLTest`runTests["bool: ISPEC aligns foreign tyvar with term's type",
+  Module[{aBig, xBig, gen, spec, refl},
+    (* GEN at tyVar["a"], then ISPEC against a term of type tyVar["A"]. *)
+    aBig = mkVarType["A"];
+    xBig = mkVar["x", aBig];
+    (* GEN under tyVar["a"] *)
+    Module[{aSmall, xSmall, refl},
+      aSmall = mkVarType["a"]; xSmall = mkVar["x", aSmall];
+      gen = GEN[xSmall, REFL[xSmall]];   (* ⊢ ∀x:tyVar["a"]. x = x *)
+    ];
+    (* Plain SPEC would fail because tyVar["a"] ≠ tyVar["A"]. *)
+    HOLTest`assertThrows[SPEC[xBig, gen], "rule",
+      "SPEC refuses tyvar mismatch"];
+    (* ISPEC auto-aligns. *)
+    spec = ISPEC[xBig, gen];
+    HOLTest`assertEq[concl[spec], mkEq[xBig, xBig],
+      "ISPEC at x:tyVar[\"A\"] recovers x = x at the new type"];
+]];
+
+HOLTest`runTests["bool: ISPEC at concrete type instantiates tyvar to ground",
+  Module[{aSmall, xSmall, gen, spec, tT},
+    aSmall = mkVarType["a"]; xSmall = mkVar["x", aSmall];
+    gen = GEN[xSmall, REFL[xSmall]];   (* ⊢ ∀x:tyVar["a"]. x = x *)
+    tT = mkConst["T", boolTy];
+    spec = ISPEC[tT, gen];
+    HOLTest`assertEq[concl[spec], mkEq[tT, tT],
+      "ISPEC at T : bool instantiates a → bool, returns T = T"];
+]];
+
+HOLTest`runTests["bool: ISPEC rejects un-matchable shapes",
+  Module[{aSmall, xSmall, gen},
+    aSmall = mkVarType["a"]; xSmall = mkVar["x", aSmall];
+    gen = GEN[xSmall, REFL[xSmall]];
+    (* gen's binder type is tyVar["a"] (pure tyvar). It matches anything. *)
+    (* Build a theorem whose binder is a ground type, then ISPEC against *)
+    (* an incompatible ground type to trigger the matcher's failure.    *)
+    Module[{boolXVar, genBool, x},
+      x = mkVar["x", boolTy];
+      genBool = GEN[x, REFL[x]];   (* ⊢ ∀x:bool. x = x *)
+      HOLTest`assertThrows[
+        ISPEC[mkVar["y", mkVarType["a"]], genBool],
+        "rule",
+        "ISPEC fails when binder is concrete and term's type differs"];
+    ];
+]];
+
 andTerm[p_, q_] := mkComb[mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 impliesTerm[p_, q_] := mkComb[mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 

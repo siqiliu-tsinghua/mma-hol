@@ -7,7 +7,8 @@ TRUTH::usage     = "TRUTH — ⊢ T, derived once from tDef + REFL.";
 EQTINTRO::usage  = "EQTINTRO[th] — from Γ ⊢ p, derive Γ ⊢ p = T.";
 EQTELIM::usage   = "EQTELIM[th] — from Γ ⊢ p = T, derive Γ ⊢ p.";
 GEN::usage       = "GEN[x, th] — from Γ ⊢ p with x not free in Γ, derive Γ ⊢ ∀x. p.";
-SPEC::usage      = "SPEC[t, th] — from Γ ⊢ ∀(λx. p), derive Γ ⊢ p[t/x].";
+SPEC::usage      = "SPEC[t, th] — from Γ ⊢ ∀(λx. p), derive Γ ⊢ p[t/x]. Requires typeOf[t] === binder-type exactly; for the polymorphic case use ISPEC.";
+ISPEC::usage     = "ISPEC[t, th] — `intelligent SPEC`. Like SPEC but first runs one-way type matching from the outer ∀-binder's type to typeOf[t] and INSTTYPEs th accordingly. Use this whenever th is polymorphic (e.g., selectAx) and t is at a concrete type instance from another file that uses different tyvar names (Bootstrap uses tyVar[\"a\"]/\"b\" while stdlib typically uses tyVar[\"A\"]/\"B\").";
 CONJ::usage      = "CONJ[thp, thq] — from Γ₁ ⊢ p and Γ₂ ⊢ q, derive Γ₁∪Γ₂ ⊢ p ∧ q.";
 CONJUNCT1::usage = "CONJUNCT1[th] — from Γ ⊢ p ∧ q, derive Γ ⊢ p.";
 CONJUNCT2::usage = "CONJUNCT2[th] — from Γ ⊢ p ∧ q, derive Γ ⊢ q.";
@@ -89,6 +90,56 @@ HOL`Bool`SPEC[t_, th_] :=
     rightBeta = BETACONV[destEqTh[step2][[2]]];
     chain = TRANS[TRANS[SYM[leftBeta], step2], rightBeta];
     HOL`Bool`EQTELIM[chain]
+  ];
+
+(* ============================================================ *)
+(* ISPEC — intelligent SPEC                                     *)
+(*                                                              *)
+(* One-way tyvar matching from the ∀-binder's type to typeOf[t],*)
+(* then INSTTYPE the theorem before delegating to SPEC. Lets    *)
+(* polymorphic axioms (like selectAx) be specialised against    *)
+(* concrete types whose tyvar names don't agree with Bootstrap's*)
+(* "a"/"b" — see the SPEC failure that hit stdlib/Pair when     *)
+(* selectAx's tyVar["a"] needed to align with αTy = tyVar["A"]. *)
+(* ============================================================ *)
+
+$ispecTyFail = "ispecTyFail$" <> ToString[Unique[]];
+
+ispecTyMatch[tyVar[n_String], target_, acc_] :=
+  Module[{existing = Lookup[acc, tyVar[n], Missing[]]},
+    If[MissingQ[existing],
+      Append[acc, tyVar[n] -> target],
+      If[existing === target, acc, $ispecTyFail]
+    ]
+  ];
+ispecTyMatch[tyApp[n_, args1_List], tyApp[m_, args2_List], acc_] :=
+  If[n =!= m || Length[args1] =!= Length[args2], $ispecTyFail,
+    Fold[
+      Function[{a, pr},
+        If[a === $ispecTyFail, $ispecTyFail,
+          ispecTyMatch[pr[[1]], pr[[2]], a]]],
+      acc, Transpose[{args1, args2}]
+    ]
+  ];
+ispecTyMatch[_, _, _] := $ispecTyFail;
+
+HOL`Bool`ISPEC[t_, th_] :=
+  Module[{c, bv, xTy, tTy, match, instTh},
+    c = concl[th];
+    If[! MatchQ[c, comb[const["∀", _], abs[bvar[0, _], _, _String]]],
+      HOL`Error`holError["rule", "ISPEC: expected ⊢ ∀(λx. p)",
+        <|"concl" -> c|>]];
+    bv = First[destAbs[c[[2]]]];
+    xTy = typeOf[bv];
+    tTy = typeOf[t];
+    match = ispecTyMatch[xTy, tTy, <||>];
+    If[match === $ispecTyFail,
+      HOL`Error`holError["rule",
+        "ISPEC: cannot one-way match binder type to term type",
+        <|"binderType" -> xTy, "termType" -> tTy|>]];
+    instTh = If[Length[match] > 0,
+      HOL`Kernel`INSTTYPE[Normal[match], th], th];
+    HOL`Bool`SPEC[t, instTh]
   ];
 
 boolBinConst[name_] := mkConst[name, tyFun[boolTy, tyFun[boolTy, boolTy]]];

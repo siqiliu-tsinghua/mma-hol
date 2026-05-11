@@ -473,9 +473,7 @@ fstPairEqThm =
     atP = mkComb[selectCα[], predLambda];
 
     (* (2) selectAx specialized at P = predLambda and x = aV; beta-reduce. *)
-    (* selectAx uses tyVar["a"]; instantiate to αTy to match predLambda.   *)
-    specP = HOL`Bool`SPEC[predLambda,
-      INSTTYPE[{tyVar["a"] -> αTy}, HOL`Bootstrap`selectAx]];
+    specP = HOL`Bool`ISPEC[predLambda, HOL`Bootstrap`selectAx];
     specPa = HOL`Bool`SPEC[aV, specP];
     specPaBeta = HOL`Drule`CONVRULE[
       HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]],
@@ -538,8 +536,7 @@ sndPairEqThm =
           mkEq[pairAB, pairCons[xV, yV]]]]];
     atP = mkComb[selectCβ[], predLambda];
 
-    specP = HOL`Bool`SPEC[predLambda,
-      INSTTYPE[{tyVar["a"] -> βTy}, HOL`Bootstrap`selectAx]];
+    specP = HOL`Bool`ISPEC[predLambda, HOL`Bootstrap`selectAx];
     specPb = HOL`Bool`SPEC[bV, specP];
     specPbBeta = HOL`Drule`CONVRULE[
       HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]],
