@@ -147,3 +147,74 @@ HOLTest`runTests["set: inUnivThm — x ∈ UNIV = T",
     HOLTest`assertEq[c, expected, "⊢ x ∈ UNIV = T"];
     HOLTest`assertEq[hyp[inUnivThm], {}, "no hyps"];
 ]];
+
+(* ===== SUBSET theorems ===== *)
+
+HOLTest`runTests["set: subsetReflThm — A ⊆ A",
+  Module[{alpha, setT, A, expected, c},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    A = mkVar["A", setT];
+    expected = subsetTerm[A, A];
+    c = concl[subsetReflThm];
+    HOLTest`assertEq[c, expected, "⊢ A ⊆ A"];
+    HOLTest`assertEq[hyp[subsetReflThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: subsetTransThm — A ⊆ B ⇒ B ⊆ C ⇒ A ⊆ C",
+  Module[{alpha, setT, A, B, C, impC, expected, c},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    A = mkVar["A", setT]; B = mkVar["B", setT]; C = mkVar["C", setT];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    expected = mkComb[mkComb[impC, subsetTerm[A, B]],
+      mkComb[mkComb[impC, subsetTerm[B, C]], subsetTerm[A, C]]];
+    c = concl[subsetTransThm];
+    HOLTest`assertEq[c, expected,
+      "⊢ A ⊆ B ⇒ B ⊆ C ⇒ A ⊆ C"];
+    HOLTest`assertEq[hyp[subsetTransThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: unionSubsetLeftThm / unionSubsetRightThm",
+  Module[{alpha, setT, A, B, leftExpected, rightExpected},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    A = mkVar["A", setT]; B = mkVar["B", setT];
+    leftExpected  = subsetTerm[A, unionTerm[A, B]];
+    rightExpected = subsetTerm[B, unionTerm[A, B]];
+    HOLTest`assertEq[concl[unionSubsetLeftThm],  leftExpected,
+      "⊢ A ⊆ A ∪ B"];
+    HOLTest`assertEq[concl[unionSubsetRightThm], rightExpected,
+      "⊢ B ⊆ A ∪ B"];
+    HOLTest`assertEq[hyp[unionSubsetLeftThm], {}, "left no hyps"];
+    HOLTest`assertEq[hyp[unionSubsetRightThm], {}, "right no hyps"];
+]];
+
+HOLTest`runTests["set: interSubsetLeftThm / interSubsetRightThm",
+  Module[{alpha, setT, A, B, leftExpected, rightExpected},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    A = mkVar["A", setT]; B = mkVar["B", setT];
+    leftExpected  = subsetTerm[interTerm[A, B], A];
+    rightExpected = subsetTerm[interTerm[A, B], B];
+    HOLTest`assertEq[concl[interSubsetLeftThm],  leftExpected,
+      "⊢ A ∩ B ⊆ A"];
+    HOLTest`assertEq[concl[interSubsetRightThm], rightExpected,
+      "⊢ A ∩ B ⊆ B"];
+    HOLTest`assertEq[hyp[interSubsetLeftThm], {}, "left no hyps"];
+    HOLTest`assertEq[hyp[interSubsetRightThm], {}, "right no hyps"];
+]];
+
+HOLTest`runTests["set: emptySubsetThm — EMPTY ⊆ A",
+  Module[{alpha, setT, A, expected},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    A = mkVar["A", setT];
+    expected = subsetTerm[mkConst["EMPTY", constType["EMPTY"]], A];
+    HOLTest`assertEq[concl[emptySubsetThm], expected, "⊢ EMPTY ⊆ A"];
+    HOLTest`assertEq[hyp[emptySubsetThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: subsetUnivThm — A ⊆ UNIV",
+  Module[{alpha, setT, A, expected},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    A = mkVar["A", setT];
+    expected = subsetTerm[A, mkConst["UNIV", constType["UNIV"]]];
+    HOLTest`assertEq[concl[subsetUnivThm], expected, "⊢ A ⊆ UNIV"];
+    HOLTest`assertEq[hyp[subsetUnivThm], {}, "no hyps"];
+]];
