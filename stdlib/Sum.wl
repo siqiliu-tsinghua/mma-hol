@@ -33,7 +33,8 @@
 
 BeginPackage["HOL`Stdlib`Sum`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
-  "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`"
+  "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
+  "HOL`Auto`Simp`"
 }];
 
 mkInlConst::usage =
@@ -74,6 +75,34 @@ inrDefThm::usage = "inrDefThm — ⊢ INR = (λb. ABS_sum (mkInr b)).";
 
 inlTerm::usage = "inlTerm[a] — build the term `INL a`.";
 inrTerm::usage = "inrTerm[b] — build the term `INR b`.";
+
+isSumWitnessInrThm::usage =
+  "isSumWitnessInrThm — ⊢ (predicate) (mkInr b₀). Companion of " <>
+  "isSumWitnessThm (which covers the INL case); needed to bridge "  <>
+  "REP_sum (INR b) = mkInr b through repAbsSumThm.";
+
+repInlThm::usage = "repInlThm — ⊢ REP_sum (INL a) = mkInl a.";
+repInrThm::usage = "repInrThm — ⊢ REP_sum (INR b) = mkInr b.";
+
+mkInlInjThm::usage =
+  "mkInlInjThm — ⊢ (mkInl a = mkInl aP) ⇒ (a = aP). Extensional " <>
+  "injectivity of the underlying mkInl, derived by applying both "  <>
+  "sides at (a, bDummy, T).";
+
+mkInrInjThm::usage =
+  "mkInrInjThm — ⊢ (mkInr b = mkInr bP) ⇒ (b = bP). Mirror of "    <>
+  "mkInlInjThm, applied at (aDummy, b, F).";
+
+inlInjThm::usage =
+  "inlInjThm — ⊢ (INL a = INL aP) ⇒ (a = aP). Chain: APTERM " <>
+  "REP_sum + repInlThm bridges + mkInlInjThm.";
+
+inrInjThm::usage =
+  "inrInjThm — ⊢ (INR b = INR bP) ⇒ (b = bP). Mirror of inlInjThm.";
+
+inlNotEqInrThm::usage =
+  "inlNotEqInrThm — ⊢ ¬ (INL a = INR b). Disjointness: apply REP_sum " <>
+  "to both sides, evaluate at (a, b, T), giving T = F contradiction.";
 
 Begin["`Private`"];
 
@@ -235,6 +264,274 @@ inrConst[] := mkConst["INR", inrTy];
 
 inlTerm[a_] := mkComb[inlConst[], a];
 inrTerm[b_] := mkComb[inrConst[], b];
+
+(* ============================================================ *)
+(* Witness theorem ⊢ (predicate) (mkInr b₀) — DISJ2 mirror      *)
+(* ============================================================ *)
+
+isSumWitnessInrThm =
+  Module[{b0, mInr, witnessTm, refl,
+          bV, rightEq, rightLam, rightExTm, existsB,
+          aV, mInl, leftEq, leftLam, leftExTm,
+          disj2Th,
+          predLambda, predApplied, betaTh},
+    b0 = mkVar["b0", βTy];
+    mInr = mkInrConst[];
+    witnessTm = mkComb[mInr, b0];           (* mkInr b₀ *)
+    refl = REFL[witnessTm];
+
+    bV = mkVar["b", βTy];
+    rightEq  = mkEq[witnessTm, mkComb[mInr, bV]];
+    rightLam = mkAbs[bV, rightEq];
+    rightExTm = mkComb[existsC[βTy], rightLam];
+    existsB = HOL`Bool`EXISTS[rightExTm, b0, refl];
+    (* existsB : ⊢ ∃b. mkInr b₀ = mkInr b *)
+
+    aV = mkVar["a", αTy];
+    mInl = mkInlConst[];
+    leftEq  = mkEq[witnessTm, mkComb[mInl, aV]];
+    leftLam = mkAbs[aV, leftEq];
+    leftExTm = mkComb[existsC[αTy], leftLam];
+
+    disj2Th = HOL`Bool`DISJ2[existsB, leftExTm];
+    (* disj2Th : ⊢ (∃a. mkInr b₀ = mkInl a) ∨ (∃b. mkInr b₀ = mkInr b) *)
+
+    predLambda = isSumPredicateTerm[];
+    predApplied = mkComb[predLambda, witnessTm];
+    betaTh = BETACONV[predApplied];
+    EQMP[SYM[betaTh], disj2Th]
+  ];
+
+(* ============================================================ *)
+(* repInlThm / repInrThm — bridges                              *)
+(* ============================================================ *)
+
+repInlThm =
+  Module[{aV, mInl, mkInlA, inlA,
+          stepA, stepARhs, stepABeta, unfoldStep,
+          repAppliedTh, instIsSum, instRepAbs, repAbsMkInl,
+          a0v},
+    aV = mkVar["a", αTy];
+    mInl = mkInlConst[];
+    mkInlA = mkComb[mInl, aV];
+    inlA = inlTerm[aV];
+
+    stepA = HOL`Equal`APTHM[inlDefThm, aV];
+    stepARhs = concl[stepA][[2]];
+    stepABeta = BETACONV[stepARhs];
+    unfoldStep = TRANS[stepA, stepABeta];
+    (* unfoldStep : ⊢ INL a = ABS_sum (mkInl a) *)
+
+    repAppliedTh = HOL`Equal`APTERM[repSumConst[], unfoldStep];
+
+    instRepAbs = INST[
+      {mkVar["r", repSumTy] -> mkInlA},
+      repAbsSumThm];
+    a0v = mkVar["a0", αTy];
+    instIsSum = INST[{a0v -> aV}, isSumWitnessThm];
+
+    repAbsMkInl = EQMP[instRepAbs, instIsSum];
+    TRANS[repAppliedTh, repAbsMkInl]
+  ];
+
+repInrThm =
+  Module[{bV, mInr, mkInrB, inrB,
+          stepB, stepBRhs, stepBBeta, unfoldStep,
+          repAppliedTh, instIsSum, instRepAbs, repAbsMkInr,
+          b0v},
+    bV = mkVar["b", βTy];
+    mInr = mkInrConst[];
+    mkInrB = mkComb[mInr, bV];
+    inrB = inrTerm[bV];
+
+    stepB = HOL`Equal`APTHM[inrDefThm, bV];
+    stepBRhs = concl[stepB][[2]];
+    stepBBeta = BETACONV[stepBRhs];
+    unfoldStep = TRANS[stepB, stepBBeta];
+
+    repAppliedTh = HOL`Equal`APTERM[repSumConst[], unfoldStep];
+
+    instRepAbs = INST[
+      {mkVar["r", repSumTy] -> mkInrB},
+      repAbsSumThm];
+    b0v = mkVar["b0", βTy];
+    instIsSum = INST[{b0v -> bV}, isSumWitnessInrThm];
+
+    repAbsMkInr = EQMP[instRepAbs, instIsSum];
+    TRANS[repAppliedTh, repAbsMkInr]
+  ];
+
+(* ============================================================ *)
+(* mkInlInjThm / mkInrInjThm — extensional injectivity          *)
+(*                                                              *)
+(* For mkInl: apply both sides at (a, bDummy, T). The lambda    *)
+(*   body (a = a') ∧ p' specialises to (a = a) ∧ T = T on the   *)
+(*   LHS and (aP = a) ∧ T = (aP = a) on the RHS, leaving        *)
+(*   T = (aP = a). Basic `(T = p) = p` flips, SYM finishes.     *)
+(* For mkInr: same pattern at (aDummy, b, F), with ¬F = T via   *)
+(*   basicSimpset.                                              *)
+(* ============================================================ *)
+
+mkInlInjThm =
+  Module[{aV, aPV, bDummy, tConst, hypEq,
+          step1, step2, step3, simplifiedEq,
+          aEqaTh, conjPart, dischargedTh, symPart},
+    aV = mkVar["a", αTy]; aPV = mkVar["aP", αTy];
+    bDummy = mkVar["bDummy", βTy];
+    tConst = mkConst["T", boolTy];
+
+    hypEq = ASSUME[mkEq[
+      mkComb[mkInlConst[], aV],
+      mkComb[mkInlConst[], aPV]]];
+
+    step1 = MKCOMB[hypEq, REFL[aV]];
+    step2 = MKCOMB[step1, REFL[bDummy]];
+    step3 = MKCOMB[step2, REFL[tConst]];
+    (* step3 : ⊢ mkInl a a bDummy T = mkInl aP a bDummy T *)
+
+    simplifiedEq = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{mkInlDefThm}], step3];
+    (* simplifiedEq : ⊢ ((a = a) ∧ T) = ((aP = a) ∧ T) *)
+
+    aEqaTh = HOL`Bool`EQTINTRO[REFL[aV]];   (* ⊢ (a = a) = T *)
+    conjPart = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{aEqaTh}], simplifiedEq];
+    (* conjPart : ⊢ aP = a   (after basic T∧T=T, p∧T=p, (T=p)=p collapses) *)
+
+    symPart = HOL`Equal`SYM[conjPart];   (* ⊢ a = aP *)
+    dischargedTh = HOL`Bool`DISCH[concl[hypEq], symPart];
+    dischargedTh
+  ];
+
+mkInrInjThm =
+  Module[{bV, bPV, aDummy, fConst, hypEq,
+          step1, step2, step3, simplifiedEq,
+          bEqbTh, conjPart, dischargedTh, symPart},
+    bV = mkVar["b", βTy]; bPV = mkVar["bP", βTy];
+    aDummy = mkVar["aDummy", αTy];
+    fConst = mkConst["F", boolTy];
+
+    hypEq = ASSUME[mkEq[
+      mkComb[mkInrConst[], bV],
+      mkComb[mkInrConst[], bPV]]];
+
+    step1 = MKCOMB[hypEq, REFL[aDummy]];
+    step2 = MKCOMB[step1, REFL[bV]];
+    step3 = MKCOMB[step2, REFL[fConst]];
+    (* step3 : ⊢ mkInr b aDummy b F = mkInr bP aDummy b F *)
+
+    simplifiedEq = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{mkInrDefThm}], step3];
+    (* simplifiedEq : ⊢ ((b = b) ∧ ¬F) = ((bP = b) ∧ ¬F) *)
+
+    bEqbTh = HOL`Bool`EQTINTRO[REFL[bV]];
+    conjPart = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{bEqbTh}], simplifiedEq];
+
+    symPart = HOL`Equal`SYM[conjPart];
+    dischargedTh = HOL`Bool`DISCH[concl[hypEq], symPart];
+    dischargedTh
+  ];
+
+(* ============================================================ *)
+(* inlInjThm / inrInjThm — top-level injectivity                *)
+(*                                                              *)
+(* APTERM REP_sum on the hypothesis, TRANS through the          *)
+(* repInlThm / repInrThm bridges, MP with mkInl / mkInr         *)
+(* injectivity. DISCH wraps the conclusion.                     *)
+(* ============================================================ *)
+
+inlInjThm =
+  Module[{aV, aPV, hypEq, repEq,
+          repAV, repAPV, mkInlEq, mkInlImp,
+          finalImp},
+    aV = mkVar["a", αTy]; aPV = mkVar["aP", αTy];
+    hypEq = ASSUME[mkEq[inlTerm[aV], inlTerm[aPV]]];
+    repEq = HOL`Equal`APTERM[repSumConst[], hypEq];
+
+    repAV = repInlThm;
+    repAPV = INST[{aV -> aPV}, repInlThm];
+    mkInlEq = TRANS[
+      TRANS[HOL`Equal`SYM[repAV], repEq],
+      repAPV];
+    (* mkInlEq : ⊢ mkInl a = mkInl aP *)
+
+    mkInlImp = mkInlInjThm;
+    finalImp = HOL`Bool`MP[mkInlImp, mkInlEq];
+    HOL`Bool`DISCH[concl[hypEq], finalImp]
+  ];
+
+inrInjThm =
+  Module[{bV, bPV, hypEq, repEq,
+          repBV, repBPV, mkInrEq, mkInrImp,
+          finalImp},
+    bV = mkVar["b", βTy]; bPV = mkVar["bP", βTy];
+    hypEq = ASSUME[mkEq[inrTerm[bV], inrTerm[bPV]]];
+    repEq = HOL`Equal`APTERM[repSumConst[], hypEq];
+
+    repBV = repInrThm;
+    repBPV = INST[{bV -> bPV}, repInrThm];
+    mkInrEq = TRANS[
+      TRANS[HOL`Equal`SYM[repBV], repEq],
+      repBPV];
+
+    mkInrImp = mkInrInjThm;
+    finalImp = HOL`Bool`MP[mkInrImp, mkInrEq];
+    HOL`Bool`DISCH[concl[hypEq], finalImp]
+  ];
+
+(* ============================================================ *)
+(* inlNotEqInrThm : ⊢ ¬ (INL a = INR b)                          *)
+(*                                                              *)
+(* APTERM REP_sum on the hypothetical equality; TRANS through  *)
+(* repInlThm + SYM[repInrThm] gives mkInl a = mkInr b. Apply at*)
+(* (a, b, T) and unfold via simpConv with the def thms +        *)
+(* EQTINTRO[REFL[a]] + EQTINTRO[REFL[b]] reduces to T = F,     *)
+(* whose EQMP with TRUTH gives F. NOTINTRO closes via DISCH +  *)
+(* ⇒-to-¬.                                                     *)
+(* ============================================================ *)
+
+inlNotEqInrThm =
+  Module[{aV, bV, tConst, hypEq, repEq, mkInlMkInrEq,
+          step1, step2, step3, simplifiedEq,
+          aEqaTh, bEqbTh, fThm, dischargedTh},
+    aV = mkVar["a", αTy]; bV = mkVar["b", βTy];
+    tConst = mkConst["T", boolTy];
+
+    hypEq = ASSUME[mkEq[inlTerm[aV], inrTerm[bV]]];
+    repEq = HOL`Equal`APTERM[repSumConst[], hypEq];
+    (* repEq : ⊢ REP_sum (INL a) = REP_sum (INR b) *)
+
+    (* Bridge to mkInl / mkInr equality. *)
+    mkInlMkInrEq = TRANS[
+      TRANS[HOL`Equal`SYM[repInlThm], repEq],
+      repInrThm];
+    (* mkInlMkInrEq : ⊢ mkInl a = mkInr b *)
+
+    step1 = MKCOMB[mkInlMkInrEq, REFL[aV]];
+    step2 = MKCOMB[step1, REFL[bV]];
+    step3 = MKCOMB[step2, REFL[tConst]];
+    (* step3 : ⊢ mkInl a a b T = mkInr b a b T *)
+
+    (* simpConv unfolds both def thms, beta-reduces, applies basic to     *)
+    (* collapse (a=a)∧T → (a=a) and (b=b)∧¬T → (b=b)∧F → F. Result: ⊢   *)
+    (*   (mkInl a a b T = mkInr b a b T) = ((a = a) = F).                  *)
+    simplifiedEq = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{mkInlDefThm, mkInrDefThm}], step3];
+
+    (* Now simpConv with aEqaTh / bEqbTh + basic collapses (a=a) → T then *)
+    (* (T = F) → F via basic `(T = p) = p`. The result CONVRULE-EQMPs to *)
+    (* ⊢ F directly — no `T = F` intermediate survives.                    *)
+    aEqaTh = HOL`Bool`EQTINTRO[REFL[aV]];
+    bEqbTh = HOL`Bool`EQTINTRO[REFL[bV]];
+    fThm = HOL`Drule`CONVRULE[
+      HOL`Auto`Simp`simpConv[{aEqaTh, bEqbTh}], simplifiedEq];
+    (* fThm : ⊢ F  (under hyp INL a = INR b) *)
+
+    dischargedTh = HOL`Bool`DISCH[concl[hypEq], fThm];
+    HOL`Bool`NOTINTRO[dischargedTh]
+    (* ⊢ ¬ (INL a = INR b) *)
+  ];
 
 End[];
 EndPackage[];

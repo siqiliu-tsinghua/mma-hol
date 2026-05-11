@@ -145,3 +145,112 @@ HOLTest`runTests["sum: inlTerm / inrTerm build comb terms",
       mkComb[mkConst["INR", constType["INR"]], b],
       "inrTerm[b] = INR b"];
 ]];
+
+(* ===== M7-1e: bridges + injectivity + disjointness ===== *)
+
+HOLTest`runTests["sum: isSumWitnessInrThm is (predicate)(mkInr b₀)",
+  Module[{c},
+    c = concl[isSumWitnessInrThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[abs[bvar[0, _], _, _], comb[const["mkInr", _], var["b0", _]]]],
+      "predicate applied to mkInr b₀"];
+    HOLTest`assertEq[hyp[isSumWitnessInrThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["sum: repInlThm is REP_sum (INL a) = mkInl a",
+  Module[{alpha, beta, a, expectedLhs, expectedRhs, c},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    a = mkVar["a", alpha];
+    expectedLhs = mkComb[
+      mkConst["REP_sum", constType["REP_sum"]],
+      inlTerm[a]];
+    expectedRhs = mkComb[
+      mkConst["mkInl", constType["mkInl"]], a];
+    c = concl[repInlThm];
+    HOLTest`assertEq[c, mkEq[expectedLhs, expectedRhs],
+      "⊢ REP_sum (INL a) = mkInl a"];
+    HOLTest`assertEq[hyp[repInlThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["sum: repInrThm is REP_sum (INR b) = mkInr b",
+  Module[{alpha, beta, b, expectedLhs, expectedRhs, c},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    b = mkVar["b", beta];
+    expectedLhs = mkComb[
+      mkConst["REP_sum", constType["REP_sum"]],
+      inrTerm[b]];
+    expectedRhs = mkComb[
+      mkConst["mkInr", constType["mkInr"]], b];
+    c = concl[repInrThm];
+    HOLTest`assertEq[c, mkEq[expectedLhs, expectedRhs],
+      "⊢ REP_sum (INR b) = mkInr b"];
+    HOLTest`assertEq[hyp[repInrThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["sum: mkInlInjThm is (mkInl a = mkInl aP) ⇒ (a = aP)",
+  Module[{c, alpha, a, aP, expected},
+    alpha = mkVarType["A"];
+    a = mkVar["a", alpha]; aP = mkVar["aP", alpha];
+    expected = mkComb[mkComb[
+      mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkEq[mkComb[mkConst["mkInl", constType["mkInl"]], a],
+           mkComb[mkConst["mkInl", constType["mkInl"]], aP]]],
+      mkEq[a, aP]];
+    c = concl[mkInlInjThm];
+    HOLTest`assertEq[c, expected,
+      "⊢ (mkInl a = mkInl aP) ⇒ (a = aP)"];
+    HOLTest`assertEq[hyp[mkInlInjThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["sum: mkInrInjThm is (mkInr b = mkInr bP) ⇒ (b = bP)",
+  Module[{c, beta, b, bP, expected},
+    beta = mkVarType["B"];
+    b = mkVar["b", beta]; bP = mkVar["bP", beta];
+    expected = mkComb[mkComb[
+      mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkEq[mkComb[mkConst["mkInr", constType["mkInr"]], b],
+           mkComb[mkConst["mkInr", constType["mkInr"]], bP]]],
+      mkEq[b, bP]];
+    c = concl[mkInrInjThm];
+    HOLTest`assertEq[c, expected,
+      "⊢ (mkInr b = mkInr bP) ⇒ (b = bP)"];
+    HOLTest`assertEq[hyp[mkInrInjThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["sum: inlInjThm is (INL a = INL aP) ⇒ (a = aP)",
+  Module[{c, alpha, a, aP, expected},
+    alpha = mkVarType["A"];
+    a = mkVar["a", alpha]; aP = mkVar["aP", alpha];
+    expected = mkComb[mkComb[
+      mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkEq[inlTerm[a], inlTerm[aP]]],
+      mkEq[a, aP]];
+    c = concl[inlInjThm];
+    HOLTest`assertEq[c, expected, "⊢ (INL a = INL aP) ⇒ (a = aP)"];
+    HOLTest`assertEq[hyp[inlInjThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["sum: inrInjThm is (INR b = INR bP) ⇒ (b = bP)",
+  Module[{c, beta, b, bP, expected},
+    beta = mkVarType["B"];
+    b = mkVar["b", beta]; bP = mkVar["bP", beta];
+    expected = mkComb[mkComb[
+      mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkEq[inrTerm[b], inrTerm[bP]]],
+      mkEq[b, bP]];
+    c = concl[inrInjThm];
+    HOLTest`assertEq[c, expected, "⊢ (INR b = INR bP) ⇒ (b = bP)"];
+    HOLTest`assertEq[hyp[inrInjThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["sum: inlNotEqInrThm is ¬ (INL a = INR b)",
+  Module[{c, alpha, beta, a, b, expected},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    a = mkVar["a", alpha]; b = mkVar["b", beta];
+    expected = mkComb[
+      mkConst["¬", tyFun[boolTy, boolTy]],
+      mkEq[inlTerm[a], inrTerm[b]]];
+    c = concl[inlNotEqInrThm];
+    HOLTest`assertEq[c, expected, "⊢ ¬ (INL a = INR b)"];
+    HOLTest`assertEq[hyp[inlNotEqInrThm], {}, "no hyps"];
+]];
