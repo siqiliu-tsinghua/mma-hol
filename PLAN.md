@@ -442,7 +442,7 @@ EndPackage[];
 - [ ] **M7-3 / `stdlib/Num.wl`**（最大块，2–3 周）—— 从 `ind` + `INFINITY_AX` 走 `IND_SUC` / `IND_0` / `NUM_REP` / `new_basic_type_definition` 经典路径；Peano 三件套；原始递归定理；`+ × ^ < ≤`；强归纳 / 良序原理；带余除法。capstone：算术基本定理（任意正整数唯一素因数分解）
 - [ ] **M7-4 / `stdlib/List.wl`、`Finite.wl`**（1–2 周）—— list 类型 + `HD` / `TL` / `CONS` / `APPEND` / `LENGTH` / `MAP` / `FILTER` / `FOLD`；`FINITE S ↔ ∃l. ∀x. x ∈ S ↔ MEM x l`；基数 `CARD`；有限和 `∑`
 - [ ] **M7-δ / `auto/Arith.wl`**（1–2 周）—— ℕ / ℤ 上 Presburger 线性算术决策：oracle 用 WL 的整线性规划接口找证据，verifier 拼 `+` 和 `≤` 的可加性引理。capstone：`∀ m n. m + n ≤ m * n + 2` 一行
-- [ ] **M7-5 / `stdlib/Int.wl`**（1 周）—— `num × num` 商类型；环结构、序、`|·|`、`&_ℤ : num → int` 嵌入
+- [ ] **M7-5 / `stdlib/Int.wl`**（1–1.5 周）—— **底层走典范代表路线**：`num × num` 上的 `λp. FST p = 0 ∨ SND p = 0` 谓词切 `int` 类型；操作（+, ×, -, |·|）做完 pair-运算后 canonicalize 回典范型；环结构 + 序 + `&_ℤ : num → int` 嵌入。**工作语言层派生 Grothendieck/双向归纳视角**：定义 `intSucc = (+1)`、`intNeg = (0-·)`，导出 `(intNeg ∘ intSucc)² = id` 等代数关系；导出双向归纳定理 `⊢ P 0 ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intSucc⁻¹ z)) ⇒ ∀z. P z`，作为 M9 / M10 用 ℤ 时的首选证明工具——后续证明在 ℤ 上看不到 pair 结构。**为什么不直接走 K_0 商类型**：HOL 无原生商，set-of-pair 切多一层；为什么不直接 Peano-style 公理化 ℤ（S/N + 双向归纳作公理）：bootstrap 后 `newAxiom` 锁死，必须构造模型，模型成本和典范代表一致或更高，且 ℤ-递归原理多一个"S 与 S⁻¹ 互逆"的一致性义务。
 - [ ] **M7-6 / `stdlib/Rat.wl`**（1 周）—— `int × int*` 商；域结构、序、`&_ℚ : int → rat` 嵌入；ℚ 在自身稠密
 
 **Phase 3 — 实数 + 序列收敛** ~7–9 周
