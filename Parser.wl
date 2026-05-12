@@ -45,7 +45,7 @@ opCanon[s_String] := Switch[s,
 
 threeCharOpStrings = {"==>"};
 twoCharOpStrings   = {"/\\", "\\/", "->", "|-"};
-singleCharOps      = {"=", "∧", "∨", "⇒", "¬", "∀", "∃", "@", "λ", "→", "⊢", "~", "!", "?", "\\"};
+singleCharOps      = {"=", "∧", "∨", "⇒", "¬", "∀", "∃", "@", "λ", "→", "⊢", "~", "!", "?", "\\", "|"};
 
 isLetterChar[c_String] := LetterQ[c] && ! MemberQ[singleCharOps, c];
 isIdentRest[c_String]  := isLetterChar[c] || DigitQ[c] || c === "'";
@@ -61,6 +61,8 @@ tokenize[s_String] :=
         StringMatchQ[c, Whitespace], i++,
         c === "(", AppendTo[tokens, {"lparen", "(", i}]; i++,
         c === ")", AppendTo[tokens, {"rparen", ")", i}]; i++,
+        c === "{", AppendTo[tokens, {"lbrace", "{", i}]; i++,
+        c === "}", AppendTo[tokens, {"rbrace", "}", i}]; i++,
         c === ".", AppendTo[tokens, {"dot",    ".", i}]; i++,
         c === ":", AppendTo[tokens, {"colon",  ":", i}]; i++,
         c === ",", AppendTo[tokens, {"comma",  ",", i}]; i++,
@@ -162,7 +164,7 @@ registeredPrefixQ[s_String] :=
   ];
 
 atomStartTokenQ[tok_] :=
-  MatchQ[tok[[1]], "lparen" | "ident" | "num"] ||
+  MatchQ[tok[[1]], "lparen" | "lbrace" | "ident" | "num"] ||
   (tok[[1]] === "op" && (binderOpQ[tok[[2]]] || registeredPrefixQ[tok[[2]]]));
 
 $appPrec = 50;
@@ -206,6 +208,8 @@ parseAtom[] :=
           e = rTypeAsc[e, ty]];
         expectKind["rparen"];
         e,
+      tok[[1]] === "lbrace",
+        parseSetBuilder[],
       tok[[1]] === "op" && binderOpQ[tok[[2]]],
         parseBinder[],
       tok[[1]] === "op" && registeredPrefixQ[tok[[2]]],
@@ -244,6 +248,27 @@ parseBinder[] :=
     expectKind["dot"];
     body = parseExpr[0];
     rBinder[binderSym, vars, body]
+  ];
+
+(* Set-builder `{x | P x}` — single-binder syntactic sugar for `λx. P x`. *)
+parseSetBuilder[] :=
+  Module[{vname, vty, body},
+    expectKind["lbrace"];
+    If[peekKind[] =!= "ident",
+      HOL`Error`holError["parser", "set-builder expects an identifier after `{`",
+        <|"got" -> peek[]|>]];
+    vname = consumeVal[];
+    vty = If[peekKind[] === "colon",
+      consume[];
+      parseTypeExpr[],
+      None];
+    If[!(peekKind[] === "op" && peekVal[] === "|"),
+      HOL`Error`holError["parser", "set-builder expects `|` after the bound variable",
+        <|"got" -> peek[]|>]];
+    consume[];   (* consume the `|` *)
+    body = parseExpr[0];
+    expectKind["rbrace"];
+    rAbs[vname, vty, body]
   ];
 
 (* ============================================================ *)

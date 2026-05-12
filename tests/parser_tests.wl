@@ -256,3 +256,57 @@ HOLTest`runTests["parser: prove integration smoke", Module[{th, alpha, x, eq},
     comb[comb[const["=", _], var["x", _]], var["x", _]]],
     "REFL on a parsed term"];
 ]];
+
+(* ===== M7-2-parser: set-builder `{x | P}` ===== *)
+
+HOLTest`runTests["parser: `{x | T}` reads as λx. T",
+  Module[{t},
+    t = parseTerm["{x | T}"];
+    HOLTest`assertTrue[
+      MatchQ[t, abs[bvar[0, _], const["T", _], "x"]],
+      "{x | T} = λx. T (T body, bound x unused)"];
+]];
+
+HOLTest`runTests["parser: `{x | x = y}` is the singleton predicate",
+  Module[{t},
+    t = parseTerm["{x | x = y}"];
+    HOLTest`assertTrue[
+      MatchQ[t, abs[bvar[0, _],
+        comb[comb[const["=", _], bvar[0, _]], var["y", _]],
+        "x"]],
+      "body of λx is `bvar[0] = y`"];
+]];
+
+HOLTest`runTests["parser: set-builder with type annotation",
+  Module[{t},
+    t = parseTerm["{x:bool | x ∨ x}"];
+    HOLTest`assertTrue[
+      MatchQ[t, abs[bvar[0, tyApp["bool", {}]], _, "x"]],
+      "{x:bool | …} pins x to bool"];
+]];
+
+HOLTest`runTests["parser: ASCII pipe in set-builder works",
+  Module[{t1, t2},
+    t1 = parseTerm["{x | x ∧ x}"];
+    t2 = parseTerm["{x|x∧x}"];
+    HOLTest`assertTrue[aconv[t1, t2],
+      "{x | …} and {x|…} (no spaces) α-equal"];
+]];
+
+HOLTest`runTests["parser: set-builder is α-equivalent to explicit λ",
+  Module[{viaBuilder, viaLambda},
+    viaBuilder = parseTerm["{x | x ⇒ x}"];
+    viaLambda  = parseTerm["λx. x ⇒ x"];
+    HOLTest`assertTrue[aconv[viaBuilder, viaLambda],
+      "`{x | x ⇒ x}` ≡ `λx. x ⇒ x`"];
+]];
+
+HOLTest`runTests["parser: set-builder errors",
+  Module[{},
+    HOLTest`assertThrows[parseTerm["{x}"], "parser",
+      "missing `|` between var and body"];
+    HOLTest`assertThrows[parseTerm["{| T}"], "parser",
+      "missing binder before `|`"];
+    HOLTest`assertThrows[parseTerm["{x | T"], "parser",
+      "missing closing `}`"];
+]];
