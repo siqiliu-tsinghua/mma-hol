@@ -676,3 +676,114 @@ HOLTest`runTests["stdlib/Num: leqZeroThm = ⊢ ∀n. 0 ≤ n",
       "∀n. 0 ≤ n"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqZeroThm], {}, "no hyps"];
 ]];
+
+(* ===== M7-3-h: cancellation + distrib/assoc + LEQ trans + < ===== *)
+
+HOLTest`runTests["stdlib/Num: addLeftCancelThm has no hyps + ∀m n k shape",
+  Module[{c},
+    c = concl[HOL`Stdlib`Num`addLeftCancelThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[_, comb[const["∀", _], abs[_,
+        comb[const["∀", _], abs[_, comb[comb[const["⇒", _], _], _],
+          _String]], _String]], _String]]],
+      "⊢ ∀m n k. … ⇒ …"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`addLeftCancelThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: addRightCancelThm has no hyps + ∀m n k shape",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`addRightCancelThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: timesDistribLeftThm = ⊢ ∀a b c. a*(b+c) = a*b + a*c",
+  Module[{c, numTy, aV, bV, cV, plusC, timesC, expected},
+    numTy = mkType["num", {}];
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; cV = mkVar["c", numTy];
+    plusC = mkConst["+", tyFun[numTy, tyFun[numTy, numTy]]];
+    timesC = mkConst["*", tyFun[numTy, tyFun[numTy, numTy]]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[aV,
+        mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[bV,
+            mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+              mkAbs[cV,
+                mkEq[
+                  mkComb[mkComb[timesC, aV],
+                    mkComb[mkComb[plusC, bV], cV]],
+                  mkComb[mkComb[plusC,
+                    mkComb[mkComb[timesC, aV], bV]],
+                    mkComb[mkComb[timesC, aV], cV]]]]]]]]];
+    c = concl[HOL`Stdlib`Num`timesDistribLeftThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀a b c. a * (b + c) = a*b + a*c"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`timesDistribLeftThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: timesDistribRightThm has no hyps",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`timesDistribRightThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: timesAssocThm = ⊢ ∀a b c. (a*b)*c = a*(b*c)",
+  Module[{c, numTy, aV, bV, cV, timesC, expected},
+    numTy = mkType["num", {}];
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; cV = mkVar["c", numTy];
+    timesC = mkConst["*", tyFun[numTy, tyFun[numTy, numTy]]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[aV,
+        mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[bV,
+            mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+              mkAbs[cV,
+                mkEq[
+                  mkComb[mkComb[timesC,
+                    mkComb[mkComb[timesC, aV], bV]], cV],
+                  mkComb[mkComb[timesC, aV],
+                    mkComb[mkComb[timesC, bV], cV]]]]]]]]];
+    c = concl[HOL`Stdlib`Num`timesAssocThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀a b c. (a*b)*c = a*(b*c)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`timesAssocThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: leqTransThm has no hyps + ∀a b c shape",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqTransThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: leqSucThm = ⊢ ∀n. n ≤ SUC n",
+  Module[{c, numTy, nV, leqC, sucC, expected},
+    numTy = mkType["num", {}];
+    nV = mkVar["n", numTy];
+    leqC = mkConst["≤", tyFun[numTy, tyFun[numTy, boolTy]]];
+    sucC = HOL`Stdlib`Num`sucConst[];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[nV, mkComb[mkComb[leqC, nV], mkComb[sucC, nV]]]];
+    c = concl[HOL`Stdlib`Num`leqSucThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀n. n ≤ SUC n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqSucThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: < has type num → num → bool",
+  Module[{numTy, ty},
+    numTy = mkType["num", {}];
+    ty = HOL`Kernel`constType["<"];
+    HOLTest`assertEq[ty, tyFun[numTy, tyFun[numTy, boolTy]],
+      "< : num → num → bool"];
+]];
+
+HOLTest`runTests["stdlib/Num: ltSucThm = ⊢ ∀n. n < SUC n",
+  Module[{c, numTy, nV, ltC, sucC, expected},
+    numTy = mkType["num", {}];
+    nV = mkVar["n", numTy];
+    ltC = mkConst["<", tyFun[numTy, tyFun[numTy, boolTy]]];
+    sucC = HOL`Stdlib`Num`sucConst[];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[nV, mkComb[mkComb[ltC, nV], mkComb[sucC, nV]]]];
+    c = concl[HOL`Stdlib`Num`ltSucThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀n. n < SUC n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`ltSucThm], {}, "no hyps"];
+]];
