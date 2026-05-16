@@ -27,6 +27,21 @@ indSuccOneOneThm::usage  = "indSuccOneOneThm — ⊢ ONE_ONE IND_SUC.";
 indSuccNotOntoThm::usage = "indSuccNotOntoThm — ⊢ ¬ ONTO IND_SUC.";
 ind0NotInRangeThm::usage = "ind0NotInRangeThm — ⊢ ¬ ∃x. IND_0 = IND_SUC x.";
 
+numRepConst::usage = "numRepConst[] — NUM_REP : ind → bool, characterizes IND-encoded numerals.";
+numRepDefThm::usage = "numRepDefThm — ⊢ NUM_REP = (λn. ∀P. P IND_0 ∧ (∀m. P m ⇒ P (IND_SUC m)) ⇒ P n).";
+numRepIND0Witness::usage = "numRepIND0Witness — ⊢ (NUM_REP-body) IND_0; used as the witness for newBasicTypeDefinition.";
+absRepNumThm::usage = "absRepNumThm — ⊢ ABS_num (REP_num a) = a (round-trip on num).";
+repAbsNumThm::usage = "repAbsNumThm — ⊢ NUM_REP-body r = (REP_num (ABS_num r) = r).";
+
+absNumConst::usage = "absNumConst[] — ABS_num : ind → num.";
+repNumConst::usage = "repNumConst[] — REP_num : num → ind.";
+
+zeroConst::usage = "zeroConst[] — 0 : num.";
+zeroDefThm::usage = "zeroDefThm — ⊢ 0 = ABS_num IND_0.";
+
+sucConst::usage = "sucConst[] — SUC : num → num.";
+sucDefThm::usage = "sucDefThm — ⊢ SUC = (λn. ABS_num (IND_SUC (REP_num n))).";
+
 selectOfExists::usage =
   "selectOfExists[predLambda, existsTh] — given a closed lambda " <>
   "predLambda = (λx. body) and a theorem existsTh : ⊢ ∃x. body, " <>
@@ -227,6 +242,106 @@ ind0NotInRangeThm =
     notEq = HOL`Equal`APTERM[notC[], existsEq];
     EQMP[notEq, atPredTh]
   ];
+
+(* ============================================================ *)
+(* NUM_REP : ind → bool — smallest predicate containing IND_0   *)
+(* and closed under IND_SUC.                                    *)
+(*   NUM_REP n = ∀P. P IND_0 ∧ (∀m. P m ⇒ P (IND_SUC m)) ⇒ P n  *)
+(* ============================================================ *)
+
+andTm[a_, b_] := mkComb[mkComb[andC[], a], b];
+impTm[a_, b_] :=
+  mkComb[mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+
+(* λn:ind. ∀P. P IND_0 ∧ (∀m. P m ⇒ P (IND_SUC m)) ⇒ P n *)
+numRepPredicateBody[] :=
+  Module[{nV, pV, mV, predTyInd, pIND0, pM, pSucM, stepImp,
+          stepForall, conjBody, pN, impBody, outerForall},
+    nV = mkVar["n", indTy];
+    pV = mkVar["P", predTy[indTy]];
+    mV = mkVar["m", indTy];
+    pIND0  = mkComb[pV, ind0Const[]];
+    pM     = mkComb[pV, mV];
+    pSucM  = mkComb[pV, mkComb[indSuccConst[], mV]];
+    stepImp    = impTm[pM, pSucM];
+    stepForall = mkComb[forallC[indTy], mkAbs[mV, stepImp]];
+    conjBody   = andTm[pIND0, stepForall];
+    pN         = mkComb[pV, nV];
+    impBody    = impTm[conjBody, pN];
+    outerForall = mkComb[forallC[predTy[indTy]], mkAbs[pV, impBody]];
+    mkAbs[nV, outerForall]
+  ];
+
+numRepDefThm = newDefinition[mkEq[
+  mkVar["NUM_REP", predTy[indTy]],
+  numRepPredicateBody[]
+]];
+
+numRepConst[] := mkConst["NUM_REP", predTy[indTy]];
+
+(* Witness theorem for newBasicTypeDefinition:                 *)
+(* ⊢ (numRepPredicateBody) IND_0                                *)
+(* Proof: under the ∀P-body, ASSUME the antecedent, CONJUNCT1   *)
+(* gives ⊢ P IND_0; DISCH, GEN P. Then un-beta the predicate    *)
+(* application to fit newBasicTypeDefinition's `P x` shape.     *)
+numRepIND0Witness =
+  Module[{pV, mV, pIND0, pM, pSucM, stepImp, stepForall,
+          conjBody, assumeConj, conj1, dischTh, genTh,
+          predLam, predApplied, betaTh},
+    pV = mkVar["P", predTy[indTy]];
+    mV = mkVar["m", indTy];
+    pIND0  = mkComb[pV, ind0Const[]];
+    pM     = mkComb[pV, mV];
+    pSucM  = mkComb[pV, mkComb[indSuccConst[], mV]];
+    stepImp    = impTm[pM, pSucM];
+    stepForall = mkComb[forallC[indTy], mkAbs[mV, stepImp]];
+    conjBody   = andTm[pIND0, stepForall];
+    assumeConj = ASSUME[conjBody];
+    conj1      = HOL`Bool`CONJUNCT1[assumeConj];
+    dischTh    = HOL`Bool`DISCH[conjBody, conj1];
+    genTh      = HOL`Bool`GEN[pV, dischTh];
+    (* genTh : ⊢ ∀P. P IND_0 ∧ … ⇒ P IND_0                       *)
+    predLam = numRepPredicateBody[];
+    predApplied = mkComb[predLam, ind0Const[]];
+    betaTh = BETACONV[predApplied];
+    (* betaTh : ⊢ predLam IND_0 = ∀P. … ⇒ P IND_0                *)
+    EQMP[HOL`Equal`SYM[betaTh], genTh]
+  ];
+
+(* ============================================================ *)
+(* num type via newBasicTypeDefinition                          *)
+(* ============================================================ *)
+
+{absRepNumThm, repAbsNumThm} =
+  newBasicTypeDefinition["num", "ABS_num", "REP_num", numRepIND0Witness];
+
+numTy = mkType["num", {}];
+absNumConst[] := mkConst["ABS_num", tyFun[indTy, numTy]];
+repNumConst[] := mkConst["REP_num", tyFun[numTy, indTy]];
+
+(* ============================================================ *)
+(* 0 : num  and  SUC : num → num                                *)
+(* ============================================================ *)
+
+zeroDefThm = newDefinition[mkEq[
+  mkVar["0", numTy],
+  mkComb[absNumConst[], ind0Const[]]
+]];
+
+zeroConst[] := mkConst["0", numTy];
+
+sucDefThm =
+  Module[{nV, sucBody},
+    nV = mkVar["n", numTy];
+    sucBody = mkAbs[nV,
+      mkComb[absNumConst[],
+        mkComb[indSuccConst[], mkComb[repNumConst[], nV]]]];
+    newDefinition[mkEq[
+      mkVar["SUC", tyFun[numTy, numTy]],
+      sucBody]]
+  ];
+
+sucConst[] := mkConst["SUC", tyFun[numTy, numTy]];
 
 End[];
 EndPackage[];
