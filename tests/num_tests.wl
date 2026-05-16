@@ -199,3 +199,126 @@ HOLTest`runTests["stdlib/Num: sucDefThm has LHS = SUC constant",
       "LHS of sucDefThm is SUC constant"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`sucDefThm], {}, "no hyps"];
 ]];
+
+(* ===== NUM_REP intro rules ===== *)
+
+HOLTest`runTests["stdlib/Num: numRepInd0Thm = ⊢ NUM_REP IND_0",
+  Module[{c, expected},
+    expected = mkComb[HOL`Stdlib`Num`numRepConst[], HOL`Stdlib`Num`ind0Const[]];
+    c = concl[HOL`Stdlib`Num`numRepInd0Thm];
+    HOLTest`assertEq[c, expected, "concl is NUM_REP IND_0"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`numRepInd0Thm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: numRepSucThm = ⊢ ∀m. NUM_REP m ⇒ NUM_REP (IND_SUC m)",
+  Module[{c, indTy, mV, expected},
+    indTy = mkType["ind", {}];
+    mV = mkVar["m", indTy];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[indTy, boolTy], boolTy]],
+      mkAbs[mV,
+        mkComb[mkComb[
+          mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+          mkComb[HOL`Stdlib`Num`numRepConst[], mV]],
+          mkComb[HOL`Stdlib`Num`numRepConst[],
+            mkComb[HOL`Stdlib`Num`indSuccConst[], mV]]]]];
+    c = concl[HOL`Stdlib`Num`numRepSucThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "concl is ∀m. NUM_REP m ⇒ NUM_REP (IND_SUC m)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`numRepSucThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: numRepRepNumThm = ⊢ NUM_REP (REP_num n)",
+  Module[{c, numTy, nV, expected},
+    numTy = mkType["num", {}];
+    nV = mkVar["n", numTy];
+    expected = mkComb[HOL`Stdlib`Num`numRepConst[],
+      mkComb[HOL`Stdlib`Num`repNumConst[], nV]];
+    c = concl[HOL`Stdlib`Num`numRepRepNumThm];
+    HOLTest`assertEq[c, expected, "NUM_REP (REP_num n) for free n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`numRepRepNumThm], {}, "no hyps"];
+]];
+
+(* ===== REP_num computation rules ===== *)
+
+HOLTest`runTests["stdlib/Num: repZeroThm = ⊢ REP_num 0 = IND_0",
+  Module[{c, expected},
+    expected = mkEq[
+      mkComb[HOL`Stdlib`Num`repNumConst[], HOL`Stdlib`Num`zeroConst[]],
+      HOL`Stdlib`Num`ind0Const[]];
+    c = concl[HOL`Stdlib`Num`repZeroThm];
+    HOLTest`assertEq[c, expected, "REP_num 0 = IND_0"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`repZeroThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: repSucThm = ⊢ REP_num (SUC n) = IND_SUC (REP_num n)",
+  Module[{c, numTy, nV, expected},
+    numTy = mkType["num", {}];
+    nV = mkVar["n", numTy];
+    expected = mkEq[
+      mkComb[HOL`Stdlib`Num`repNumConst[],
+        mkComb[HOL`Stdlib`Num`sucConst[], nV]],
+      mkComb[HOL`Stdlib`Num`indSuccConst[],
+        mkComb[HOL`Stdlib`Num`repNumConst[], nV]]];
+    c = concl[HOL`Stdlib`Num`repSucThm];
+    HOLTest`assertEq[c, expected, "REP_num (SUC n) = IND_SUC (REP_num n)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`repSucThm], {}, "no hyps"];
+]];
+
+(* ===== Peano: SUC ≠ 0 and SUC injective ===== *)
+
+HOLTest`runTests["stdlib/Num: sucNotZeroThm = ⊢ ∀n. ¬ (SUC n = 0)",
+  Module[{c, numTy, nV, expected},
+    numTy = mkType["num", {}];
+    nV = mkVar["n", numTy];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[nV,
+        mkComb[mkConst["¬", tyFun[boolTy, boolTy]],
+          mkEq[mkComb[HOL`Stdlib`Num`sucConst[], nV],
+               HOL`Stdlib`Num`zeroConst[]]]]];
+    c = concl[HOL`Stdlib`Num`sucNotZeroThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀n. ¬ (SUC n = 0)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`sucNotZeroThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: sucInjThm = ⊢ ∀m n. SUC m = SUC n ⇒ m = n",
+  Module[{c, numTy, mV, nV, expected},
+    numTy = mkType["num", {}];
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mV,
+        mkComb[
+          mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[nV,
+            mkComb[mkComb[
+              mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+              mkEq[mkComb[HOL`Stdlib`Num`sucConst[], mV],
+                   mkComb[HOL`Stdlib`Num`sucConst[], nV]]],
+              mkEq[mV, nV]]]]]];
+    c = concl[HOL`Stdlib`Num`sucInjThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀m n. SUC m = SUC n ⇒ m = n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`sucInjThm], {}, "no hyps"];
+]];
+
+(* ===== Peano: induction (capstone) ===== *)
+
+HOLTest`runTests["stdlib/Num: numInductionThm — shape `∀P. P 0 ∧ … ⇒ ∀n. P n`",
+  Module[{c, numTy},
+    numTy = mkType["num", {}];
+    c = concl[HOL`Stdlib`Num`numInductionThm];
+    HOLTest`assertTrue[
+      MatchQ[c,
+        comb[const["∀", _],
+          abs[bvar[0, tyApp["fun", {tyApp["num", {}], tyApp["bool", {}]}]],
+            comb[comb[const["⇒", _],
+              comb[comb[const["∧", _], _], _]],  (* antecedent: P 0 ∧ step *)
+              comb[const["∀", _],                (* ∀n. P n *)
+                abs[bvar[0, tyApp["num", {}]], _, _String]]],
+            _String]]],
+      "shape: ∀P. (P 0 ∧ ∀n. P n ⇒ P (SUC n)) ⇒ ∀n. P n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`numInductionThm], {}, "no hyps"];
+]];
