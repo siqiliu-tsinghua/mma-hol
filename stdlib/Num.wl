@@ -51,6 +51,15 @@ sucNotZeroThm::usage = "sucNotZeroThm — ⊢ ∀n. ¬ (SUC n = 0).";
 sucInjThm::usage = "sucInjThm — ⊢ ∀m n. SUC m = SUC n ⇒ m = n.";
 numInductionThm::usage = "numInductionThm — ⊢ ∀P. P 0 ∧ (∀n. P n ⇒ P (SUC n)) ⇒ ∀n. P n.";
 
+iterGraphConst::usage = "iterGraphConst[] — ITER_GRAPH : A → (A→A) → ind → A → bool. Smallest binary relation on (ind, A) containing (IND_0, e) and closed under (i, a) ↦ (IND_SUC i, f a).";
+iterGraphDefThm::usage = "iterGraphDefThm — ⊢ ITER_GRAPH = (λe f i a. ∀S. S IND_0 e ∧ (∀i' a'. S i' a' ⇒ S (IND_SUC i') (f a')) ⇒ S i a).";
+
+iterConst::usage  = "iterConst[] — ITER : A → (A→A) → num → A. Iteration on num. Defined as ITER e f n = ε a. ITER_GRAPH e f (REP_num n) a.";
+iterDefThm::usage = "iterDefThm — ⊢ ITER = (λe f n. ε a. ITER_GRAPH e f (REP_num n) a).";
+iterZeroEqThm::usage = "iterZeroEqThm — ⊢ ITER e f 0 = e.";
+iterSucEqThm::usage  = "iterSucEqThm — ⊢ ∀n. ITER e f (SUC n) = f (ITER e f n).";
+numIterationThm::usage = "numIterationThm — ⊢ ∀e:A. ∀f:A→A. ∃g:num→A. g 0 = e ∧ ∀n. g (SUC n) = f (g n).";
+
 selectOfExists::usage =
   "selectOfExists[predLambda, existsTh] — given a closed lambda " <>
   "predLambda = (λx. body) and a theorem existsTh : ⊢ ∃x. body, " <>
@@ -843,6 +852,1005 @@ numInductionThm =
     ];
 
     finalInner
+  ];
+
+(* ============================================================ *)
+(* M7-3-d: Iteration theorem                                    *)
+(* ⊢ ∀e:A. ∀f:A→A. ∃g:num→A. g 0 = e ∧ ∀n. g (SUC n) = f (g n)  *)
+(*                                                              *)
+(* Proof skeleton:                                              *)
+(*   1. Define ITER_GRAPH e f as the smallest binary relation   *)
+(*      on (ind, A) containing (IND_0, e) and closed under      *)
+(*      (i, a) ↦ (IND_SUC i, f a).                              *)
+(*   2. graphInd0Lem  : ITER_GRAPH e f IND_0 e.                 *)
+(*   3. graphSucLem   : ITER_GRAPH e f i a                      *)
+(*                       ⇒ ITER_GRAPH e f (IND_SUC i) (f a).    *)
+(*   4. graphUniqInd0 : ITER_GRAPH e f IND_0 a ⇒ a = e. Uses    *)
+(*      ind0NotInRangeThm to vacuously satisfy the step-closure *)
+(*      of S = λi'' a''. (i'' = IND_0 ⇒ a'' = e).               *)
+(*   5. graphExtract  : ITER_GRAPH e f (IND_SUC i) a            *)
+(*                       ⇒ ∃b. a = f b ∧ ITER_GRAPH e f i b.   *)
+(*      Uses S = λi'' a''. ITER_GRAPH e f i'' a''                *)
+(*                          ∧ (∀j. i'' = IND_SUC j              *)
+(*                              ⇒ ∃b. a'' = f b ∧ … e f j b).    *)
+(*   6. iterExists  : NUM_REP i ⇒ ∃a. ITER_GRAPH e f i a.       *)
+(*      By NUM_REP induction with P = λi. ∃a. ITER_GRAPH e f i a.*)
+(*   7. iterUnique  : NUM_REP i                                  *)
+(*                     ⇒ ∀a b. ITER_GRAPH e f i a               *)
+(*                              ∧ ITER_GRAPH e f i b ⇒ a = b.   *)
+(*      By NUM_REP induction. Uses graphExtract + sucInj-at-ind *)
+(*      (indSuccOneOneUnfoldedThm) at the step.                 *)
+(*   8. The function g n = ε a. ITER_GRAPH e f (REP_num n) a    *)
+(*      then satisfies the equations.                           *)
+(*                                                              *)
+(* This is heavy plumbing — proof is ~400 lines of derivations. *)
+(* ============================================================ *)
+
+aTy = tyVar["A"];
+funATy = tyFun[aTy, aTy];
+graphTy = tyFun[indTy, tyFun[aTy, boolTy]];
+iterGraphTy = tyFun[aTy, tyFun[funATy, graphTy]];
+
+iterGraphBodyTm[] :=
+  Module[{eV, fV, iV, aV, sV, iVp, aVp,
+          sInd0e, sStepInner, sStepInner2, sStep, premise, conclTm,
+          forallSBody},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    iV = mkVar["i", indTy];
+    aV = mkVar["a", aTy];
+    sV = mkVar["S", graphTy];
+    iVp = mkVar["i'", indTy];
+    aVp = mkVar["a'", aTy];
+    sInd0e = mkComb[mkComb[sV, ind0Const[]], eV];
+    sStepInner = impTm[
+      mkComb[mkComb[sV, iVp], aVp],
+      mkComb[mkComb[sV, mkComb[indSuccConst[], iVp]],
+                       mkComb[fV, aVp]]];
+    sStepInner2 = mkComb[forallC[aTy], mkAbs[aVp, sStepInner]];
+    sStep = mkComb[forallC[indTy], mkAbs[iVp, sStepInner2]];
+    premise = andTm[sInd0e, sStep];
+    conclTm = mkComb[mkComb[sV, iV], aV];
+    forallSBody = mkComb[forallC[graphTy],
+      mkAbs[sV, impTm[premise, conclTm]]];
+    mkAbs[eV, mkAbs[fV, mkAbs[iV, mkAbs[aV, forallSBody]]]]
+  ];
+
+iterGraphDefThm = newDefinition[mkEq[
+  mkVar["ITER_GRAPH", iterGraphTy],
+  iterGraphBodyTm[]
+]];
+
+iterGraphConst[] := mkConst["ITER_GRAPH", iterGraphTy];
+
+(* iterGraphAppTm[eTm, fTm, iTm, aTm] — the β-normal *unfolded* form of      *)
+(*   `ITER_GRAPH e f i a`                                                   *)
+(* = `∀S. (S IND_0 e ∧ (∀i' a'. S i' a' ⇒ S (IND_SUC i') (f a'))) ⇒ S i a`. *)
+iterGraphAppTm[eTm_, fTm_, iTm_, aTm_] :=
+  Module[{sV, iVp, aVp, sInd0e, sStepInner, sStep, premise, conclTm},
+    sV = mkVar["S", graphTy];
+    iVp = mkVar["i'", indTy];
+    aVp = mkVar["a'", aTy];
+    sInd0e = mkComb[mkComb[sV, ind0Const[]], eTm];
+    sStepInner = impTm[
+      mkComb[mkComb[sV, iVp], aVp],
+      mkComb[mkComb[sV, mkComb[indSuccConst[], iVp]],
+                       mkComb[fTm, aVp]]];
+    sStep = mkComb[forallC[indTy],
+      mkAbs[iVp, mkComb[forallC[aTy], mkAbs[aVp, sStepInner]]]];
+    premise = andTm[sInd0e, sStep];
+    conclTm = mkComb[mkComb[sV, iTm], aTm];
+    mkComb[forallC[graphTy],
+      mkAbs[sV, impTm[premise, conclTm]]]
+  ];
+
+(* iterGraphFoldTm[eTm, fTm, iTm, aTm] — the *folded* form                  *)
+(*   `ITER_GRAPH e f i a` (using the constant).                              *)
+iterGraphFoldTm[eTm_, fTm_, iTm_, aTm_] :=
+  mkComb[mkComb[mkComb[mkComb[iterGraphConst[], eTm], fTm], iTm], aTm];
+
+(* `⊢ ITER_GRAPH e f i a = (∀S. … ⇒ S i a)` (β-reduced RHS). *)
+unfoldIterGraph[eTm_, fTm_, iTm_, aTm_] :=
+  Module[{ap1, ap2, ap3, ap4, conv},
+    ap1 = HOL`Equal`APTHM[iterGraphDefThm, eTm];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, fTm];
+    ap2 = TRANS[ap2, BETACONV[concl[ap2][[2]]]];
+    ap3 = HOL`Equal`APTHM[ap2, iTm];
+    ap3 = TRANS[ap3, BETACONV[concl[ap3][[2]]]];
+    ap4 = HOL`Equal`APTHM[ap3, aTm];
+    TRANS[ap4, BETACONV[concl[ap4][[2]]]]
+  ];
+
+(* ============================================================ *)
+(* graphInd0Lem :                                               *)
+(*   ⊢ ITER_GRAPH e f IND_0 e                                   *)
+(* For free e : A, f : A → A.                                   *)
+(* ============================================================ *)
+
+graphInd0Lem =
+  Module[{eV, fV, sV, iVp, aVp, sInd0e, sStepInner, sStep,
+          premise, assumeConj, conj1, dischConj, genS, foldEq},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    sV = mkVar["S", graphTy];
+    iVp = mkVar["i'", indTy];
+    aVp = mkVar["a'", aTy];
+    sInd0e = mkComb[mkComb[sV, ind0Const[]], eV];
+    sStepInner = impTm[
+      mkComb[mkComb[sV, iVp], aVp],
+      mkComb[mkComb[sV, mkComb[indSuccConst[], iVp]],
+                       mkComb[fV, aVp]]];
+    sStep = mkComb[forallC[indTy],
+      mkAbs[iVp, mkComb[forallC[aTy], mkAbs[aVp, sStepInner]]]];
+    premise = andTm[sInd0e, sStep];
+    assumeConj = ASSUME[premise];
+    conj1 = HOL`Bool`CONJUNCT1[assumeConj];   (* (premise) ⊢ S IND_0 e *)
+    dischConj = HOL`Bool`DISCH[premise, conj1];
+    genS = HOL`Bool`GEN[sV, dischConj];
+    (* ⊢ ∀S. (premise) ⇒ S IND_0 e *)
+    foldEq = unfoldIterGraph[eV, fV, ind0Const[], eV];
+    EQMP[HOL`Equal`SYM[foldEq], genS]
+  ];
+
+(* ============================================================ *)
+(* graphSucLem :                                                *)
+(*   ⊢ ∀i a. ITER_GRAPH e f i a                                  *)
+(*            ⇒ ITER_GRAPH e f (IND_SUC i) (f a)                *)
+(* ============================================================ *)
+
+graphSucLem =
+  Module[{eV, fV, iV, aV, sV, iVp, aVp,
+          sInd0e, sStepInner, sStep, premise,
+          graphIAFold, assumeGraphIAFold, unfoldedAtIA,
+          assumeConj, conj2, conj2SpecI, conj2SpecIa,
+          unfoldedSpecS, mpStep, dischConj, genS,
+          foldEq, foldedThm, dischGraphIA, genA, genI},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    iV = mkVar["i", indTy];
+    aV = mkVar["a", aTy];
+    sV = mkVar["S", graphTy];
+    iVp = mkVar["i'", indTy];
+    aVp = mkVar["a'", aTy];
+
+    sInd0e = mkComb[mkComb[sV, ind0Const[]], eV];
+    sStepInner = impTm[
+      mkComb[mkComb[sV, iVp], aVp],
+      mkComb[mkComb[sV, mkComb[indSuccConst[], iVp]],
+                       mkComb[fV, aVp]]];
+    sStep = mkComb[forallC[indTy],
+      mkAbs[iVp, mkComb[forallC[aTy], mkAbs[aVp, sStepInner]]]];
+    premise = andTm[sInd0e, sStep];
+
+    (* Assume the FOLDED form (ITER_GRAPH e f i a) so the hypothesis  *)
+    (* matches what users hand us; unfold it internally.              *)
+    graphIAFold = iterGraphFoldTm[eV, fV, iV, aV];
+    assumeGraphIAFold = ASSUME[graphIAFold];
+    unfoldedAtIA = EQMP[unfoldIterGraph[eV, fV, iV, aV], assumeGraphIAFold];
+    (* (ITER_GRAPH e f i a) ⊢ ∀S. premise ⇒ S i a *)
+
+    assumeConj = ASSUME[premise];
+    conj2 = HOL`Bool`CONJUNCT2[assumeConj];
+    conj2SpecI = HOL`Bool`SPEC[iV, conj2];
+    conj2SpecIa = HOL`Bool`SPEC[aV, conj2SpecI];
+
+    unfoldedSpecS = HOL`Bool`SPEC[sV, unfoldedAtIA];
+    mpStep = HOL`Bool`MP[unfoldedSpecS, assumeConj];
+    mpStep = HOL`Bool`MP[conj2SpecIa, mpStep];
+
+    dischConj = HOL`Bool`DISCH[premise, mpStep];
+    genS = HOL`Bool`GEN[sV, dischConj];
+
+    foldEq = unfoldIterGraph[eV, fV,
+      mkComb[indSuccConst[], iV], mkComb[fV, aV]];
+    foldedThm = EQMP[HOL`Equal`SYM[foldEq], genS];
+
+    dischGraphIA = HOL`Bool`DISCH[graphIAFold, foldedThm];
+    genA = HOL`Bool`GEN[aV, dischGraphIA];
+    genI = HOL`Bool`GEN[iV, genA]
+  ];
+
+(* ============================================================ *)
+(* indSucNotInd0Lem : ⊢ ∀i. ¬ (IND_SUC i = IND_0)                *)
+(* ============================================================ *)
+
+indSucNotInd0Lem =
+  Module[{iV, sucIEqInd0, hyp, symHyp, exTm, existsTh, mpStep,
+          dischTh, notTh},
+    iV = mkVar["i", indTy];
+    sucIEqInd0 = mkEq[mkComb[indSuccConst[], iV], ind0Const[]];
+    hyp = ASSUME[sucIEqInd0];
+    symHyp = HOL`Equal`SYM[hyp];
+    exTm = mkComb[existsC[indTy],
+      mkAbs[mkVar["x", indTy],
+        mkEq[ind0Const[], mkComb[indSuccConst[], mkVar["x", indTy]]]]];
+    existsTh = HOL`Bool`EXISTS[exTm, iV, symHyp];
+    mpStep = HOL`Bool`MP[HOL`Bool`NOTELIM[ind0NotInRangeThm], existsTh];
+    dischTh = HOL`Bool`DISCH[sucIEqInd0, mpStep];
+    notTh = HOL`Bool`NOTINTRO[dischTh];
+    HOL`Bool`GEN[iV, notTh]
+  ];
+
+(* ============================================================ *)
+(* graphUniqInd0Lem : ⊢ ∀a. ITER_GRAPH e f IND_0 a ⇒ a = e       *)
+(*                                                              *)
+(* Pick S = λi''. λa''. i'' = IND_0 ⇒ a'' = e. Verify the       *)
+(* base+step premise:                                            *)
+(*   - Base S IND_0 e: (IND_0 = IND_0 ⇒ e = e). Trivial.        *)
+(*   - Step: (i' = IND_0 ⇒ a' = e) ⇒                            *)
+(*           (IND_SUC i' = IND_0 ⇒ f a' = e). The latter        *)
+(*     antecedent is impossible via indSucNotInd0Lem; close      *)
+(*     vacuously via propTaut.                                  *)
+(* Then unfold ITER_GRAPH e f IND_0 a, SPEC at this S, MP, β,    *)
+(* and MP with REFL[IND_0] to extract a = e.                    *)
+(* ============================================================ *)
+
+graphUniqInd0Lem =
+  Module[{eV, fV, aV, iVpp, aVpp, iVp, aVp,
+          graphIAFold, assumeGraphIAFold, assumeGraphIA, sUniqLam,
+          conj1Proof, conj2Proof, conjProof,
+          specS, mpThroughPremise, finalImp, mpReflInd0,
+          dischGraphIA, genA,
+          ind0EqInd0Tm, iEqInd0Tm, sucIEqInd0Tm, aEqETm, faEqETm,
+          vacuousImp, ipImp, ipConcl, propTautTh, specINotIndPostNot,
+          notIndPostI, contradImp, vacuousAtAprime, vacuousAtIprime},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    aV = mkVar["a", aTy];
+    iVpp = mkVar["iPP", indTy];
+    aVpp = mkVar["aPP", aTy];
+    iVp = mkVar["i'", indTy];
+    aVp = mkVar["a'", aTy];
+
+    (* Take folded ITER_GRAPH e f IND_0 a as antecedent; unfold internally. *)
+    graphIAFold = iterGraphFoldTm[eV, fV, ind0Const[], aV];
+    assumeGraphIAFold = ASSUME[graphIAFold];
+    assumeGraphIA = EQMP[unfoldIterGraph[eV, fV, ind0Const[], aV],
+      assumeGraphIAFold];
+
+    (* sUniqLam = λi''. λa''. (i'' = IND_0) ⇒ (a'' = e) *)
+    sUniqLam = mkAbs[iVpp,
+      mkAbs[aVpp,
+        impTm[mkEq[iVpp, ind0Const[]], mkEq[aVpp, eV]]]];
+
+    (* Part 1: ⊢ IND_0 = IND_0 ⇒ e = e *)
+    ind0EqInd0Tm = mkEq[ind0Const[], ind0Const[]];
+    conj1Proof = HOL`Bool`DISCH[ind0EqInd0Tm, REFL[eV]];
+
+    (* Part 2: ⊢ ∀i'. ∀a'. (i' = IND_0 ⇒ a' = e)                  *)
+    (*                     ⇒ (IND_SUC i' = IND_0 ⇒ f a' = e)      *)
+    iEqInd0Tm     = mkEq[iVp, ind0Const[]];
+    aEqETm        = mkEq[aVp, eV];
+    sucIEqInd0Tm  = mkEq[mkComb[indSuccConst[], iVp], ind0Const[]];
+    faEqETm       = mkEq[mkComb[fV, aVp], eV];
+
+    (* propTaut: ⊢ ¬ p ⇒ (p ⇒ q)   then INST p, q.                *)
+    propTautTh = HOL`Auto`PropTaut`propTaut[
+      impTm[mkComb[notC[], mkVar["p", boolTy]],
+        impTm[mkVar["p", boolTy], mkVar["q", boolTy]]]];
+    (* ⊢ ¬p ⇒ (p ⇒ q) *)
+    notIndPostI = HOL`Bool`SPEC[iVp, indSucNotInd0Lem];
+    (* ⊢ ¬ (IND_SUC i' = IND_0) *)
+    vacuousAtAprime = HOL`Bool`MP[
+      HOL`Kernel`INST[
+        {mkVar["p", boolTy] -> sucIEqInd0Tm,
+         mkVar["q", boolTy] -> faEqETm},
+        propTautTh],
+      notIndPostI];
+    (* ⊢ IND_SUC i' = IND_0 ⇒ f a' = e *)
+
+    (* Step rule: (i' = IND_0 ⇒ a' = e) ⇒ (IND_SUC i' = IND_0 ⇒ f a' = e). *)
+    (* The conclusion is already proven independent of the assumption — *)
+    (* DISCH the hypothesis vacuously.                                    *)
+    ipImp = HOL`Bool`DISCH[impTm[iEqInd0Tm, aEqETm], vacuousAtAprime];
+    (* ⊢ (i' = IND_0 ⇒ a' = e) ⇒ (IND_SUC i' = IND_0 ⇒ f a' = e) *)
+    conj2Proof = HOL`Bool`GEN[iVp, HOL`Bool`GEN[aVp, ipImp]];
+
+    (* Combine into the premise (un-β'd via the SPEC of sUniqLam shortly). *)
+    conjProof = HOL`Bool`CONJ[conj1Proof, conj2Proof];
+
+    (* SPEC at sUniqLam, β-reduce, MP through the premise. *)
+    specS = HOL`Bool`SPEC[sUniqLam, assumeGraphIA];
+    specS = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specS];
+    (* (graphIA) ⊢ [(IND_0 = IND_0 ⇒ e = e) ∧                            *)
+    (*               (∀i' a'. (i' = IND_0 ⇒ a' = e)                     *)
+    (*                        ⇒ (IND_SUC i' = IND_0 ⇒ f a' = e))]       *)
+    (*              ⇒ (IND_0 = IND_0 ⇒ a = e)                            *)
+    mpThroughPremise = HOL`Bool`MP[specS, conjProof];
+    (* (graphIA) ⊢ IND_0 = IND_0 ⇒ a = e *)
+    mpReflInd0 = HOL`Bool`MP[mpThroughPremise, REFL[ind0Const[]]];
+    (* (graphIAFold) ⊢ a = e *)
+
+    dischGraphIA = HOL`Bool`DISCH[graphIAFold, mpReflInd0];
+    genA = HOL`Bool`GEN[aV, dischGraphIA]
+  ];
+
+(* ============================================================ *)
+(* ind0NotSucLem : ⊢ ∀j. ¬ (IND_0 = IND_SUC j)                    *)
+(* ============================================================ *)
+
+ind0NotSucLem =
+  Module[{jV, eqTm, hyp, exTm, existsTh, mpStep, dischTh, notTh},
+    jV = mkVar["j", indTy];
+    eqTm = mkEq[ind0Const[], mkComb[indSuccConst[], jV]];
+    hyp = ASSUME[eqTm];
+    exTm = mkComb[existsC[indTy], mkAbs[jV, eqTm]];
+    existsTh = HOL`Bool`EXISTS[exTm, jV, hyp];
+    mpStep = HOL`Bool`MP[HOL`Bool`NOTELIM[ind0NotInRangeThm], existsTh];
+    dischTh = HOL`Bool`DISCH[eqTm, mpStep];
+    notTh = HOL`Bool`NOTINTRO[dischTh];
+    HOL`Bool`GEN[jV, notTh]
+  ];
+
+(* ============================================================ *)
+(* graphExtractLem :                                            *)
+(*   ⊢ ∀i a. ITER_GRAPH e f (IND_SUC i) a                       *)
+(*           ⇒ ∃b. a = f b ∧ ITER_GRAPH e f i b                 *)
+(*                                                              *)
+(* S = λi''. λa''. ITER_GRAPH e f i'' a''                       *)
+(*                  ∧ (∀j. i'' = IND_SUC j                       *)
+(*                       ⇒ ∃b. a'' = f b ∧ ITER_GRAPH e f j b). *)
+(* ============================================================ *)
+
+graphExtractLem =
+  Module[{eV, fV, iV, aV, iVpp, aVpp, jV, bV,
+          sExtractLam, sExtractApp,
+          graphAtIndSuc, assumeGraphIndSuc, unfoldedAtIndSuc,
+          propTautVac, vacuousImpForJ,
+          ind0NotSucAtJ, sBase, sBaseExistsPart, sBaseConj,
+          sBaseUnbeta, sStep, sStepUnbeta, premiseProof,
+          specSExtract, specSExtractBeta, mpThroughPremise,
+          conj2OfS, specJAtI, mpReflSucI, existsResult,
+          dischGraphAtIndSuc, genA, genI,
+          (* helpers for step *)
+          iVp, aVp, sIa, hypSIa, sIaConj1, sIaConj2,
+          indSucIpEqIndSucJTm, hypInjAss, applyInj, injAtIp,
+          witnessB, graphIpAp, conjForB, exB, dischInjAss,
+          genJStep, graphSucAtIpAp, conjStepResult,
+          stepRule, dischSIp, genApStep, genIpStep,
+          (* unbeta for S at specific positions *)
+          sLamAppInd0e, sLamAppIndSuci, sLamAppIpAp,
+          sLamAppSucIpFap, betaPair, betaSucPair, betaStepPair},
+
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    iV = mkVar["i", indTy];
+    aV = mkVar["a", aTy];
+    iVpp = mkVar["iPP", indTy];
+    aVpp = mkVar["aPP", aTy];
+    jV = mkVar["j", indTy];
+    bV = mkVar["b", aTy];
+
+    (* Build sExtractLam = λi''. λa''. body, using the FOLDED                 *)
+    (* `ITER_GRAPH e f …` form so that downstream β leaves the constant       *)
+    (* in place (matches graphInd0Lem / graphSucLem outputs).                  *)
+    sExtractLam = mkAbs[iVpp,
+      mkAbs[aVpp,
+        andTm[
+          iterGraphFoldTm[eV, fV, iVpp, aVpp],
+          mkComb[forallC[indTy],
+            mkAbs[jV,
+              impTm[
+                mkEq[iVpp, mkComb[indSuccConst[], jV]],
+                mkComb[existsC[aTy],
+                  mkAbs[bV,
+                    andTm[
+                      mkEq[aVpp, mkComb[fV, bV]],
+                      iterGraphFoldTm[eV, fV, jV, bV]]]]]]]]]];
+
+    (* propTaut: ⊢ ¬ p ⇒ (p ⇒ q). *)
+    propTautVac = HOL`Auto`PropTaut`propTaut[
+      impTm[mkComb[notC[], mkVar["p", boolTy]],
+        impTm[mkVar["p", boolTy], mkVar["q", boolTy]]]];
+
+    (* ---------------- S IND_0 e (β-normal form) ---------------- *)
+    (* Goal: ITER_GRAPH e f IND_0 e                                 *)
+    (*       ∧ (∀j. IND_0 = IND_SUC j                              *)
+    (*              ⇒ ∃b. e = f b ∧ ITER_GRAPH e f j b)             *)
+    Module[{ind0EqIndSucJTm, existsRhsAtJ, vacuousImpAtJ, genJ},
+      ind0EqIndSucJTm = mkEq[ind0Const[], mkComb[indSuccConst[], jV]];
+      existsRhsAtJ = mkComb[existsC[aTy],
+        mkAbs[bV,
+          andTm[
+            mkEq[eV, mkComb[fV, bV]],
+            iterGraphFoldTm[eV, fV, jV, bV]]]];
+      ind0NotSucAtJ = HOL`Bool`SPEC[jV, ind0NotSucLem];
+      vacuousImpAtJ = HOL`Bool`MP[
+        HOL`Kernel`INST[
+          {mkVar["p", boolTy] -> ind0EqIndSucJTm,
+           mkVar["q", boolTy] -> existsRhsAtJ},
+          propTautVac],
+        ind0NotSucAtJ];
+      (* ⊢ (IND_0 = IND_SUC j) ⇒ ∃b. e = f b ∧ ITER_GRAPH e f j b *)
+      genJ = HOL`Bool`GEN[jV, vacuousImpAtJ];
+      sBaseConj = HOL`Bool`CONJ[graphInd0Lem, genJ];
+    ];
+    (* sBaseConj is the β-form of S IND_0 e. Now un-β. *)
+    sLamAppInd0e = mkComb[mkComb[sExtractLam, ind0Const[]], eV];
+    betaPair = HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]][sLamAppInd0e];
+    (* betaPair : ⊢ sLam IND_0 e = (β-form) *)
+    sBaseUnbeta = EQMP[HOL`Equal`SYM[betaPair], sBaseConj];
+    (* ⊢ sExtractLam IND_0 e *)
+
+    (* ---------------- S step (un-β form) ---------------- *)
+    iVp = mkVar["i'", indTy];
+    aVp = mkVar["a'", aTy];
+
+    sLamAppIpAp = mkComb[mkComb[sExtractLam, iVp], aVp];
+    sLamAppSucIpFap = mkComb[
+      mkComb[sExtractLam, mkComb[indSuccConst[], iVp]],
+      mkComb[fV, aVp]];
+
+    betaStepPair = HOL`Drule`DEPTHCONV[
+      HOL`Drule`TRYCONV[BETACONV]][sLamAppIpAp];
+    betaSucPair = HOL`Drule`DEPTHCONV[
+      HOL`Drule`TRYCONV[BETACONV]][sLamAppSucIpFap];
+    (* betaStepPair : ⊢ S i' a' = body[i'/i'', a'/a''] *)
+    (* betaSucPair  : ⊢ S (IND_SUC i') (f a') = body[IND_SUC i'/i'', f a'/a''] *)
+
+    (* Assume S i' a' (un-β); convert to β-form. *)
+    hypSIa = ASSUME[sLamAppIpAp];
+    Module[{betaForm},
+      betaForm = EQMP[betaStepPair, hypSIa];
+      sIaConj1 = HOL`Bool`CONJUNCT1[betaForm];
+      sIaConj2 = HOL`Bool`CONJUNCT2[betaForm];
+    ];
+
+    (* Step result LHS: ITER_GRAPH e f (IND_SUC i') (f a'). *)
+    graphSucAtIpAp = HOL`Bool`MP[
+      HOL`Bool`SPEC[aVp, HOL`Bool`SPEC[iVp, graphSucLem]],
+      sIaConj1];
+
+    (* Step result RHS: ∀j. IND_SUC i' = IND_SUC j                 *)
+    (*                       ⇒ ∃b. f a' = f b ∧ ITER_GRAPH e f j b. *)
+    indSucIpEqIndSucJTm = mkEq[
+      mkComb[indSuccConst[], iVp],
+      mkComb[indSuccConst[], jV]];
+    hypInjAss = ASSUME[indSucIpEqIndSucJTm];
+    (* From hypInjAss + indSuccOneOneUnfoldedThm: i' = j. *)
+    Module[{spec1, spec2, ipEqJ, witnessFaEqFaSubst, graphIpApSubst,
+            graphCallAtJa, faEqFb, conjForJ, exAtA},
+      spec1 = HOL`Bool`SPEC[iVp, indSuccOneOneUnfoldedThm];
+      spec2 = HOL`Bool`SPEC[jV, spec1];
+      (* ⊢ IND_SUC i' = IND_SUC j ⇒ i' = j *)
+      ipEqJ = HOL`Bool`MP[spec2, hypInjAss];
+      (* (IND_SUC i' = IND_SUC j) ⊢ i' = j *)
+      (* Substitute i' → j in sIaConj1 to get ITER_GRAPH e f j a'.   *)
+      (* APTERM ITER_GRAPH-e-f on ipEqJ → ITER_GRAPH e f i' = … e f j; *)
+      (* APTHM at a' lifts to applied form.                            *)
+      graphCallAtJa = EQMP[
+        HOL`Equal`APTHM[
+          HOL`Equal`APTERM[
+            mkComb[mkComb[iterGraphConst[], eV], fV],
+            ipEqJ],
+          aVp],
+        sIaConj1];
+      (* ⊢ (S i' a', IND_SUC i' = IND_SUC j) ⊢ ITER_GRAPH e f j a' *)
+      faEqFb = REFL[mkComb[fV, aVp]];
+      (* ⊢ f a' = f a' *)
+      conjForJ = HOL`Bool`CONJ[faEqFb, graphCallAtJa];
+      (* (S i' a', IND_SUC i' = IND_SUC j) ⊢ f a' = f a' ∧ ITER_GRAPH e f j a' *)
+      exAtA = HOL`Bool`EXISTS[
+        mkComb[existsC[aTy],
+          mkAbs[bV,
+            andTm[
+              mkEq[mkComb[fV, aVp], mkComb[fV, bV]],
+              iterGraphFoldTm[eV, fV, jV, bV]]]],
+        aVp,
+        conjForJ];
+      (* (S i' a', IND_SUC i' = IND_SUC j) ⊢ ∃b. f a' = f b ∧ ITER_GRAPH e f j b *)
+      dischInjAss = HOL`Bool`DISCH[indSucIpEqIndSucJTm, exAtA];
+      genJStep = HOL`Bool`GEN[jV, dischInjAss];
+      (* (S i' a') ⊢ ∀j. IND_SUC i' = IND_SUC j ⇒ ∃b. f a' = f b ∧ ITER_GRAPH e f j b *)
+    ];
+
+    conjStepResult = HOL`Bool`CONJ[graphSucAtIpAp, genJStep];
+    (* (S i' a') ⊢ ITER_GRAPH e f (IND_SUC i') (f a')              *)
+    (*             ∧ (∀j. IND_SUC i' = IND_SUC j                    *)
+    (*                   ⇒ ∃b. f a' = f b ∧ ITER_GRAPH e f j b)    *)
+    (* Now un-β to S (IND_SUC i') (f a'). *)
+    stepRule = EQMP[HOL`Equal`SYM[betaSucPair], conjStepResult];
+    (* (S i' a') ⊢ S (IND_SUC i') (f a') *)
+    dischSIp = HOL`Bool`DISCH[sLamAppIpAp, stepRule];
+    (* ⊢ S i' a' ⇒ S (IND_SUC i') (f a') *)
+    genApStep = HOL`Bool`GEN[aVp, dischSIp];
+    genIpStep = HOL`Bool`GEN[iVp, genApStep];
+    (* ⊢ ∀i'. ∀a'. S i' a' ⇒ S (IND_SUC i') (f a') *)
+
+    premiseProof = HOL`Bool`CONJ[sBaseUnbeta, genIpStep];
+    (* ⊢ (S IND_0 e) ∧ (∀i' a'. S i' a' ⇒ S (IND_SUC i') (f a')) *)
+
+    (* ---------------- ASSUME folded ITER_GRAPH e f (IND_SUC i) a; *)
+    (*                  unfold internally to access ∀S. body.       *)
+    graphAtIndSuc = iterGraphFoldTm[eV, fV, mkComb[indSuccConst[], iV], aV];
+    assumeGraphIndSuc = ASSUME[graphAtIndSuc];
+    Module[{unfolded},
+      unfolded = EQMP[
+        unfoldIterGraph[eV, fV, mkComb[indSuccConst[], iV], aV],
+        assumeGraphIndSuc];
+      (* (folded) ⊢ ∀S. premise ⇒ S (IND_SUC i) a *)
+      specSExtract = HOL`Bool`SPEC[sExtractLam, unfolded];
+    ];
+    (* (graphIA) ⊢ premise[sExtractLam/S] ⇒ sExtractLam (IND_SUC i) a *)
+    mpThroughPremise = HOL`Bool`MP[specSExtract, premiseProof];
+    (* (graphIA) ⊢ sExtractLam (IND_SUC i) a (un-β) *)
+
+    Module[{sLamAppIa, betaIa, betaForm},
+      sLamAppIa = mkComb[mkComb[sExtractLam, mkComb[indSuccConst[], iV]], aV];
+      betaIa = HOL`Drule`DEPTHCONV[
+        HOL`Drule`TRYCONV[BETACONV]][sLamAppIa];
+      betaForm = EQMP[betaIa, mpThroughPremise];
+      (* (graphIA) ⊢ ITER_GRAPH e f (IND_SUC i) a                  *)
+      (*              ∧ (∀j. IND_SUC i = IND_SUC j                  *)
+      (*                     ⇒ ∃b. a = f b ∧ ITER_GRAPH e f j b)    *)
+      conj2OfS = HOL`Bool`CONJUNCT2[betaForm];
+      specJAtI = HOL`Bool`SPEC[iV, conj2OfS];
+      (* (graphIA) ⊢ IND_SUC i = IND_SUC i ⇒ ∃b. a = f b ∧ ITER_GRAPH e f i b *)
+      mpReflSucI = HOL`Bool`MP[specJAtI,
+        REFL[mkComb[indSuccConst[], iV]]];
+      existsResult = mpReflSucI;
+      (* (graphIA) ⊢ ∃b. a = f b ∧ ITER_GRAPH e f i b *)
+    ];
+
+    dischGraphAtIndSuc = HOL`Bool`DISCH[graphAtIndSuc, existsResult];
+    genA = HOL`Bool`GEN[aV, dischGraphAtIndSuc];
+    genI = HOL`Bool`GEN[iV, genA]
+  ];
+
+(* ============================================================ *)
+(* iterExistsLem :                                              *)
+(*   ⊢ ∀i. NUM_REP i ⇒ ∃a. ITER_GRAPH e f i a                   *)
+(* By NUM_REP-induction with P = λi. ∃a. ITER_GRAPH e f i a.    *)
+(* ============================================================ *)
+
+iterExistsLem =
+  Module[{eV, fV, iV, aV, mV, pLam, pmTm, pSucMTm,
+          ind0Exists, ind0ExistsTm,
+          hypPm, hypGraphMa, sucSpec, sucMP, exSuc, choosed,
+          dischPm, genM, premiseConj,
+          assumeNumRepI, unfoldedNumRepI, specAtP, betaReduce,
+          mpPremise, dischNumRepI, finalGen},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    iV = mkVar["i", indTy];
+    aV = mkVar["a", aTy];
+    mV = mkVar["m", indTy];
+
+    (* P = λi'. ∃a. ITER_GRAPH e f i' a *)
+    pLam = mkAbs[iV,
+      mkComb[existsC[aTy],
+        mkAbs[aV, iterGraphFoldTm[eV, fV, iV, aV]]]];
+
+    (* ⊢ ∃a. ITER_GRAPH e f IND_0 a *)
+    ind0ExistsTm = mkComb[existsC[aTy],
+      mkAbs[aV, iterGraphFoldTm[eV, fV, ind0Const[], aV]]];
+    ind0Exists = HOL`Bool`EXISTS[ind0ExistsTm, eV, graphInd0Lem];
+
+    (* ⊢ ∀m. (∃a. ITER_GRAPH e f m a) ⇒ (∃a. ITER_GRAPH e f (IND_SUC m) a) *)
+    pmTm    = mkComb[existsC[aTy],
+      mkAbs[aV, iterGraphFoldTm[eV, fV, mV, aV]]];
+    pSucMTm = mkComb[existsC[aTy],
+      mkAbs[aV, iterGraphFoldTm[eV, fV, mkComb[indSuccConst[], mV], aV]]];
+    hypPm        = ASSUME[pmTm];
+    hypGraphMa   = ASSUME[iterGraphFoldTm[eV, fV, mV, aV]];
+    sucSpec = HOL`Bool`SPEC[aV, HOL`Bool`SPEC[mV, graphSucLem]];
+    sucMP = HOL`Bool`MP[sucSpec, hypGraphMa];
+    exSuc = HOL`Bool`EXISTS[pSucMTm, mkComb[fV, aV], sucMP];
+    choosed = HOL`Bool`CHOOSE[aV, hypPm, exSuc];
+    dischPm = HOL`Bool`DISCH[pmTm, choosed];
+    genM = HOL`Bool`GEN[mV, dischPm];
+
+    premiseConj = HOL`Bool`CONJ[ind0Exists, genM];
+
+    assumeNumRepI = ASSUME[mkComb[numRepConst[], iV]];
+    unfoldedNumRepI = EQMP[unfoldNumRep[iV], assumeNumRepI];
+    specAtP = HOL`Bool`SPEC[pLam, unfoldedNumRepI];
+    betaReduce = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specAtP];
+    mpPremise = HOL`Bool`MP[betaReduce, premiseConj];
+    dischNumRepI = HOL`Bool`DISCH[mkComb[numRepConst[], iV], mpPremise];
+    finalGen = HOL`Bool`GEN[iV, dischNumRepI]
+  ];
+
+(* ============================================================ *)
+(* iterUniqueLem :                                              *)
+(*   ⊢ ∀i. NUM_REP i ⇒                                          *)
+(*           ∀a b. ITER_GRAPH e f i a ∧ ITER_GRAPH e f i b      *)
+(*                  ⇒ a = b                                      *)
+(* By NUM_REP-induction.                                        *)
+(*   Base: graphUniqInd0Lem twice + TRANS.                       *)
+(*   Step: graphExtractLem on each of the two assumptions →     *)
+(*     CHOOSE the extracted witnesses → IH gives the witnesses  *)
+(*     are equal → APTERM f + TRANS gives a = b.                *)
+(* ============================================================ *)
+
+iterUniqueLem =
+  Module[{eV, fV, iV, aV, bV, mV, a1V, b1V,
+          pLam, pmBody,
+          (* base *)
+          baseAndTm, baseHyp, baseC1, baseC2, baseAEqE, baseBEqE,
+          baseAEqB, baseDischAnd, baseGenB, baseGenA, baseProof,
+          (* step *)
+          hypPmTm, hypPm, stepAndTm, stepHyp, stepC1, stepC2,
+          ex1, ex2, body1Tm, body2Tm, hyp1, hyp2,
+          c1Eq, c1Gr, c2Eq, c2Gr,
+          hpmInstAB, conjGraphs, a1Eqb1, sameF, aEqFb1, aEqB,
+          chooseB1, chooseA1, stepDischAnd, stepGenB, stepGenA,
+          stepDischPm, stepProof,
+          (* induction *)
+          premiseConj, assumeNumRepI, unfoldedNumRepI, specAtP,
+          betaReduce, mpPremise, dischNumRepI, finalGen},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    iV = mkVar["i", indTy];
+    aV = mkVar["a", aTy];
+    bV = mkVar["b", aTy];
+    mV = mkVar["m", indTy];
+    a1V = mkVar["a1", aTy];
+    b1V = mkVar["b1", aTy];
+
+    (* P = λi'. ∀a b. ITER_GRAPH e f i' a ∧ ITER_GRAPH e f i' b ⇒ a = b *)
+    pLam = mkAbs[iV,
+      mkComb[forallC[aTy], mkAbs[aV,
+        mkComb[forallC[aTy], mkAbs[bV,
+          impTm[
+            andTm[iterGraphFoldTm[eV, fV, iV, aV],
+                  iterGraphFoldTm[eV, fV, iV, bV]],
+            mkEq[aV, bV]]]]]]];
+
+    (* --------- Base: ⊢ P IND_0 (β-norm) --------- *)
+    baseAndTm = andTm[
+      iterGraphFoldTm[eV, fV, ind0Const[], aV],
+      iterGraphFoldTm[eV, fV, ind0Const[], bV]];
+    baseHyp = ASSUME[baseAndTm];
+    baseC1 = HOL`Bool`CONJUNCT1[baseHyp];
+    baseC2 = HOL`Bool`CONJUNCT2[baseHyp];
+    baseAEqE = HOL`Bool`MP[HOL`Bool`SPEC[aV, graphUniqInd0Lem], baseC1];
+    baseBEqE = HOL`Bool`MP[HOL`Bool`SPEC[bV, graphUniqInd0Lem], baseC2];
+    baseAEqB = TRANS[baseAEqE, HOL`Equal`SYM[baseBEqE]];
+    baseDischAnd = HOL`Bool`DISCH[baseAndTm, baseAEqB];
+    baseGenB = HOL`Bool`GEN[bV, baseDischAnd];
+    baseProof = HOL`Bool`GEN[aV, baseGenB];
+
+    (* --------- Step: ⊢ ∀m. P m ⇒ P (IND_SUC m) --------- *)
+    (* P m (β-norm). *)
+    pmBody = mkComb[forallC[aTy], mkAbs[aV,
+      mkComb[forallC[aTy], mkAbs[bV,
+        impTm[
+          andTm[iterGraphFoldTm[eV, fV, mV, aV],
+                iterGraphFoldTm[eV, fV, mV, bV]],
+          mkEq[aV, bV]]]]]];
+    hypPm = ASSUME[pmBody];
+
+    stepAndTm = andTm[
+      iterGraphFoldTm[eV, fV, mkComb[indSuccConst[], mV], aV],
+      iterGraphFoldTm[eV, fV, mkComb[indSuccConst[], mV], bV]];
+    stepHyp = ASSUME[stepAndTm];
+    stepC1 = HOL`Bool`CONJUNCT1[stepHyp];
+    stepC2 = HOL`Bool`CONJUNCT2[stepHyp];
+
+    (* Extract witnesses via graphExtractLem. *)
+    ex1 = HOL`Bool`MP[
+      HOL`Bool`SPEC[aV, HOL`Bool`SPEC[mV, graphExtractLem]], stepC1];
+    ex2 = HOL`Bool`MP[
+      HOL`Bool`SPEC[bV, HOL`Bool`SPEC[mV, graphExtractLem]], stepC2];
+
+    body1Tm = andTm[
+      mkEq[aV, mkComb[fV, a1V]],
+      iterGraphFoldTm[eV, fV, mV, a1V]];
+    body2Tm = andTm[
+      mkEq[bV, mkComb[fV, b1V]],
+      iterGraphFoldTm[eV, fV, mV, b1V]];
+    hyp1 = ASSUME[body1Tm];
+    hyp2 = ASSUME[body2Tm];
+
+    c1Eq = HOL`Bool`CONJUNCT1[hyp1];   (* a = f a1 *)
+    c1Gr = HOL`Bool`CONJUNCT2[hyp1];   (* ITER_GRAPH e f m a1 *)
+    c2Eq = HOL`Bool`CONJUNCT1[hyp2];   (* b = f b1 *)
+    c2Gr = HOL`Bool`CONJUNCT2[hyp2];   (* ITER_GRAPH e f m b1 *)
+
+    hpmInstAB = HOL`Bool`SPEC[b1V, HOL`Bool`SPEC[a1V, hypPm]];
+    (* ⊢ ITER_GRAPH e f m a1 ∧ ITER_GRAPH e f m b1 ⇒ a1 = b1 *)
+    conjGraphs = HOL`Bool`CONJ[c1Gr, c2Gr];
+    a1Eqb1 = HOL`Bool`MP[hpmInstAB, conjGraphs];
+    sameF = HOL`Equal`APTERM[fV, a1Eqb1];
+    aEqFb1 = TRANS[c1Eq, sameF];
+    aEqB = TRANS[aEqFb1, HOL`Equal`SYM[c2Eq]];
+    (* Hyps: {hypPm, body1Tm, body2Tm, stepAndTm} *)
+
+    (* CHOOSE b1V from ex2. b1V must not be free in conclusion (aEqB has a, b, *)
+    (* not b1) nor in ex2.hyps (hypAnd has eV, fV, mV, aV, bV — no b1V). *)
+    chooseB1 = HOL`Bool`CHOOSE[b1V, ex2, aEqB];
+    (* hyps now: {hypPm, body1Tm, stepAndTm} *)
+    chooseA1 = HOL`Bool`CHOOSE[a1V, ex1, chooseB1];
+    (* hyps: {hypPm, stepAndTm} *)
+
+    stepDischAnd = HOL`Bool`DISCH[stepAndTm, chooseA1];
+    stepGenB = HOL`Bool`GEN[bV, stepDischAnd];
+    stepGenA = HOL`Bool`GEN[aV, stepGenB];
+    stepDischPm = HOL`Bool`DISCH[pmBody, stepGenA];
+    stepProof = HOL`Bool`GEN[mV, stepDischPm];
+
+    (* --------- NUM_REP induction --------- *)
+    premiseConj = HOL`Bool`CONJ[baseProof, stepProof];
+    assumeNumRepI = ASSUME[mkComb[numRepConst[], iV]];
+    unfoldedNumRepI = EQMP[unfoldNumRep[iV], assumeNumRepI];
+    specAtP = HOL`Bool`SPEC[pLam, unfoldedNumRepI];
+    betaReduce = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specAtP];
+    mpPremise = HOL`Bool`MP[betaReduce, premiseConj];
+    dischNumRepI = HOL`Bool`DISCH[mkComb[numRepConst[], iV], mpPremise];
+    finalGen = HOL`Bool`GEN[iV, dischNumRepI]
+  ];
+
+(* ============================================================ *)
+(* ITER : A → (A→A) → num → A                                    *)
+(*   ITER e f n = ε a. ITER_GRAPH e f (REP_num n) a              *)
+(* ============================================================ *)
+
+iterTy = tyFun[aTy, tyFun[funATy, tyFun[numTy, aTy]]];
+
+iterDefBody[] :=
+  Module[{eV, fV, nV, aV},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    nV = mkVar["n", numTy];
+    aV = mkVar["a", aTy];
+    mkAbs[eV, mkAbs[fV, mkAbs[nV,
+      mkComb[selectC[aTy],
+        mkAbs[aV,
+          iterGraphFoldTm[eV, fV,
+            mkComb[repNumConst[], nV], aV]]]]]]
+  ];
+
+iterDefThm = newDefinition[mkEq[
+  mkVar["ITER", iterTy],
+  iterDefBody[]
+]];
+
+iterConst[] := mkConst["ITER", iterTy];
+
+(* ============================================================ *)
+(* iterZeroEqThm : ⊢ ITER e f 0 = e                              *)
+(*                                                              *)
+(*   1. Unfold ITER at (e, f, 0) via three APTHM + BETACONV     *)
+(*      to get `⊢ ITER e f 0 = ε a. ITER_GRAPH e f (REP_num 0) a`.*)
+(*   2. Replace `REP_num 0` by `IND_0` under the ε via           *)
+(*      APTERM/APTHM + ABS + APTERM[@] using repZeroThm.         *)
+(*   3. Use selectOfExists at predLam = λa. ITER_GRAPH e f IND_0 a*)
+(*      with existsTh = `⊢ ∃a. ITER_GRAPH e f IND_0 a` (via       *)
+(*      EXISTS on graphInd0Lem) to get                          *)
+(*      `⊢ ITER_GRAPH e f IND_0 (@ predLam)`. Note @ predLam IS  *)
+(*      the right-hand-side term after step 2 (same construction).*)
+(*   4. SPEC `@ predLam` in graphUniqInd0Lem, MP step 3,         *)
+(*      yielding `⊢ (@ predLam) = e`.                            *)
+(*   5. TRANS step 1, step 2, step 4 gives `⊢ ITER e f 0 = e`.   *)
+(* ============================================================ *)
+
+(* Apply iterDefThm at (eTm, fTm, nTm), β-reducing each step.   *)
+unfoldIterAt[eTm_, fTm_, nTm_] :=
+  Module[{ap1, ap2, ap3},
+    ap1 = HOL`Equal`APTHM[iterDefThm, eTm];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, fTm];
+    ap2 = TRANS[ap2, BETACONV[concl[ap2][[2]]]];
+    ap3 = HOL`Equal`APTHM[ap2, nTm];
+    TRANS[ap3, BETACONV[concl[ap3][[2]]]]
+  ];
+
+iterZeroEqThm =
+  Module[{eV, fV, aV, iterEfAt0, predLamInd0, epsTmInd0,
+          ind0ExistsTm, ind0Exists, epsSatisfies,
+          uniqAtEps, epsEqE,
+          repZeroLift, repZeroLiftStep, predLamRepZero, epsTmRepZero,
+          finalChain},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    aV = mkVar["a", aTy];
+
+    (* Step 1: ⊢ ITER e f 0 = ε a. ITER_GRAPH e f (REP_num 0) a *)
+    iterEfAt0 = unfoldIterAt[eV, fV, zeroConst[]];
+
+    (* Build the predicates / ε-terms for IND_0 and REP_num 0. *)
+    predLamInd0 = mkAbs[aV, iterGraphFoldTm[eV, fV, ind0Const[], aV]];
+    epsTmInd0 = mkComb[selectC[aTy], predLamInd0];
+    predLamRepZero = mkAbs[aV,
+      iterGraphFoldTm[eV, fV, mkComb[repNumConst[], zeroConst[]], aV]];
+    epsTmRepZero = mkComb[selectC[aTy], predLamRepZero];
+
+    (* Step 2: ⊢ ε a. ITER_GRAPH e f (REP_num 0) a                  *)
+    (*           = ε a. ITER_GRAPH e f IND_0 a.                     *)
+    (* For free aV, ⊢ ITER_GRAPH e f (REP_num 0) aV                 *)
+    (*                = ITER_GRAPH e f IND_0 aV by APTHM repZeroThm. *)
+    Module[{ap1, absStep, selStep},
+      ap1 = HOL`Equal`APTHM[
+        HOL`Equal`APTERM[
+          mkComb[mkComb[iterGraphConst[], eV], fV],
+          repZeroThm],
+        aV];
+      (* ⊢ ITER_GRAPH e f (REP_num 0) aV = ITER_GRAPH e f IND_0 aV *)
+      absStep = HOL`Kernel`ABS[aV, ap1];
+      (* ⊢ (λa. ITER_GRAPH e f (REP_num 0) a) = (λa. ITER_GRAPH e f IND_0 a) *)
+      selStep = HOL`Equal`APTERM[selectC[aTy], absStep];
+      (* ⊢ (ε a. ITER_GRAPH e f (REP_num 0) a)                       *)
+      (*    = (ε a. ITER_GRAPH e f IND_0 a)                          *)
+      repZeroLift = selStep;
+    ];
+
+    (* Step 3: ⊢ ITER_GRAPH e f IND_0 (ε a. ITER_GRAPH e f IND_0 a). *)
+    ind0ExistsTm = mkComb[existsC[aTy], predLamInd0];
+    ind0Exists = HOL`Bool`EXISTS[ind0ExistsTm, eV, graphInd0Lem];
+    epsSatisfies = HOL`Stdlib`Num`selectOfExists[predLamInd0, ind0Exists];
+    (* selectOfExists already β-reduces internally; epsSatisfies is        *)
+    (* ⊢ ITER_GRAPH e f IND_0 (@predLamInd0) in β-normal form.              *)
+
+    (* Step 4: ⊢ (@ predLamInd0) = e. *)
+    uniqAtEps = HOL`Bool`SPEC[epsTmInd0, graphUniqInd0Lem];
+    (* ⊢ ITER_GRAPH e f IND_0 (epsTmInd0) ⇒ epsTmInd0 = e *)
+    epsEqE = HOL`Bool`MP[uniqAtEps, epsSatisfies];
+
+    (* Step 5: TRANS iterEfAt0 + repZeroLift + epsEqE. *)
+    finalChain = TRANS[TRANS[iterEfAt0, repZeroLift], epsEqE]
+  ];
+
+(* ============================================================ *)
+(* iterSucEqThm : ⊢ ∀n. ITER e f (SUC n) = f (ITER e f n)        *)
+(* ============================================================ *)
+
+iterSucEqThm =
+  Module[{eV, fV, nV, aV,
+          repN, repSucN, iterEfSucN, iterEfN,
+          itnSatisfies, atSucGraphAtSuc,
+          finalChain,
+          atIterEfSucNTm, atIterEfNTm,
+          predLamAtRepN, epsTmAtRepN,
+          predLamAtRepSucN, epsTmAtRepSucN,
+          predLamAtIndSucRepN, epsTmAtIndSucRepN,
+          graphSucInst, graphSucMp, repSucEqAtN},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    nV = mkVar["n", numTy];
+    aV = mkVar["a", aTy];
+
+    repN    = mkComb[repNumConst[], nV];
+    repSucN = mkComb[repNumConst[], mkComb[sucConst[], nV]];
+
+    (* iter equations as terms. *)
+    iterEfN     = mkComb[mkComb[mkComb[iterConst[], eV], fV], nV];
+    iterEfSucN  = mkComb[mkComb[mkComb[iterConst[], eV], fV],
+                          mkComb[sucConst[], nV]];
+
+    (* Unfold ITER e f n and ITER e f (SUC n). *)
+    atIterEfNTm = unfoldIterAt[eV, fV, nV];
+    (* ⊢ ITER e f n = ε a. ITER_GRAPH e f (REP_num n) a *)
+    atIterEfSucNTm = unfoldIterAt[eV, fV, mkComb[sucConst[], nV]];
+    (* ⊢ ITER e f (SUC n) = ε a. ITER_GRAPH e f (REP_num (SUC n)) a *)
+
+    (* Define ε-terms and predicate lambdas. *)
+    predLamAtRepN = mkAbs[aV, iterGraphFoldTm[eV, fV, repN, aV]];
+    epsTmAtRepN = mkComb[selectC[aTy], predLamAtRepN];
+
+    predLamAtRepSucN = mkAbs[aV, iterGraphFoldTm[eV, fV, repSucN, aV]];
+    epsTmAtRepSucN = mkComb[selectC[aTy], predLamAtRepSucN];
+
+    predLamAtIndSucRepN = mkAbs[aV,
+      iterGraphFoldTm[eV, fV, mkComb[indSuccConst[], repN], aV]];
+    epsTmAtIndSucRepN = mkComb[selectC[aTy], predLamAtIndSucRepN];
+
+    (* iter exists at REP_num n (we have NUM_REP (REP_num n)). *)
+    Module[{numRepRepN, ipsExistsThm},
+      numRepRepN = HOL`Kernel`INST[
+        {mkVar["n", numTy] -> nV}, numRepRepNumThm];
+      ipsExistsThm = HOL`Bool`MP[
+        HOL`Bool`SPEC[repN, iterExistsLem], numRepRepN];
+      itnSatisfies = HOL`Stdlib`Num`selectOfExists[
+        predLamAtRepN, ipsExistsThm];
+    ];
+
+    (* Apply graphSucLem at (REP_num n, epsTmAtRepN) to get:           *)
+    (* ⊢ ITER_GRAPH e f (IND_SUC (REP_num n)) (f epsTmAtRepN).         *)
+    graphSucInst = HOL`Bool`SPEC[epsTmAtRepN,
+      HOL`Bool`SPEC[repN, graphSucLem]];
+    graphSucMp = HOL`Bool`MP[graphSucInst, itnSatisfies];
+    (* graphSucMp : ⊢ ITER_GRAPH e f (IND_SUC (REP_num n)) (f epsTmAtRepN) *)
+
+    (* Lift via repSucThm: IND_SUC (REP_num n) = REP_num (SUC n).      *)
+    repSucEqAtN = HOL`Kernel`INST[
+      {mkVar["n", numTy] -> nV}, repSucThm];
+    (* repSucEqAtN : ⊢ REP_num (SUC n) = IND_SUC (REP_num n)            *)
+    Module[{ap1},
+      ap1 = HOL`Equal`APTHM[
+        HOL`Equal`APTERM[
+          mkComb[mkComb[iterGraphConst[], eV], fV],
+          HOL`Equal`SYM[repSucEqAtN]],
+        mkComb[fV, epsTmAtRepN]];
+      (* ap1 : ⊢ ITER_GRAPH e f (IND_SUC (REP_num n)) (f epsTmAtRepN) *)
+      (*       = ITER_GRAPH e f (REP_num (SUC n)) (f epsTmAtRepN)     *)
+      atSucGraphAtSuc = EQMP[ap1, graphSucMp];
+    ];
+
+    (* ITER e f (SUC n) = εTmAtRepSucN (from atIterEfSucNTm).         *)
+    (* Want: ⊢ εTmAtRepSucN = f epsTmAtRepN.                            *)
+    (* Use uniqueness: numRepRepNumThm at (SUC n) ⇒ NUM_REP (REP_num (SUC n)). *)
+    (* Hence iterUniqueLem SPEC'd at REP_num (SUC n), MP with NUM_REP,  *)
+    (* SPEC'd at εTmAtRepSucN and (f epsTmAtRepN), MP with the          *)
+    (* CONJ of `ITER_GRAPH e f (REP_num (SUC n)) εTmAtRepSucN` (from   *)
+    (* selectOfExists at predLamAtRepSucN + iterExistsLem at REP_num (SUC n)) *)
+    (* and atSucGraphAtSuc.                                             *)
+    Module[{numRepRepSucN, ipsExistsAtSucThm, satisfiesAtSuc,
+            eitherSat, uniqAtSucN, uniqInstEps, mpForUniq, eqIt},
+      numRepRepSucN = HOL`Kernel`INST[
+        {mkVar["n", numTy] -> mkComb[sucConst[], nV]}, numRepRepNumThm];
+      ipsExistsAtSucThm = HOL`Bool`MP[
+        HOL`Bool`SPEC[repSucN, iterExistsLem], numRepRepSucN];
+      satisfiesAtSuc = HOL`Stdlib`Num`selectOfExists[
+        predLamAtRepSucN, ipsExistsAtSucThm];
+      (* satisfiesAtSuc : ⊢ ITER_GRAPH e f (REP_num (SUC n)) (epsTmAtRepSucN) *)
+
+      uniqAtSucN = HOL`Bool`MP[
+        HOL`Bool`SPEC[repSucN, iterUniqueLem], numRepRepSucN];
+      (* uniqAtSucN : ⊢ ∀a b. ITER_GRAPH e f (REP_num (SUC n)) a       *)
+      (*                       ∧ ITER_GRAPH e f (REP_num (SUC n)) b   *)
+      (*                       ⇒ a = b                                  *)
+      uniqInstEps = HOL`Bool`SPEC[mkComb[fV, epsTmAtRepN],
+        HOL`Bool`SPEC[epsTmAtRepSucN, uniqAtSucN]];
+      (* ⊢ ITER_GRAPH e f (REP_num (SUC n)) epsTmAtRepSucN              *)
+      (*    ∧ ITER_GRAPH e f (REP_num (SUC n)) (f epsTmAtRepN)          *)
+      (*    ⇒ epsTmAtRepSucN = f epsTmAtRepN                            *)
+      mpForUniq = HOL`Bool`MP[uniqInstEps,
+        HOL`Bool`CONJ[satisfiesAtSuc, atSucGraphAtSuc]];
+      (* mpForUniq : ⊢ epsTmAtRepSucN = f epsTmAtRepN *)
+
+      (* Combine with atIterEfSucNTm and SYM[atIterEfNTm]:              *)
+      (* ITER e f (SUC n) = epsTmAtRepSucN = f epsTmAtRepN = f (ITER e f n) *)
+      Module[{atIterEfNSym, fAtIterN, transFinal},
+        atIterEfNSym = HOL`Equal`SYM[atIterEfNTm];
+        (* ⊢ epsTmAtRepN = ITER e f n *)
+        fAtIterN = HOL`Equal`APTERM[fV, atIterEfNSym];
+        (* ⊢ f epsTmAtRepN = f (ITER e f n) *)
+        eqIt = TRANS[TRANS[atIterEfSucNTm, mpForUniq], fAtIterN];
+        (* eqIt : ⊢ ITER e f (SUC n) = f (ITER e f n) *)
+        finalChain = eqIt;
+      ];
+    ];
+
+    HOL`Bool`GEN[nV, finalChain]
+  ];
+
+(* ============================================================ *)
+(* numIterationThm :                                            *)
+(*   ⊢ ∀e:A. ∀f:A→A. ∃g:num→A. g 0 = e ∧ ∀n. g (SUC n) = f (g n)*)
+(*                                                              *)
+(* Witness: g = ITER e f. CONJ the two equations and EXISTS.    *)
+(* ============================================================ *)
+
+numIterationThm =
+  Module[{eV, fV, nV, witness, conjBody, exTm, existsTh, genF, genE},
+    eV = mkVar["e", aTy];
+    fV = mkVar["f", funATy];
+    nV = mkVar["n", numTy];
+    witness = mkComb[mkComb[iterConst[], eV], fV];
+    (* The desired body in terms of `g`. *)
+    (* ∃g. g 0 = e ∧ ∀n. g (SUC n) = f (g n)                            *)
+    Module[{gV, gBody, gAt0Eq, gSucNeq, conjForG, exFormula, witnessConj},
+      gV = mkVar["g", tyFun[numTy, aTy]];
+      gAt0Eq = mkEq[mkComb[gV, zeroConst[]], eV];
+      gSucNeq = mkComb[forallC[numTy], mkAbs[nV,
+        mkEq[
+          mkComb[gV, mkComb[sucConst[], nV]],
+          mkComb[fV, mkComb[gV, nV]]]]];
+      conjForG = andTm[gAt0Eq, gSucNeq];
+      exFormula = mkComb[existsC[tyFun[numTy, aTy]],
+        mkAbs[gV, conjForG]];
+
+      (* Build the conj of equations at g = witness. *)
+      witnessConj = HOL`Bool`CONJ[iterZeroEqThm, iterSucEqThm];
+      existsTh = HOL`Bool`EXISTS[exFormula, witness, witnessConj];
+    ];
+    genF = HOL`Bool`GEN[fV, existsTh];
+    genE = HOL`Bool`GEN[eV, genF]
   ];
 
 End[];
