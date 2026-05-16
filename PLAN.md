@@ -439,7 +439,20 @@ EndPackage[];
 
 **Phase 2 — 数构造** ~5–7 周
 
-- [ ] **M7-3 / `stdlib/Num.wl`**（最大块，2–3 周）—— 从 `ind` + `INFINITY_AX` 走 `IND_SUC` / `IND_0` / `NUM_REP` / `new_basic_type_definition` 经典路径；Peano 三件套；原始递归定理；`+ × ^ < ≤`；强归纳 / 良序原理；带余除法。capstone：算术基本定理（任意正整数唯一素因数分解）
+- [ ] **M7-3 / `stdlib/Num.wl`**（最大块，原估 2–3 周，实际跨多个会话） —— 从 `ind` + `INFINITY_AX` 走 `IND_SUC` / `IND_0` / `NUM_REP` / `new_basic_type_definition` 经典路径；Peano 三件套；**迭代定理（非完整原始递归）**；`+ ×`、交换 / 结合 / 消去律；`≤ <`；强归纳 / 良序原理；带余除法；`^`。capstone：算术基本定理（任意正整数唯一素因数分解）
+
+  **子任务进展（截至 M7-3-g）：**
+  - [x] **M7-3-a** — IND_SUC + IND_0 由 INFINITY_AX 经 Hilbert ε 提取；helper `selectOfExists[predLam, ∃-thm]`
+  - [x] **M7-3-b** — NUM_REP 定义；`newBasicTypeDefinition` 切 num 类型；0 / SUC 定义
+  - [x] **M7-3-c** — Peano 公理（SUC_NEQ_0、SUC_INJ、归纳定理）
+  - [x] **M7-3-d** — **迭代定理** `⊢ ∀e f. ∃g. g 0 = e ∧ ∀n. g (SUC n) = f (g n)`（**走 iteration 而不是带 index 的完整 recursion**：iteration 对 `+`/`×`/`^` 足够，完整 recursion 留到第一个真正需要 index 的定理出现再做；范围比 HOL Light `num_RECURSION` 窄但够用）
+  - [x] **M7-3-e** — `+` = `ITER m SUC`、`×` = `ITER 0 (λa. a + m)`；基本等式 + 左零律
+  - [x] **M7-3-f** — `+` 的左后继、交换、结合律
+  - [x] **M7-3-g** — `*` 的左后继、交换；`≤` 定义 `m ≤ n ⇔ ∃k. m + k = n` + reflexivity + zero-min
+  - [ ] **M7-3-h** — 加法 / 乘法消去律；乘法结合 / 分配律；`≤` 传递 / 反对称 / 后继单调；`<` 定义 + 基本性质
+  - [ ] **M7-3-i** — `≤` 全序、强归纳、良序原理；带余除法
+  - [ ] **M7-3-j** — `^`（幂）；FTA 的素数 / 整除前置（gcd / Bezout）
+  - [ ] **M7-3-k**（capstone）— 算术基本定理
 - [ ] **M7-4 / `stdlib/List.wl`、`Finite.wl`**（1–2 周）—— list 类型 + `HD` / `TL` / `CONS` / `APPEND` / `LENGTH` / `MAP` / `FILTER` / `FOLD`；`FINITE S ↔ ∃l. ∀x. x ∈ S ↔ MEM x l`；基数 `CARD`；有限和 `∑`
 - [ ] **M7-δ / `auto/Arith.wl`**（1–2 周）—— ℕ / ℤ 上 Presburger 线性算术决策：oracle 用 WL 的整线性规划接口找证据，verifier 拼 `+` 和 `≤` 的可加性引理。capstone：`∀ m n. m + n ≤ m * n + 2` 一行
 - [ ] **M7-5 / `stdlib/Int.wl`**（1–1.5 周）—— **底层走典范代表路线**：`num × num` 上的 `λp. FST p = 0 ∨ SND p = 0` 谓词切 `int` 类型；操作（+, ×, -, |·|）做完 pair-运算后 canonicalize 回典范型；环结构 + 序 + `&_ℤ : num → int` 嵌入。**工作语言层派生 Grothendieck/双向归纳视角**：定义 `intSucc = (+1)`、`intNeg = (0-·)`，导出 `(intNeg ∘ intSucc)² = id` 等代数关系；导出双向归纳定理 `⊢ P 0 ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intSucc⁻¹ z)) ⇒ ∀z. P z`，作为 M9 / M10 用 ℤ 时的首选证明工具——后续证明在 ℤ 上看不到 pair 结构。**为什么不直接走 K_0 商类型**：HOL 无原生商，set-of-pair 切多一层；为什么不直接 Peano-style 公理化 ℤ（S/N + 双向归纳作公理）：bootstrap 后 `newAxiom` 锁死，必须构造模型，模型成本和典范代表一致或更高，且 ℤ-递归原理多一个"S 与 S⁻¹ 互逆"的一致性义务。
@@ -708,6 +721,22 @@ Mathematica 的符号处理原生是慢的，尤其频繁 `Replace` / `Cases`。
 
 - **缓解**：项的规范化（α-normal form）缓存；假设集合用排序不变式下的 `merge` 维护（而非 `Sort + DeleteDuplicates`，后者每次 O(n log n)）；`thm` 不变，可随意共享；常用改写规则网建 discrimination net 索引。
 - **目标**：不追求 HOL Light 的绝对数量级，但要达到**实用级**——数学库回归套件（M7 起累计）在合理时间（数分钟量级）内跑完。若 M8 之后某个 tactic 成为瓶颈，就用 Mathematica 的底层模式匹配（`MatchQ`、`Replace` 的 `Heads -> True` 形式、`Dispatch`）替换 pure-LCF 的朴素版本。
+
+#### 10.1.1 持久化基础设施（M7-3 期间引入）
+
+M7-3 推进到 stdlib/Num.wl 时，每次 wolframscript 冷启动需要重新加载所有库 + 触发 Bootstrap，耗时 ~135s。预测 M10 时累计冷启动 2–3 分钟，调试不可忍受。**对策：开关式 kernel encapsulation + DumpSave 快照。**
+
+- **`$HOLEncapsulationMode = "Strict" | "Stable"`**（Kernel.wl 顶部读取）：
+  - `"Strict"`（默认，CI / audit 用）：原设计——`Module` 闭包 + `Unique["thm$"]` gensym，保留"防君子"的不可访问性。
+  - `"Stable"`（dev 迭代 + 持久化用）：状态符号改为 `HOL`Kernel`Private`{holThmTag, arityTable, ...}` 固定名。trust boundary 改由 *convention + lint* 保证。
+- **`tests/build_snapshot.wls`**：Stable 模式冷启动一次 → `DumpSave["bootstrap.mx", contexts]`。~135s 一次性成本。
+- **`tests/run_fast.wls [pattern...]`**：restore 快照 + 重设 `$ContextPath` + 跑匹配的测试文件。**针对单模块（如 `num`）跑 ~3s**；跳过 `kernel_tests.wl`（其 pre-bootstrap state 在快照后不可重放）。
+- **`tests/lint_private.wls`**：扫描所有 `.wl` / `.wls`，禁止 `Kernel.wl` 之外引用 `HOL`Kernel`Private`*`。
+- **CI 矩阵**：两条独立流水线——`tests/run_all.wls`（Strict）和 `tests/run_all_stable.wls`（Stable）。两边都必须 1062+ tests 通过。一旦 Stable 行为偏离 Strict，视为回归。
+
+**性能效果**：M7-3-f / -g 阶段一次内层调整 3s 反馈，相比冷启动 135–390s 快 50–100×。M8+ 项目规模翻倍以后，这套基础设施会更值。
+
+**设计目标 #0 的修订**：CLAUDE.md trust-boundary 第 0 条原话"closure-based encapsulation 提供 true inaccessibility"是过度承诺——WL 的 introspection 能力（`Names["*"]`、context backtick path）使任何 Module gensym 都可枚举可寻址。修订后的 #0 把保护机制从"gensym 不可猜"降级为"context discipline + review + lint"，但 Strict 模式作为最高约束的 ground truth 保留并在 CI 中持续审计。详见 CLAUDE.md。
 
 ### 10.2 等价性检查
 HOL 里 α-等价应该是自动的。我们用命名变量，所以要么每次比较都 α-正规化，要么在构造时就规范化。
