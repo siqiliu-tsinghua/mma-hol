@@ -1,0 +1,65 @@
+#!/usr/bin/env wolframscript
+
+(* Run the full test suite in Stable encapsulation mode.            *)
+(* Same as tests/run_all.wls but sets $HOLEncapsulationMode early.  *)
+(* Should pass the same 1062/0 as Strict if the refactor is sound.   *)
+
+$HOLEncapsulationMode = "Stable";
+
+Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
+  repoRoot = ParentDirectory[DirectoryName[$InputFileName]];
+  $Path = Prepend[$Path, repoRoot];
+  $Path = Prepend[$Path, FileNameJoin[{repoRoot, "tests"}]];
+
+  Scan[
+    Function[rel, Get[FileNameJoin[Prepend[rel, repoRoot]]]],
+    {
+      {"ErrorUtil.wl"},
+      {"tests", "harness.wl"},
+      {"Types.wl"},
+      {"Terms.wl"},
+      {"Kernel.wl"}
+    }
+  ];
+
+  HOLTest`resetCounters[];
+
+  runGroup[label_, files_] := (
+    Print["=== ", label, " ==="];
+    Scan[
+      Function[f,
+        Print[">>> ", FileNameTake[f]];
+        Get[f]
+      ],
+      files
+    ]
+  );
+
+  preBootstrapTests  = {FileNameJoin[{repoRoot, "tests", "kernel_tests.wl"}]};
+  postBootstrapTests = Complement[
+    FileNames["*_tests.wl", FileNameJoin[{repoRoot, "tests"}]],
+    preBootstrapTests];
+
+  runGroup["pre-bootstrap", preBootstrapTests];
+
+  Get[FileNameJoin[{repoRoot, "Bootstrap.wl"}]];
+  Get[FileNameJoin[{repoRoot, "Equal.wl"}]];
+  Get[FileNameJoin[{repoRoot, "Bool.wl"}]];
+  Get[FileNameJoin[{repoRoot, "Drule.wl"}]];
+  Get[FileNameJoin[{repoRoot, "Tactics.wl"}]];
+  Get[FileNameJoin[{repoRoot, "Printer.wl"}]];
+  Get[FileNameJoin[{repoRoot, "Parser.wl"}]];
+  Get[FileNameJoin[{repoRoot, "auto", "PropTaut.wl"}]];
+  Get[FileNameJoin[{repoRoot, "auto", "Meson.wl"}]];
+  Get[FileNameJoin[{repoRoot, "auto", "Simp.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Pair.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Sum.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Option.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Set.wl"}]];
+  Get[FileNameJoin[{repoRoot, "auto", "Set.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Num.wl"}]];
+
+  runGroup["post-bootstrap", postBootstrapTests];
+
+  HOLTest`testExit[]
+]

@@ -11,11 +11,19 @@ Kernel-minimal higher-order logic theorem prover in Wolfram Language, LCF-style,
 
 ## Trust boundary (the one thing to never get wrong)
 
-The **kernel** (types + terms + 10 primitive rules + axioms + `new_{constant,definition,basic_type_definition,axiom}`) is wrapped in a single `Module` whose `Unique["thm$"]`-gensymmed head is the sole legal constructor of `thm` values. Anything outside is untrusted. Worst-case bug in untrusted code is "can't prove a true theorem"; it must never be able to produce a false theorem.
+The **kernel** (types + terms + 10 primitive rules + axioms + `new_{constant,definition,basic_type_definition,axiom}`) owns all `thm` value construction. Anything outside is untrusted. Worst-case bug in untrusted code is "can't prove a true theorem"; it must never be able to produce a false theorem.
 
 Hard rules:
 
-0. **Closure-based encapsulation is the project's originating design goal — non-negotiable.** All mutable kernel state (`thmTag`, `arityTable`, `constTypeTable`, `axiomList`, `defnList`, and any future registries) lives exclusively inside the `makeKernel[]` `Module` closure. External code — including other packages in the `HOL`` context tree — has no read or write path to these values; the only interface is the set of top-level functions the kernel installs. This models C++/Java-style private members with *true* inaccessibility via Wolfram's `Module` gensym mechanism. It overrides convenience: if a package elsewhere would be simpler with its own private `Association`, that's still not allowed. Previous code that kept state in a package-private context (e.g., M1's `arityTable` in `HOL`Types`Private``, M2's `constTypeTable` in `HOL`Terms`Private``) must be refactored to delegate into the kernel closure.
+0. **All mutable kernel state — `thmTag`, `arityTable`, `constTypeTable`, `axiomList`, `defnList`, `axiomIntakeOpen`, and any future registries — lives in `HOL`Kernel`Private`*`. Read or write outside `Kernel.wl` is forbidden.** The kernel runs in one of two modes selected by `Global` $HOLEncapsulationMode`:
+
+   - **`"Strict"` (default, CI / audit):** the six state symbols are Module-local gensyms (`Unique["thm$"]`-style). External code literally cannot name them — the protection is by gensym + context discipline. This is the original design, preserved verbatim.
+
+   - **`"Stable"` (dev iteration, persistence):** the six state symbols are fixed names (`HOL`Kernel`Private`{holThmTag, arityTable, constTypeTable, axiomList, defnList, axiomIntakeOpen}`). This is required to make `DumpSave` snapshots survive across `wolframscript` invocations (gensym names change on every cold boot). External code *could* type the full path and bypass the API, so the boundary here is enforced by *convention + lint*: any reference to `HOL`Kernel`Private`*` outside `Kernel.wl` is a bug and the CI lint rejects it.
+
+   Both modes share the same `Kernel.wl` body via the `defineKernel[...]` installer (HoldAll, parameterised over the 6 state symbols). The mode dispatch lives at the bottom of `Kernel.wl`. CI runs the full test suite in **both** modes — if `"Stable"` ever diverges from `"Strict"`, that's a regression in the abstraction.
+
+   Why this is "the project's originating design goal" with a footnote: the original gensym-only approach was security-by-obscurity (an attacker willing to call `Names["thm$*"]` could find the gensym anyway), but for an honest contributor it raised the bar high enough that accidental mutation of kernel state was effectively impossible. "Stable" gives that up in exchange for ~100× faster dev iteration; "Strict" remains the gold standard the CI checks against. Don't add new mutable kernel state outside `HOL`Kernel`Private`*` regardless of mode.
 1. **`new_axiom` must disappear from the Kernel Association after bootstrap.** Three axioms (`ETA_AX`, `SELECT_AX`, `INFINITY_AX`) are declared during init; after that the API is withdrawn. Adding a new axiom is a user decision, not a Claude decision.
 2. **Term construction above the kernel goes through `mkVar` / `mkConst` / `mkComb` / `mkAbs`.** Raw `comb[...]` / `abs[...]` literals bypass type-checking and α-normalization — forbidden outside the kernel module.
 3. **Kernel is a singleton.** `makeKernel[]` runs once at load; no reset. To clear state, restart `wolframscript`.
@@ -27,7 +35,10 @@ Hard rules:
 - **File extensions**: libraries in `.wl` (`BeginPackage`/`EndPackage`); entry points, tests, demos in `.wls`; interactive notebooks `.nb` are optional.
 - **Contexts**: `HOL`Kernel``, `HOL`Bool``, `HOL`Real``, … Private helpers in `` `Private` `` subcontext.
 - **Errors**: kernel throws `Throw[Failure["HOLError", <|"tag" -> ..., "msg" -> ...|>], holErrorTag]`; top-level `Catch` in wolframscript entries. Tests assert on tag. **Do not use `Message` + `$Failed`** — cannot distinguish failure modes.
-- **Tests**: `tests/harness.wl` provides `assertEq` / `assertTrue` / `assertThrows` / `runTests` / `testExit`; `tests/run_all.wls` is the CI entry — it auto-discovers `tests/*_tests.wl`. Nonzero exit = failure.
+- **Tests**: `tests/harness.wl` provides `assertEq` / `assertTrue` / `assertThrows` / `runTests` / `testExit`. Three runners:
+  - `tests/run_all.wls` — cold-boot full suite in Strict mode. CI entry. ~6 min.
+  - `tests/run_all_stable.wls` — cold-boot full suite in Stable mode. CI also runs this as the abstraction sanity check.
+  - `tests/run_fast.wls [pattern...]` — restore the Stable-mode snapshot from `bootstrap.mx`, run matching test files. Uses ~3 s for targeted dev runs (e.g. `tests/run_fast.wls num`). Rebuild the snapshot with `tests/build_snapshot.wls` whenever any library or `Kernel.wl` changes — the runner checks mtimes and bails with a hint if stale. `kernel_tests.wl` is skipped from the fast runner (its pre-bootstrap state isn't reproducible from a restored snapshot).
 - **Package loading**: `tests/run_all.wls` holds an ordered list of library files (`ErrorUtil.wl`, `tests/harness.wl`, `Types.wl`, …) and `Get[]`s them in dependency order before discovering `tests/*_tests.wl`. Test files use `Needs["HOL`Whatever`"]` which is a no-op once the context is in `$Packages`. `Needs` cannot locate a flat-layout file on its own — always add new modules to the run_all load list.
 - **Failure payload access**: `Failure[tag, assoc]` — `[[1]]` is the tag string, `[[2]]` is the association. Always read keys via `f[[2, "tag"]]`, never `f[[1, "tag"]]`.
 - **No comments describing what code does** — names should carry that. Comments only for non-obvious *why*.
