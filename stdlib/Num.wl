@@ -98,6 +98,12 @@ ltConst::usage  = "ltConst[] — < : num → num → bool. m < n ⇔ SUC m ≤ n
 ltDefThm::usage = "ltDefThm — ⊢ < = (λm n. SUC m ≤ n).";
 ltSucThm::usage = "ltSucThm — ⊢ ∀n. n < SUC n.";
 
+numCasesThm::usage         = "numCasesThm — ⊢ ∀n. n = 0 ∨ (∃m. n = SUC m).";
+addEqZeroLeftThm::usage    = "addEqZeroLeftThm — ⊢ ∀m n. m + n = 0 ⇒ m = 0.";
+addEqZeroRightThm::usage   = "addEqZeroRightThm — ⊢ ∀m n. m + n = 0 ⇒ n = 0.";
+leqAntisymThm::usage       = "leqAntisymThm — ⊢ ∀m n. m ≤ n ⇒ n ≤ m ⇒ m = n.";
+leqTotalThm::usage         = "leqTotalThm — ⊢ ∀m n. m ≤ n ∨ n ≤ m.";
+
 selectOfExists::usage =
   "selectOfExists[predLambda, existsTh] — given a closed lambda " <>
   "predLambda = (λx. body) and a theorem existsTh : ⊢ ∃x. body, " <>
@@ -306,6 +312,8 @@ ind0NotInRangeThm =
 (* ============================================================ *)
 
 andTm[a_, b_] := mkComb[mkComb[andC[], a], b];
+orTm[a_, b_] :=
+  mkComb[mkComb[mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
 impTm[a_, b_] :=
   mkComb[mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
 
@@ -2934,6 +2942,371 @@ ltSucThm =
     (* ⊢ SUC n ≤ SUC n *)
     foldedLt = EQMP[HOL`Equal`SYM[unfoldEq], leqRefl];
     genN = HOL`Bool`GEN[nV, foldedLt]
+  ];
+
+(* ============================================================ *)
+(* numCasesThm : ⊢ ∀n. n = 0 ∨ (∃m. n = SUC m)                    *)
+(* Direct induction; step doesn't need IH.                       *)
+(* ============================================================ *)
+
+numCasesThm =
+  Module[{nV, mV, pLam, baseTm, sucBody, baseTh, stepBody, dischIh,
+          stepTh, sucIH, existsBody, existsAtN, sucEqDisjs},
+    nV = mkVar["n", numTy];
+    mV = mkVar["m", numTy];
+
+    (* P n = (n = 0) ∨ (∃m. n = SUC m)                            *)
+    sucBody = mkComb[existsC[numTy],
+      mkAbs[mV, mkEq[nV, mkComb[sucConst[], mV]]]];
+    pLam = mkAbs[nV, orTm[mkEq[nV, zeroConst[]], sucBody]];
+
+    (* Base: 0 = 0 ∨ (∃m. 0 = SUC m). DISJ1 REFL[0].             *)
+    baseTm = orTm[
+      mkEq[zeroConst[], zeroConst[]],
+      mkComb[existsC[numTy],
+        mkAbs[mV, mkEq[zeroConst[], mkComb[sucConst[], mV]]]]];
+    baseTh = HOL`Bool`DISJ1[REFL[zeroConst[]],
+      mkComb[existsC[numTy],
+        mkAbs[mV, mkEq[zeroConst[], mkComb[sucConst[], mV]]]]];
+
+    (* Step: ASSUME P n. Show P (SUC n). DISJ2 with witness n:    *)
+    (*       SUC n = SUC n by REFL. EXISTS.                       *)
+    Module[{ihTm, ihAssum, sucNEqSucMTm, sucNEqSucN, existsAtSucN,
+            ihDisjTm, disjThm, dischIhInner},
+      ihTm = orTm[
+        mkEq[nV, zeroConst[]],
+        mkComb[existsC[numTy],
+          mkAbs[mV, mkEq[nV, mkComb[sucConst[], mV]]]]];
+      ihAssum = ASSUME[ihTm];   (* not actually needed but keeps shape *)
+      sucNEqSucMTm = mkComb[existsC[numTy],
+        mkAbs[mV,
+          mkEq[mkComb[sucConst[], nV], mkComb[sucConst[], mV]]]];
+      sucNEqSucN = REFL[mkComb[sucConst[], nV]];
+      existsAtSucN = HOL`Bool`EXISTS[sucNEqSucMTm, nV, sucNEqSucN];
+      (* ⊢ ∃m. SUC n = SUC m *)
+      disjThm = HOL`Bool`DISJ2[
+        existsAtSucN,
+        mkEq[mkComb[sucConst[], nV], zeroConst[]]];
+      (* ⊢ SUC n = 0 ∨ (∃m. SUC n = SUC m) *)
+      dischIhInner = HOL`Bool`DISCH[ihTm, disjThm];
+      stepTh = HOL`Bool`GEN[nV, dischIhInner]
+    ];
+
+    numInductBy[pLam, baseTh, stepTh]
+  ];
+
+(* ============================================================ *)
+(* addEqZeroLeftThm : ⊢ ∀m n. m + n = 0 ⇒ m = 0                  *)
+(* Induction on m. Base trivial; step derives F from              *)
+(*  SUC (m + n) = 0  via sucNotZeroThm, then CONTR.                *)
+(* ============================================================ *)
+
+addEqZeroLeftThm =
+  Module[{mV, nV, pLam, baseTh, ihTm, ihAssum, hypTm, hypAssum,
+          sucLift, transFalse, notSucZero, fThm, contrSucEq0,
+          dischHyp, genN, dischIh, genStep, innerThm, genM},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+
+    pLam = mkAbs[mV,
+      mkComb[forallC[numTy], mkAbs[nV,
+        impTm[mkEq[plusTm[mV, nV], zeroConst[]],
+              mkEq[mV, zeroConst[]]]]]];
+
+    (* Base m = 0: ASSUME 0 + n = 0. Want 0 = 0. REFL.            *)
+    Module[{base0HypTm, base0Hyp},
+      base0HypTm = mkEq[plusTm[zeroConst[], nV], zeroConst[]];
+      base0Hyp = ASSUME[base0HypTm];
+      baseTh = HOL`Bool`GEN[nV,
+        HOL`Bool`DISCH[base0HypTm, REFL[zeroConst[]]]]
+    ];
+
+    (* Step: ASSUME ∀n. m+n=0 ⇒ m=0. Show ∀n. SUC m + n = 0 ⇒ SUC m = 0. *)
+    ihTm = mkComb[forallC[numTy], mkAbs[nV,
+      impTm[mkEq[plusTm[mV, nV], zeroConst[]],
+            mkEq[mV, zeroConst[]]]]];
+    ihAssum = ASSUME[ihTm];
+
+    hypTm = mkEq[plusTm[mkComb[sucConst[], mV], nV], zeroConst[]];
+    hypAssum = ASSUME[hypTm];
+
+    sucLift = HOL`Equal`SYM[
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, addLeftSucThm]]];
+    (* ⊢ SUC (m + n) = SUC m + n *)
+    transFalse = TRANS[sucLift, hypAssum];
+    (* (hyp) ⊢ SUC (m + n) = 0 *)
+    notSucZero = HOL`Bool`SPEC[plusTm[mV, nV], sucNotZeroThm];
+    (* ⊢ ¬ (SUC (m + n) = 0) *)
+    fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[notSucZero], transFalse];
+    (* (hyp) ⊢ F *)
+    contrSucEq0 = HOL`Bool`CONTR[
+      mkEq[mkComb[sucConst[], mV], zeroConst[]], fThm];
+    (* (hyp) ⊢ SUC m = 0 *)
+
+    dischHyp = HOL`Bool`DISCH[hypTm, contrSucEq0];
+    genN = HOL`Bool`GEN[nV, dischHyp];
+    dischIh = HOL`Bool`DISCH[ihTm, genN];
+    genStep = HOL`Bool`GEN[mV, dischIh];
+
+    innerThm = numInductBy[pLam, baseTh, genStep];
+    genM = innerThm
+  ];
+
+(* ============================================================ *)
+(* addEqZeroRightThm : ⊢ ∀m n. m + n = 0 ⇒ n = 0                  *)
+(* Reduces to addEqZeroLeftThm via addCommThm.                    *)
+(* ============================================================ *)
+
+addEqZeroRightThm =
+  Module[{mV, nV, hypTm, hypAssum, commEq, transHyp, leftInst,
+          nEqZero, dischHyp, genN, genM},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+
+    hypTm = mkEq[plusTm[mV, nV], zeroConst[]];
+    hypAssum = ASSUME[hypTm];
+    commEq = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, addCommThm]];
+    (* ⊢ m + n = n + m *)
+    transHyp = TRANS[HOL`Equal`SYM[commEq], hypAssum];
+    (* (hyp) ⊢ n + m = 0 *)
+    leftInst = HOL`Bool`SPEC[mV, HOL`Bool`SPEC[nV, addEqZeroLeftThm]];
+    (* ⊢ n + m = 0 ⇒ n = 0 *)
+    nEqZero = HOL`Bool`MP[leftInst, transHyp];
+    dischHyp = HOL`Bool`DISCH[hypTm, nEqZero];
+    genN = HOL`Bool`GEN[nV, dischHyp];
+    genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* leqAntisymThm : ⊢ ∀m n. m ≤ n ⇒ n ≤ m ⇒ m = n                 *)
+(*                                                              *)
+(* From m + k1 = n and n + k2 = m, derive m + (k1 + k2) = m,    *)
+(* hence k1 + k2 = 0 (addLeftCancelThm vs m + 0 = m),           *)
+(* hence k1 = 0 (addEqZeroLeftThm), hence m = n.                 *)
+(* ============================================================ *)
+
+(* ============================================================ *)
+(* leqTotalThm : ⊢ ∀m n. m ≤ n ∨ n ≤ m                            *)
+(*                                                              *)
+(* Induction on m. Base via leqZeroThm + DISJ1. Step: for fresh  *)
+(* n, SPEC IH; DISJCASES:                                        *)
+(*   Case A (m ≤ n): CHOOSE witness k; numCasesThm on k:         *)
+(*     k = 0      → m = n, so n ≤ SUC n = SUC m via leqSucThm.   *)
+(*     k = SUC k' → SUC m + k' = n via plusSucEqThm +            *)
+(*                   addLeftSucThm-SYM; EXISTS gives SUC m ≤ n.   *)
+(*   Case B (n ≤ m): leqTransThm + leqSucThm gives n ≤ SUC m.    *)
+(* ============================================================ *)
+
+leqTotalThm =
+  Module[{mV, nV, kV, kpV, pLam, baseTh,
+          ihTm, ihAssum, dispM, caseATm, caseAhyp, caseBTm, caseBhyp,
+          caseAResult, caseBResult, dispResult,
+          dischIh, genStep, innerThm, genM,
+          (* re-quantify *) mFresh, nFresh, specM, genN2, genM2},
+    mV  = mkVar["m", numTy];
+    nV  = mkVar["n", numTy];
+    kV  = mkVar["k", numTy];
+    kpV = mkVar["k'", numTy];
+
+    pLam = mkAbs[mV,
+      mkComb[forallC[numTy], mkAbs[nV,
+        orTm[leqTm[mV, nV], leqTm[nV, mV]]]]];
+
+    (* Base m = 0: ∀n. 0 ≤ n ∨ n ≤ 0. DISJ1 leqZeroThm.            *)
+    Module[{leqZeroAtN, disjAtN, genBaseN},
+      leqZeroAtN = HOL`Bool`SPEC[nV, leqZeroThm];
+      disjAtN = HOL`Bool`DISJ1[leqZeroAtN, leqTm[nV, zeroConst[]]];
+      baseTh = HOL`Bool`GEN[nV, disjAtN]
+    ];
+
+    (* Step: ASSUME IH (∀n. m ≤ n ∨ n ≤ m). Show ∀n. SUC m ≤ n ∨ n ≤ SUC m. *)
+    ihTm = mkComb[forallC[numTy],
+      mkAbs[nV, orTm[leqTm[mV, nV], leqTm[nV, mV]]]];
+    ihAssum = ASSUME[ihTm];
+    dispM = HOL`Bool`SPEC[nV, ihAssum];
+    (* (IH) ⊢ m ≤ n ∨ n ≤ m *)
+
+    caseATm = leqTm[mV, nV];
+    caseAhyp = ASSUME[caseATm];
+    caseBTm = leqTm[nV, mV];
+    caseBhyp = ASSUME[caseBTm];
+
+    (* Case A: m ≤ n. *)
+    Module[{unfoldA, witHypTm, witHypAssum, kCases, kCase0, kCaseSuc,
+            mEqN, nLeqSucN, foldSucMleqN, suckPDisjBranches,
+            caseAchooseK, k0Tm, k0Hyp, kSucTm, kSucHyp, kpHyp,
+            plusEq0, mPlusZeroEqM2, mEqNviaWit, leqSucAtM, nLeqSucMA1,
+            plusSucKp, sucMplusKp, sucMplusKpEqN, existsKBody,
+            existsKsucm, foldedSucMLeqN, sucMLeqNDisj,
+            disjCases, caseAFinal},
+      unfoldA = EQMP[unfoldLeq[mV, nV], caseAhyp];
+      (* (m ≤ n) ⊢ ∃k. m + k = n *)
+      witHypTm = mkEq[plusTm[mV, kV], nV];
+      witHypAssum = ASSUME[witHypTm];
+
+      kCases = HOL`Bool`SPEC[kV, numCasesThm];
+      (* ⊢ k = 0 ∨ ∃k'. k = SUC k' *)
+      k0Tm = mkEq[kV, zeroConst[]];
+      k0Hyp = ASSUME[k0Tm];
+      kSucTm = mkComb[existsC[numTy],
+        mkAbs[kpV, mkEq[kV, mkComb[sucConst[], kpV]]]];
+      kSucHyp = ASSUME[kSucTm];
+
+      (* Sub-case A1: k = 0. Both sides reduce to m = n; m ≤ SUC m + *)
+      (* APTERM(≤) rewrite gives n ≤ SUC m; DISJ2.                  *)
+      Module[{plusMK1eqPlusM0, plusM0eqM, plusMK1eqM, mEqN1,
+              leqSucAtMA1, leqEq, nLeqSucMthm, disjA1},
+        plusMK1eqPlusM0 = HOL`Equal`APTERM[
+          mkComb[plusConst[], mV], k0Hyp];
+        plusM0eqM = HOL`Bool`SPEC[mV, plusZeroEqThm];
+        plusMK1eqM = TRANS[plusMK1eqPlusM0, plusM0eqM];
+        mEqN1 = TRANS[HOL`Equal`SYM[plusMK1eqM], witHypAssum];
+        leqSucAtMA1 = HOL`Bool`SPEC[mV, leqSucThm];
+        leqEq = HOL`Equal`APTHM[
+          HOL`Equal`APTERM[leqConst[], mEqN1],
+          mkComb[sucConst[], mV]];
+        nLeqSucMthm = EQMP[leqEq, leqSucAtMA1];
+        disjA1 = HOL`Bool`DISJ2[nLeqSucMthm,
+          leqTm[mkComb[sucConst[], mV], nV]];
+        kCase0 = disjA1
+      ];
+
+      (* Sub-case A2: ∃k'. k = SUC k'. CHOOSE k'.                     *)
+      kpHyp = ASSUME[mkEq[kV, mkComb[sucConst[], kpV]]];
+      Module[{kRewriteWit, plusMsucKpEqN, plusSucKpEq,
+              sucMplusKpEqMplusSucKp, sucMplusKpEqN2,
+              existsKBodyA2, existsKsucMA2, foldedLeqA2, disjA2},
+        (* APTERM (m +) on SYM[kpHyp] (= SUC k' = k) gives m + SUC k' = m + k. *)
+        (* TRANS with witHypAssum (m + k = n) gives m + SUC k' = n.            *)
+        kRewriteWit = TRANS[
+          HOL`Equal`APTERM[mkComb[plusConst[], mV],
+            HOL`Equal`SYM[kpHyp]],
+          witHypAssum];
+        plusMsucKpEqN = kRewriteWit;
+        (* (w, k = SUC k') ⊢ m + SUC k' = n *)
+        plusSucKpEq = HOL`Bool`SPEC[kpV, HOL`Bool`SPEC[mV, plusSucEqThm]];
+        (* ⊢ m + SUC k' = SUC (m + k') *)
+        sucMplusKpEqMplusSucKp = HOL`Equal`SYM[
+          HOL`Bool`SPEC[kpV, HOL`Bool`SPEC[mV, addLeftSucThm]]];
+        (* ⊢ SUC (m + k') = SUC m + k' *)
+        (* (SUC m + k') = SUC (m + k') = m + SUC k' = n.                       *)
+        sucMplusKpEqN2 = TRANS[
+          HOL`Equal`SYM[sucMplusKpEqMplusSucKp],
+          TRANS[HOL`Equal`SYM[plusSucKpEq], plusMsucKpEqN]];
+        (* (w, k = SUC k') ⊢ SUC m + k' = n *)
+        existsKBodyA2 = mkComb[existsC[numTy],
+          mkAbs[kV, mkEq[plusTm[mkComb[sucConst[], mV], kV], nV]]];
+        existsKsucMA2 = HOL`Bool`EXISTS[existsKBodyA2, kpV, sucMplusKpEqN2];
+        foldedLeqA2 = EQMP[
+          HOL`Equal`SYM[unfoldLeq[mkComb[sucConst[], mV], nV]],
+          existsKsucMA2];
+        disjA2 = HOL`Bool`DISJ1[foldedLeqA2,
+          leqTm[nV, mkComb[sucConst[], mV]]];
+        kCaseSuc = HOL`Bool`CHOOSE[kpV, kSucHyp, disjA2]
+      ];
+
+      suckPDisjBranches = HOL`Bool`DISJCASES[kCases, kCase0, kCaseSuc];
+      caseAchooseK = HOL`Bool`CHOOSE[kV, unfoldA, suckPDisjBranches];
+      caseAResult = caseAchooseK
+    ];
+
+    (* Case B: n ≤ m. By leqTransThm and leqSucThm.                  *)
+    Module[{leqSucAtMB, transInst, nLeqSucMB, disjB},
+      leqSucAtMB = HOL`Bool`SPEC[mV, leqSucThm];
+      transInst = HOL`Bool`SPEC[mkComb[sucConst[], mV],
+        HOL`Bool`SPEC[mV, HOL`Bool`SPEC[nV, leqTransThm]]];
+      (* ⊢ n ≤ m ⇒ m ≤ SUC m ⇒ n ≤ SUC m *)
+      nLeqSucMB = HOL`Bool`MP[
+        HOL`Bool`MP[transInst, caseBhyp], leqSucAtMB];
+      (* (n ≤ m) ⊢ n ≤ SUC m *)
+      disjB = HOL`Bool`DISJ2[nLeqSucMB,
+        leqTm[mkComb[sucConst[], mV], nV]];
+      caseBResult = disjB
+    ];
+
+    dispResult = HOL`Bool`DISJCASES[dispM, caseAResult, caseBResult];
+    (* (IH) ⊢ SUC m ≤ n ∨ n ≤ SUC m *)
+
+    dischIh = HOL`Bool`DISCH[ihTm, HOL`Bool`GEN[nV, dispResult]];
+    (* ⊢ IH ⇒ ∀n. SUC m ≤ n ∨ n ≤ SUC m *)
+    genStep = HOL`Bool`GEN[mV, dischIh];
+
+    innerThm = numInductBy[pLam, baseTh, genStep];
+    (* ⊢ ∀m. ∀n. m ≤ n ∨ n ≤ m *)
+    genM = innerThm
+  ];
+
+leqAntisymThm =
+  Module[{mV, nV, k1V, k2V, h1Tm, h1Assum, h2Tm, h2Assum,
+          h1Unfold, h2Unfold, witHypTm1, witHypAssum1,
+          witHypTm2, witHypAssum2,
+          apK2, transM, apAssoc, mPlusK1K2Eq, mPlusZeroSym,
+          mPlusBothForms, k1K2EqZero, k1Zero,
+          plusEq, mPlusZeroEqM, plusMK1eqM, mEqN,
+          chooseK2, chooseK1, dischH2, dischH1, genN, genM},
+    mV  = mkVar["m", numTy];
+    nV  = mkVar["n", numTy];
+    k1V = mkVar["k1", numTy];
+    k2V = mkVar["k2", numTy];
+
+    h1Tm = leqTm[mV, nV];
+    h1Assum = ASSUME[h1Tm];
+    h2Tm = leqTm[nV, mV];
+    h2Assum = ASSUME[h2Tm];
+
+    h1Unfold = EQMP[unfoldLeq[mV, nV], h1Assum];
+    (* (h1) ⊢ ∃k1. m + k1 = n *)
+    h2Unfold = EQMP[unfoldLeq[nV, mV], h2Assum];
+    (* (h2) ⊢ ∃k2. n + k2 = m *)
+
+    witHypTm1 = mkEq[plusTm[mV, k1V], nV];
+    witHypAssum1 = ASSUME[witHypTm1];
+    witHypTm2 = mkEq[plusTm[nV, k2V], mV];
+    witHypAssum2 = ASSUME[witHypTm2];
+
+    apK2 = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[plusConst[], witHypAssum1], k2V];
+    (* (w1) ⊢ (m + k1) + k2 = n + k2 *)
+    transM = TRANS[apK2, witHypAssum2];
+    (* (w1, w2) ⊢ (m + k1) + k2 = m *)
+    apAssoc = HOL`Bool`SPEC[k2V,
+      HOL`Bool`SPEC[k1V, HOL`Bool`SPEC[mV, addAssocThm]]];
+    (* ⊢ (m + k1) + k2 = m + (k1 + k2) *)
+    mPlusK1K2Eq = TRANS[HOL`Equal`SYM[apAssoc], transM];
+    (* (w1, w2) ⊢ m + (k1 + k2) = m *)
+    mPlusZeroSym = HOL`Equal`SYM[HOL`Bool`SPEC[mV, plusZeroEqThm]];
+    (* ⊢ m = m + 0 *)
+    mPlusBothForms = TRANS[mPlusK1K2Eq, mPlusZeroSym];
+    (* (w1, w2) ⊢ m + (k1 + k2) = m + 0 *)
+    k1K2EqZero = HOL`Bool`MP[
+      HOL`Bool`SPEC[zeroConst[],
+        HOL`Bool`SPEC[plusTm[k1V, k2V],
+          HOL`Bool`SPEC[mV, addLeftCancelThm]]],
+      mPlusBothForms];
+    (* (w1, w2) ⊢ k1 + k2 = 0 *)
+    k1Zero = HOL`Bool`MP[
+      HOL`Bool`SPEC[k2V, HOL`Bool`SPEC[k1V, addEqZeroLeftThm]],
+      k1K2EqZero];
+    (* (w1, w2) ⊢ k1 = 0 *)
+
+    plusEq = HOL`Equal`APTERM[mkComb[plusConst[], mV], k1Zero];
+    (* (w1, w2) ⊢ m + k1 = m + 0 *)
+    mPlusZeroEqM = HOL`Bool`SPEC[mV, plusZeroEqThm];
+    (* ⊢ m + 0 = m *)
+    plusMK1eqM = TRANS[plusEq, mPlusZeroEqM];
+    (* (w1, w2) ⊢ m + k1 = m *)
+    mEqN = TRANS[HOL`Equal`SYM[plusMK1eqM], witHypAssum1];
+    (* (w1, w2) ⊢ m = n *)
+
+    chooseK2 = HOL`Bool`CHOOSE[k2V, h2Unfold, mEqN];
+    (* (h2, w1) ⊢ m = n *)
+    chooseK1 = HOL`Bool`CHOOSE[k1V, h1Unfold, chooseK2];
+    (* (h1, h2) ⊢ m = n *)
+
+    dischH2 = HOL`Bool`DISCH[h2Tm, chooseK1];
+    dischH1 = HOL`Bool`DISCH[h1Tm, dischH2];
+    genN = HOL`Bool`GEN[nV, dischH1];
+    genM = HOL`Bool`GEN[mV, genN]
   ];
 
 End[];

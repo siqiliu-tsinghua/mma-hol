@@ -787,3 +787,74 @@ HOLTest`runTests["stdlib/Num: ltSucThm = ⊢ ∀n. n < SUC n",
       "∀n. n < SUC n"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`ltSucThm], {}, "no hyps"];
 ]];
+
+(* ===== M7-3-i: case split + LEQ antisym ===== *)
+
+HOLTest`runTests["stdlib/Num: numCasesThm = ⊢ ∀n. n = 0 ∨ ∃m. n = SUC m",
+  Module[{c, numTy, nV, mV, sucC, orC, existsC, expected},
+    numTy = mkType["num", {}];
+    nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    sucC = HOL`Stdlib`Num`sucConst[];
+    orC = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    existsC = mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[nV,
+        mkComb[mkComb[orC, mkEq[nV, HOL`Stdlib`Num`zeroConst[]]],
+          mkComb[existsC,
+            mkAbs[mV, mkEq[nV, mkComb[sucC, mV]]]]]]];
+    c = concl[HOL`Stdlib`Num`numCasesThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀n. n = 0 ∨ ∃m. n = SUC m"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`numCasesThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: addEqZeroLeftThm = ⊢ ∀m n. m + n = 0 ⇒ m = 0",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`addEqZeroLeftThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: addEqZeroRightThm = ⊢ ∀m n. m + n = 0 ⇒ n = 0",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`addEqZeroRightThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: leqAntisymThm has no hyps + ∀m n shape",
+  Module[{c, numTy, mV, nV, leqC, expected},
+    numTy = mkType["num", {}];
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    leqC = mkConst["≤", tyFun[numTy, tyFun[numTy, boolTy]]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mV,
+        mkComb[
+          mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[nV,
+            mkComb[mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+              mkComb[mkComb[leqC, mV], nV]],
+              mkComb[mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+                mkComb[mkComb[leqC, nV], mV]],
+                mkEq[mV, nV]]]]]]];
+    c = concl[HOL`Stdlib`Num`leqAntisymThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀m n. m ≤ n ⇒ n ≤ m ⇒ m = n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqAntisymThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: leqTotalThm = ⊢ ∀m n. m ≤ n ∨ n ≤ m",
+  Module[{c, numTy, mV, nV, leqC, orC, expected},
+    numTy = mkType["num", {}];
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    leqC = mkConst["≤", tyFun[numTy, tyFun[numTy, boolTy]]];
+    orC = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mV,
+        mkComb[
+          mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[nV,
+            mkComb[mkComb[orC, mkComb[mkComb[leqC, mV], nV]],
+              mkComb[mkComb[leqC, nV], mV]]]]]];
+    c = concl[HOL`Stdlib`Num`leqTotalThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀m n. m ≤ n ∨ n ≤ m"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqTotalThm], {}, "no hyps"];
+]];
