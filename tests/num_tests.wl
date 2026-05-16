@@ -527,3 +527,71 @@ HOLTest`runTests["stdlib/Num: timesLeftZeroThm = ⊢ ∀n. 0 * n = 0",
       "∀n. 0 * n = 0"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`timesLeftZeroThm], {}, "no hyps"];
 ]];
+
+(* ===== M7-3-f: + commutativity / associativity ===== *)
+
+HOLTest`runTests["stdlib/Num: addLeftSucThm = ⊢ ∀m n. SUC m + n = SUC (m + n)",
+  Module[{c, numTy, mV, nV, plusC, sucC, expected},
+    numTy = mkType["num", {}];
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    plusC = mkConst["+", tyFun[numTy, tyFun[numTy, numTy]]];
+    sucC = HOL`Stdlib`Num`sucConst[];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mV,
+        mkComb[
+          mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[nV,
+            mkEq[
+              mkComb[mkComb[plusC, mkComb[sucC, mV]], nV],
+              mkComb[sucC, mkComb[mkComb[plusC, mV], nV]]]]]]];
+    c = concl[HOL`Stdlib`Num`addLeftSucThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀m n. SUC m + n = SUC (m + n)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`addLeftSucThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: addCommThm = ⊢ ∀m n. m + n = n + m",
+  Module[{c, numTy, mV, nV, plusC, expected},
+    numTy = mkType["num", {}];
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    plusC = mkConst["+", tyFun[numTy, tyFun[numTy, numTy]]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mV,
+        mkComb[
+          mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[nV,
+            mkEq[
+              mkComb[mkComb[plusC, mV], nV],
+              mkComb[mkComb[plusC, nV], mV]]]]]];
+    c = concl[HOL`Stdlib`Num`addCommThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀m n. m + n = n + m"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`addCommThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: addAssocThm = ⊢ ∀a b c. (a + b) + c = a + (b + c)",
+  Module[{c, numTy, aV, bV, cV, plusC, expected},
+    numTy = mkType["num", {}];
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; cV = mkVar["c", numTy];
+    plusC = mkConst["+", tyFun[numTy, tyFun[numTy, numTy]]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[aV,
+        mkComb[
+          mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[bV,
+            mkComb[
+              mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+              mkAbs[cV,
+                mkEq[
+                  mkComb[mkComb[plusC,
+                    mkComb[mkComb[plusC, aV], bV]], cV],
+                  mkComb[mkComb[plusC, aV],
+                    mkComb[mkComb[plusC, bV], cV]]]]]]]]];
+    c = concl[HOL`Stdlib`Num`addAssocThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀a b c. (a + b) + c = a + (b + c)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`addAssocThm], {}, "no hyps"];
+]];

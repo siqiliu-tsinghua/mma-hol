@@ -72,6 +72,10 @@ timesZeroEqThm::usage = "timesZeroEqThm — ⊢ ∀m. m * 0 = 0.";
 timesSucEqThm::usage  = "timesSucEqThm — ⊢ ∀m n. m * (SUC n) = m * n + m.";
 timesLeftZeroThm::usage = "timesLeftZeroThm — ⊢ ∀n. 0 * n = 0.";
 
+addLeftSucThm::usage = "addLeftSucThm — ⊢ ∀m n. SUC m + n = SUC (m + n).";
+addCommThm::usage    = "addCommThm — ⊢ ∀m n. m + n = n + m.";
+addAssocThm::usage   = "addAssocThm — ⊢ ∀a b c. (a + b) + c = a + (b + c).";
+
 selectOfExists::usage =
   "selectOfExists[predLambda, existsTh] — given a closed lambda " <>
   "predLambda = (λx. body) and a theorem existsTh : ⊢ ∃x. body, " <>
@@ -2120,6 +2124,179 @@ timesLeftZeroThm =
     indBeta = HOL`Drule`CONVRULE[
       HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], indSpec];
     HOL`Bool`MP[indBeta, premise]
+  ];
+
+(* ============================================================ *)
+(* Numeric-induction helper                                     *)
+(*   `⊢ ∀v. P v`  from `⊢ P 0`  and  `⊢ ∀v. P v ⇒ P (SUC v)`    *)
+(* where pLam = `λv. body[v]` (closed lambda).                   *)
+(* ============================================================ *)
+
+numInductBy[pLam_, baseTh_, stepTh_] :=
+  Module[{premise, indSpec, indBeta},
+    premise = HOL`Bool`CONJ[baseTh, stepTh];
+    indSpec = HOL`Bool`SPEC[pLam, numInductionThm];
+    indBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], indSpec];
+    HOL`Bool`MP[indBeta, premise]
+  ];
+
+(* ============================================================ *)
+(* addLeftSucThm : ⊢ ∀m n. SUC m + n = SUC (m + n)                *)
+(* Induction on n, m free.                                       *)
+(* ============================================================ *)
+
+addLeftSucThm =
+  Module[{mV, nV, pLam, baseTh, stepTh, ihTm, ihAssum, lhsExp, sucIh,
+          rhsExp, innerStep, dischIh, genStep, innerThm, genM},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+
+    pLam = mkAbs[nV, mkEq[
+      plusTm[mkComb[sucConst[], mV], nV],
+      mkComb[sucConst[], plusTm[mV, nV]]]];
+
+    (* Base: SUC m + 0 = SUC (m + 0). Both sides reduce to SUC m. *)
+    Module[{lhs0, rhs0Sym},
+      lhs0 = HOL`Bool`SPEC[mkComb[sucConst[], mV], plusZeroEqThm];
+      (* ⊢ SUC m + 0 = SUC m *)
+      rhs0Sym = HOL`Equal`SYM[
+        HOL`Equal`APTERM[sucConst[], HOL`Bool`SPEC[mV, plusZeroEqThm]]];
+      (* ⊢ SUC m = SUC (m + 0) *)
+      baseTh = TRANS[lhs0, rhs0Sym];
+    ];
+
+    (* Step: IH: SUC m + n = SUC (m + n).                                 *)
+    (* Show: SUC m + SUC n = SUC (m + SUC n).                             *)
+    ihTm = mkEq[
+      plusTm[mkComb[sucConst[], mV], nV],
+      mkComb[sucConst[], plusTm[mV, nV]]];
+    ihAssum = ASSUME[ihTm];
+    lhsExp = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mkComb[sucConst[], mV], plusSucEqThm]];
+    (* ⊢ SUC m + SUC n = SUC (SUC m + n) *)
+    sucIh = HOL`Equal`APTERM[sucConst[], ihAssum];
+    (* (IH) ⊢ SUC (SUC m + n) = SUC (SUC (m + n)) *)
+    rhsExp = HOL`Equal`APTERM[sucConst[],
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, plusSucEqThm]]];
+    (* ⊢ SUC (m + SUC n) = SUC (SUC (m + n)) *)
+    innerStep = TRANS[TRANS[lhsExp, sucIh], HOL`Equal`SYM[rhsExp]];
+    (* (IH) ⊢ SUC m + SUC n = SUC (m + SUC n) *)
+
+    dischIh = HOL`Bool`DISCH[ihTm, innerStep];
+    genStep = HOL`Bool`GEN[nV, dischIh];
+
+    innerThm = numInductBy[pLam, baseTh, genStep];
+    (* ⊢ ∀n. SUC m + n = SUC (m + n) *)
+    genM = HOL`Bool`GEN[mV, innerThm]
+  ];
+
+(* ============================================================ *)
+(* addCommThm : ⊢ ∀m n. m + n = n + m                             *)
+(* Induction on m, n free. Uses addLeftZeroThm and addLeftSucThm. *)
+(* ============================================================ *)
+
+addCommThm =
+  Module[{mV, nV, pLam, baseTh, stepTh, ihTm, ihAssum,
+          lhsExp, sucIh, rhsExp, innerStep, dischIh, genStep,
+          innerThm, genN},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+
+    pLam = mkAbs[mV, mkEq[plusTm[mV, nV], plusTm[nV, mV]]];
+
+    (* Base: 0 + n = n + 0. *)
+    Module[{lhs0, rhs0},
+      lhs0 = HOL`Bool`SPEC[nV, addLeftZeroThm];
+      (* ⊢ 0 + n = n *)
+      rhs0 = HOL`Equal`SYM[HOL`Bool`SPEC[nV, plusZeroEqThm]];
+      (* ⊢ n = n + 0 *)
+      baseTh = TRANS[lhs0, rhs0];
+    ];
+
+    ihTm = mkEq[plusTm[mV, nV], plusTm[nV, mV]];
+    ihAssum = ASSUME[ihTm];
+    lhsExp = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, addLeftSucThm]];
+    (* ⊢ SUC m + n = SUC (m + n) *)
+    sucIh = HOL`Equal`APTERM[sucConst[], ihAssum];
+    (* (IH) ⊢ SUC (m + n) = SUC (n + m) *)
+    rhsExp = HOL`Equal`SYM[
+      HOL`Bool`SPEC[mV, HOL`Bool`SPEC[nV, plusSucEqThm]]];
+    (* ⊢ SUC (n + m) = n + SUC m *)
+    innerStep = TRANS[TRANS[lhsExp, sucIh], rhsExp];
+    (* (IH) ⊢ SUC m + n = n + SUC m *)
+
+    dischIh = HOL`Bool`DISCH[ihTm, innerStep];
+    genStep = HOL`Bool`GEN[mV, dischIh];
+
+    innerThm = numInductBy[pLam, baseTh, genStep];
+    (* ⊢ ∀m. m + n = n + m  (with n free)                          *)
+    (* Re-quantify to ⊢ ∀m n. m + n = n + m (natural reading order)*)
+    Module[{mFresh, nFresh, specM, specN, genN1, genM1},
+      mFresh = mkVar["m", numTy];
+      nFresh = mkVar["n", numTy];
+      specM = HOL`Bool`SPEC[mFresh, innerThm];
+      (* ⊢ mFresh + n = n + mFresh  (n still free from above) *)
+      genN1 = HOL`Bool`GEN[nV, specM];
+      (* ⊢ ∀n. mFresh + n = n + mFresh *)
+      genM1 = HOL`Bool`GEN[mFresh, genN1]
+      (* ⊢ ∀m. ∀n. m + n = n + m *)
+    ]
+  ];
+
+(* ============================================================ *)
+(* addAssocThm : ⊢ ∀a b c. (a + b) + c = a + (b + c)              *)
+(* Induction on c, a/b free.                                     *)
+(* ============================================================ *)
+
+addAssocThm =
+  Module[{aV, bV, cV, pLam, baseTh, ihTm, ihAssum,
+          lhsExp, sucIh, rhsExp1, rhsExp2, innerStep,
+          dischIh, genStep, innerThm, genB, genA},
+    aV = mkVar["a", numTy];
+    bV = mkVar["b", numTy];
+    cV = mkVar["c", numTy];
+
+    pLam = mkAbs[cV, mkEq[
+      plusTm[plusTm[aV, bV], cV],
+      plusTm[aV, plusTm[bV, cV]]]];
+
+    (* Base: (a + b) + 0 = a + (b + 0).                          *)
+    Module[{lhs0, rhs0Sym},
+      lhs0 = HOL`Bool`SPEC[plusTm[aV, bV], plusZeroEqThm];
+      (* ⊢ (a + b) + 0 = a + b *)
+      rhs0Sym = HOL`Equal`SYM[
+        HOL`Equal`APTERM[mkComb[plusConst[], aV],
+          HOL`Bool`SPEC[bV, plusZeroEqThm]]];
+      (* ⊢ a + b = a + (b + 0) *)
+      baseTh = TRANS[lhs0, rhs0Sym];
+    ];
+
+    ihTm = mkEq[
+      plusTm[plusTm[aV, bV], cV],
+      plusTm[aV, plusTm[bV, cV]]];
+    ihAssum = ASSUME[ihTm];
+    lhsExp = HOL`Bool`SPEC[cV, HOL`Bool`SPEC[plusTm[aV, bV], plusSucEqThm]];
+    (* ⊢ (a + b) + SUC c = SUC ((a + b) + c) *)
+    sucIh = HOL`Equal`APTERM[sucConst[], ihAssum];
+    (* (IH) ⊢ SUC ((a + b) + c) = SUC (a + (b + c)) *)
+    rhsExp1 = HOL`Equal`APTERM[mkComb[plusConst[], aV],
+      HOL`Bool`SPEC[cV, HOL`Bool`SPEC[bV, plusSucEqThm]]];
+    (* ⊢ a + (b + SUC c) = a + SUC (b + c) *)
+    rhsExp2 = HOL`Bool`SPEC[plusTm[bV, cV],
+      HOL`Bool`SPEC[aV, plusSucEqThm]];
+    (* ⊢ a + SUC (b + c) = SUC (a + (b + c)) *)
+    innerStep = TRANS[
+      TRANS[lhsExp, sucIh],
+      HOL`Equal`SYM[TRANS[rhsExp1, rhsExp2]]];
+    (* (IH) ⊢ (a + b) + SUC c = a + (b + SUC c) *)
+
+    dischIh = HOL`Bool`DISCH[ihTm, innerStep];
+    genStep = HOL`Bool`GEN[cV, dischIh];
+
+    innerThm = numInductBy[pLam, baseTh, genStep];
+    (* ⊢ ∀c. (a + b) + c = a + (b + c) *)
+    genB = HOL`Bool`GEN[bV, innerThm];
+    genA = HOL`Bool`GEN[aV, genB]
   ];
 
 End[];
