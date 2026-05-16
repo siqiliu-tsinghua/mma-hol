@@ -60,6 +60,18 @@ iterZeroEqThm::usage = "iterZeroEqThm — ⊢ ITER e f 0 = e.";
 iterSucEqThm::usage  = "iterSucEqThm — ⊢ ∀n. ITER e f (SUC n) = f (ITER e f n).";
 numIterationThm::usage = "numIterationThm — ⊢ ∀e:A. ∀f:A→A. ∃g:num→A. g 0 = e ∧ ∀n. g (SUC n) = f (g n).";
 
+plusConst::usage = "plusConst[] — + : num → num → num. Addition, defined as +m n = ITER m SUC n.";
+plusDefThm::usage = "plusDefThm — ⊢ + = (λm n. ITER m SUC n).";
+plusZeroEqThm::usage = "plusZeroEqThm — ⊢ ∀m. m + 0 = m.";
+plusSucEqThm::usage  = "plusSucEqThm — ⊢ ∀m n. m + (SUC n) = SUC (m + n).";
+addLeftZeroThm::usage = "addLeftZeroThm — ⊢ ∀n. 0 + n = n.";
+
+timesConst::usage = "timesConst[] — * : num → num → num. Multiplication, defined as *m n = ITER 0 (λa. a + m) n.";
+timesDefThm::usage = "timesDefThm — ⊢ * = (λm n. ITER 0 (λa. a + m) n).";
+timesZeroEqThm::usage = "timesZeroEqThm — ⊢ ∀m. m * 0 = 0.";
+timesSucEqThm::usage  = "timesSucEqThm — ⊢ ∀m n. m * (SUC n) = m * n + m.";
+timesLeftZeroThm::usage = "timesLeftZeroThm — ⊢ ∀n. 0 * n = 0.";
+
 selectOfExists::usage =
   "selectOfExists[predLambda, existsTh] — given a closed lambda " <>
   "predLambda = (λx. body) and a theorem existsTh : ⊢ ∃x. body, " <>
@@ -1851,6 +1863,263 @@ numIterationThm =
     ];
     genF = HOL`Bool`GEN[fV, existsTh];
     genE = HOL`Bool`GEN[eV, genF]
+  ];
+
+(* ============================================================ *)
+(* + : num → num → num                                          *)
+(*   m + n = ITER m SUC n                                        *)
+(* ============================================================ *)
+
+plusTy = tyFun[numTy, tyFun[numTy, numTy]];
+
+(* ITER instantiated at A := num. *)
+iterAtNumConst[] :=
+  mkConst["ITER", tyFun[numTy,
+    tyFun[tyFun[numTy, numTy], tyFun[numTy, numTy]]]];
+
+plusDefBody[] :=
+  Module[{mV, nV},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    mkAbs[mV, mkAbs[nV,
+      mkComb[mkComb[mkComb[iterAtNumConst[], mV], sucConst[]], nV]]]
+  ];
+
+plusDefThm = newDefinition[mkEq[
+  mkVar["+", plusTy],
+  plusDefBody[]
+]];
+
+plusConst[] := mkConst["+", plusTy];
+
+plusTm[mTm_, nTm_] := mkComb[mkComb[plusConst[], mTm], nTm];
+
+(* Unfold m + n via plusDefThm. ⊢ m + n = ITER m SUC n. *)
+unfoldPlus[mTm_, nTm_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[plusDefThm, mTm];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, nTm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* ⊢ ∀m. m + 0 = m  via iterZeroEqThm at e=m, f=SUC. *)
+plusZeroEqThm =
+  Module[{mV, unfoldedTo0, iterAt0AtNum, instE, trans, genM},
+    mV = mkVar["m", numTy];
+    unfoldedTo0 = unfoldPlus[mV, zeroConst[]];
+    (* ⊢ m + 0 = ITER m SUC 0 *)
+    iterAt0AtNum = HOL`Kernel`INSTTYPE[
+      {tyVar["A"] -> numTy}, iterZeroEqThm];
+    (* ⊢ ITER e f 0 = e (at concrete num types) *)
+    instE = HOL`Kernel`INST[
+      {mkVar["e", numTy] -> mV,
+       mkVar["f", tyFun[numTy, numTy]] -> sucConst[]},
+      iterAt0AtNum];
+    (* ⊢ ITER m SUC 0 = m *)
+    trans = TRANS[unfoldedTo0, instE];
+    genM = HOL`Bool`GEN[mV, trans]
+  ];
+
+(* ⊢ ∀m n. m + (SUC n) = SUC (m + n)  via iterSucEqThm. *)
+plusSucEqThm =
+  Module[{mV, nV, unfoldedToSucN, unfoldedToN,
+          iterSucAtNum, instE, specN, trans1, symUnfoldedToN,
+          sucApply, finalTh, genN, genM},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    unfoldedToSucN = unfoldPlus[mV, mkComb[sucConst[], nV]];
+    (* ⊢ m + (SUC n) = ITER m SUC (SUC n) *)
+    iterSucAtNum = HOL`Kernel`INSTTYPE[
+      {tyVar["A"] -> numTy}, iterSucEqThm];
+    (* ⊢ ∀n. ITER e f (SUC n) = f (ITER e f n) (at num) *)
+    instE = HOL`Kernel`INST[
+      {mkVar["e", numTy] -> mV,
+       mkVar["f", tyFun[numTy, numTy]] -> sucConst[]},
+      iterSucAtNum];
+    specN = HOL`Bool`SPEC[nV, instE];
+    (* ⊢ ITER m SUC (SUC n) = SUC (ITER m SUC n) *)
+    trans1 = TRANS[unfoldedToSucN, specN];
+    (* ⊢ m + (SUC n) = SUC (ITER m SUC n) *)
+    unfoldedToN = unfoldPlus[mV, nV];
+    (* ⊢ m + n = ITER m SUC n *)
+    symUnfoldedToN = HOL`Equal`SYM[unfoldedToN];
+    (* ⊢ ITER m SUC n = m + n *)
+    sucApply = HOL`Equal`APTERM[sucConst[], symUnfoldedToN];
+    (* ⊢ SUC (ITER m SUC n) = SUC (m + n) *)
+    finalTh = TRANS[trans1, sucApply];
+    (* ⊢ m + (SUC n) = SUC (m + n) *)
+    genN = HOL`Bool`GEN[nV, finalTh];
+    genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* addLeftZeroThm : ⊢ ∀n. 0 + n = n   (by induction)              *)
+(* ============================================================ *)
+
+addLeftZeroThm =
+  Module[{nV, pLam, baseTh, hypIh, plusSucAt0n, sucIh,
+          stepTh, dischIh, genN, premise, indSpec, indBeta, mpInd},
+    nV = mkVar["n", numTy];
+
+    (* P = λn. 0 + n = n. *)
+    pLam = mkAbs[nV, mkEq[plusTm[zeroConst[], nV], nV]];
+
+    (* Base: ⊢ 0 + 0 = 0. *)
+    baseTh = HOL`Bool`SPEC[zeroConst[], plusZeroEqThm];
+
+    (* Step: ASSUME 0 + n = n. Show 0 + SUC n = SUC n. *)
+    hypIh = ASSUME[mkEq[plusTm[zeroConst[], nV], nV]];
+    plusSucAt0n = HOL`Bool`SPEC[nV,
+      HOL`Bool`SPEC[zeroConst[], plusSucEqThm]];
+    (* ⊢ 0 + SUC n = SUC (0 + n) *)
+    sucIh = HOL`Equal`APTERM[sucConst[], hypIh];
+    (* (IH) ⊢ SUC (0 + n) = SUC n *)
+    stepTh = TRANS[plusSucAt0n, sucIh];
+    (* (IH) ⊢ 0 + SUC n = SUC n *)
+    dischIh = HOL`Bool`DISCH[concl[hypIh], stepTh];
+    genN = HOL`Bool`GEN[nV, dischIh];
+
+    premise = HOL`Bool`CONJ[baseTh, genN];
+    indSpec = HOL`Bool`SPEC[pLam, numInductionThm];
+    indBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], indSpec];
+    HOL`Bool`MP[indBeta, premise]
+  ];
+
+(* ============================================================ *)
+(* * : num → num → num                                          *)
+(*   m * n = ITER 0 (λa. a + m) n                                *)
+(* ============================================================ *)
+
+timesTy = tyFun[numTy, tyFun[numTy, numTy]];
+
+(* λa:num. a + mV  — the step function for multiplication.       *)
+timesStepLam[mTm_] :=
+  Module[{aV},
+    aV = mkVar["a", numTy];
+    mkAbs[aV, plusTm[aV, mTm]]
+  ];
+
+timesDefBody[] :=
+  Module[{mV, nV},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    mkAbs[mV, mkAbs[nV,
+      mkComb[
+        mkComb[mkComb[iterAtNumConst[], zeroConst[]], timesStepLam[mV]],
+        nV]]]
+  ];
+
+timesDefThm = newDefinition[mkEq[
+  mkVar["*", timesTy],
+  timesDefBody[]
+]];
+
+timesConst[] := mkConst["*", timesTy];
+
+timesTm[mTm_, nTm_] := mkComb[mkComb[timesConst[], mTm], nTm];
+
+unfoldTimes[mTm_, nTm_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[timesDefThm, mTm];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, nTm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* ⊢ ∀m. m * 0 = 0.  Via iterZeroEqThm at e=0, f=λa. a + m. *)
+timesZeroEqThm =
+  Module[{mV, unfoldedTo0, iterAt0AtNum, instE, trans, genM},
+    mV = mkVar["m", numTy];
+    unfoldedTo0 = unfoldTimes[mV, zeroConst[]];
+    (* ⊢ m * 0 = ITER 0 (λa. a + m) 0 *)
+    iterAt0AtNum = HOL`Kernel`INSTTYPE[
+      {tyVar["A"] -> numTy}, iterZeroEqThm];
+    instE = HOL`Kernel`INST[
+      {mkVar["e", numTy] -> zeroConst[],
+       mkVar["f", tyFun[numTy, numTy]] -> timesStepLam[mV]},
+      iterAt0AtNum];
+    (* ⊢ ITER 0 (λa. a + m) 0 = 0 *)
+    trans = TRANS[unfoldedTo0, instE];
+    genM = HOL`Bool`GEN[mV, trans]
+  ];
+
+(* ⊢ ∀m n. m * (SUC n) = m * n + m.                              *)
+(* Via iterSucEqThm: ITER 0 (λa. a + m) (SUC n)                  *)
+(*                    = (λa. a + m) (ITER 0 (λa. a + m) n).       *)
+(* β-reduce the RHS application: = (ITER 0 (λa. a + m) n) + m.    *)
+(* And ITER 0 (λa. a + m) n = m * n by SYM of unfoldTimes.        *)
+timesSucEqThm =
+  Module[{mV, nV, unfoldedToSucN, unfoldedToN,
+          iterSucAtNum, instE, specN, trans1,
+          itnPlusMTm, betaStep, symUnfoldedToN,
+          plusApply, finalTh, genN, genM},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    unfoldedToSucN = unfoldTimes[mV, mkComb[sucConst[], nV]];
+    (* ⊢ m * (SUC n) = ITER 0 (λa. a + m) (SUC n) *)
+    iterSucAtNum = HOL`Kernel`INSTTYPE[
+      {tyVar["A"] -> numTy}, iterSucEqThm];
+    instE = HOL`Kernel`INST[
+      {mkVar["e", numTy] -> zeroConst[],
+       mkVar["f", tyFun[numTy, numTy]] -> timesStepLam[mV]},
+      iterSucAtNum];
+    specN = HOL`Bool`SPEC[nV, instE];
+    (* ⊢ ITER 0 (λa. a + m) (SUC n)                                  *)
+    (*    = (λa. a + m) (ITER 0 (λa. a + m) n)                       *)
+    (* β-reduce RHS: = (ITER 0 (λa. a + m) n) + m. *)
+    betaStep = BETACONV[concl[specN][[2]]];
+    (* ⊢ (λa. a + m) (ITER 0 (λa. a + m) n) = ITER 0 (λa. a + m) n + m *)
+    trans1 = TRANS[TRANS[unfoldedToSucN, specN], betaStep];
+    (* ⊢ m * (SUC n) = ITER 0 (λa. a + m) n + m *)
+    unfoldedToN = unfoldTimes[mV, nV];
+    symUnfoldedToN = HOL`Equal`SYM[unfoldedToN];
+    (* ⊢ ITER 0 (λa. a + m) n = m * n *)
+    plusApply = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[plusConst[], symUnfoldedToN],
+      mV];
+    (* ⊢ (ITER 0 (λa. a + m) n) + m = (m * n) + m *)
+    finalTh = TRANS[trans1, plusApply];
+    genN = HOL`Bool`GEN[nV, finalTh];
+    genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* timesLeftZeroThm : ⊢ ∀n. 0 * n = 0 (by induction)             *)
+(* ============================================================ *)
+
+timesLeftZeroThm =
+  Module[{nV, pLam, baseTh, hypIh, timesSucAt0n, plusZeroAt0,
+          stepIhPlusEq, stepTh, dischIh, genN, premise,
+          indSpec, indBeta, sym1},
+    nV = mkVar["n", numTy];
+
+    pLam = mkAbs[nV, mkEq[timesTm[zeroConst[], nV], zeroConst[]]];
+
+    baseTh = HOL`Bool`SPEC[zeroConst[], timesZeroEqThm];
+
+    hypIh = ASSUME[mkEq[timesTm[zeroConst[], nV], zeroConst[]]];
+    (* (IH) ⊢ 0 * n = 0 *)
+    timesSucAt0n = HOL`Bool`SPEC[nV,
+      HOL`Bool`SPEC[zeroConst[], timesSucEqThm]];
+    (* ⊢ 0 * SUC n = 0 * n + 0 *)
+    (* Rewrite 0 * n → 0 via IH on the LHS of the +. *)
+    stepIhPlusEq = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[plusConst[], hypIh], zeroConst[]];
+    (* (IH) ⊢ (0 * n) + 0 = 0 + 0 *)
+    plusZeroAt0 = HOL`Bool`SPEC[zeroConst[], plusZeroEqThm];
+    (* ⊢ 0 + 0 = 0 *)
+    stepTh = TRANS[TRANS[timesSucAt0n, stepIhPlusEq], plusZeroAt0];
+    (* (IH) ⊢ 0 * SUC n = 0 *)
+    dischIh = HOL`Bool`DISCH[concl[hypIh], stepTh];
+    genN = HOL`Bool`GEN[nV, dischIh];
+
+    premise = HOL`Bool`CONJ[baseTh, genN];
+    indSpec = HOL`Bool`SPEC[pLam, numInductionThm];
+    indBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], indSpec];
+    HOL`Bool`MP[indBeta, premise]
   ];
 
 End[];
