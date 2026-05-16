@@ -858,3 +858,46 @@ HOLTest`runTests["stdlib/Num: leqTotalThm = ⊢ ∀m n. m ≤ n ∨ n ≤ m",
       "∀m n. m ≤ n ∨ n ≤ m"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqTotalThm], {}, "no hyps"];
 ]];
+
+(* ===== M7-3-j: ordering helpers + strong induction ===== *)
+
+HOLTest`runTests["stdlib/Num: notLtZeroThm = ⊢ ∀n. ¬ (n < 0)",
+  Module[{c, numTy, nV, ltC, notC, expected},
+    numTy = mkType["num", {}];
+    nV = mkVar["n", numTy];
+    ltC = mkConst["<", tyFun[numTy, tyFun[numTy, boolTy]]];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[nV,
+        mkComb[notC,
+          mkComb[mkComb[ltC, nV], HOL`Stdlib`Num`zeroConst[]]]]];
+    c = concl[HOL`Stdlib`Num`notLtZeroThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "∀n. ¬ (n < 0)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`notLtZeroThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: leqSucCaseThm has ∀m n + impl + or shape",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqSucCaseThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: ltSucEqLeqThm has ∀m n + impl shape",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`ltSucEqLeqThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: strongInductionThm — shape ∀P. (∀n.…) ⇒ ∀n. P n",
+  Module[{c, numTy, pTy},
+    numTy = mkType["num", {}];
+    pTy = tyFun[numTy, boolTy];
+    c = concl[HOL`Stdlib`Num`strongInductionThm];
+    HOLTest`assertTrue[
+      MatchQ[c,
+        comb[const["∀", _],
+          abs[bvar[0, tyApp["fun", {tyApp["num", {}], tyApp["bool", {}]}]],
+            comb[comb[const["⇒", _], _],
+              comb[const["∀", _],
+                abs[bvar[0, tyApp["num", {}]], _, _String]]],
+            _String]]],
+      "shape: ∀P. (…) ⇒ ∀n. P n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`strongInductionThm], {}, "no hyps"];
+]];
