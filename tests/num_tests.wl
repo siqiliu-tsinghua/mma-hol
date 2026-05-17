@@ -901,3 +901,59 @@ HOLTest`runTests["stdlib/Num: strongInductionThm — shape ∀P. (∀n.…) ⇒ 
       "shape: ∀P. (…) ⇒ ∀n. P n"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`strongInductionThm], {}, "no hyps"];
 ]];
+
+(* ===== M7-3-k: ^ + well-ordering + division ===== *)
+
+HOLTest`runTests["stdlib/Num: ^ has type num → num → num",
+  Module[{numTy, ty},
+    numTy = mkType["num", {}];
+    ty = HOL`Kernel`constType["^"];
+    HOLTest`assertEq[ty, tyFun[numTy, tyFun[numTy, numTy]],
+      "^ : num → num → num"];
+]];
+
+HOLTest`runTests["stdlib/Num: powZeroThm = ⊢ ∀m. m ^ 0 = SUC 0",
+  Module[{c, numTy, mV, powC, sucC, expected},
+    numTy = mkType["num", {}];
+    mV = mkVar["m", numTy];
+    powC = mkConst["^", tyFun[numTy, tyFun[numTy, numTy]]];
+    sucC = HOL`Stdlib`Num`sucConst[];
+    expected = mkComb[
+      mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mV,
+        mkEq[
+          mkComb[mkComb[powC, mV], HOL`Stdlib`Num`zeroConst[]],
+          mkComb[sucC, HOL`Stdlib`Num`zeroConst[]]]]];
+    c = concl[HOL`Stdlib`Num`powZeroThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀m. m ^ 0 = SUC 0"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`powZeroThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/Num: powSucThm = ⊢ ∀m n. m^SUC n = m^n * m",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`powSucThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: leqCaseEqLtThm has no hyps",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`leqCaseEqLtThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: ltZeroNotZeroThm has no hyps",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`ltZeroNotZeroThm], {}, "no hyps"];
+];
+
+HOLTest`runTests["stdlib/Num: wellOrderingThm — shape ∀P. (∃n. P n) ⇒ ∃m. ...",
+  Module[{c, numTy},
+    numTy = mkType["num", {}];
+    c = concl[HOL`Stdlib`Num`wellOrderingThm];
+    HOLTest`assertTrue[
+      MatchQ[c,
+        comb[const["∀", _],
+          abs[bvar[0, tyApp["fun", {tyApp["num", {}], tyApp["bool", {}]}]],
+            comb[comb[const["⇒", _],
+              comb[const["∃", _], _]],
+              comb[const["∃", _], _]],
+            _String]]],
+      "shape: ∀P. (∃n. P n) ⇒ (∃m. ...)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`wellOrderingThm], {}, "no hyps"];
+]];
