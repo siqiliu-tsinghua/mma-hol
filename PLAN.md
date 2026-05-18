@@ -439,9 +439,9 @@ EndPackage[];
 
 **Phase 2 — 数构造** ~5–7 周
 
-- [ ] **M7-3 / `stdlib/Num.wl`**（最大块，原估 2–3 周，实际跨多个会话） —— 从 `ind` + `INFINITY_AX` 走 `IND_SUC` / `IND_0` / `NUM_REP` / `new_basic_type_definition` 经典路径；Peano 三件套；**迭代定理（非完整原始递归）**；`+ ×`、交换 / 结合 / 消去律；`≤ <`；强归纳 / 良序原理；带余除法；`^`。capstone：算术基本定理（任意正整数唯一素因数分解）
+- [x] **M7-3 / `stdlib/Num.wl`**（最大块，原估 2–3 周，实际跨多个会话） —— 从 `ind` + `INFINITY_AX` 走 `IND_SUC` / `IND_0` / `NUM_REP` / `new_basic_type_definition` 经典路径；Peano 三件套；**迭代定理（非完整原始递归）**；`+ ×`、交换 / 结合 / 消去律；`≤ <`；强归纳 / 良序原理；带余除法；`^`；divides + DIV/MOD；gcd；prime + Euclid 引理。FTA（唯一分解）capstone 延后到 M7-4 之后（需要 list / finite 表达分解结构）。
 
-  **子任务进展（截至 M7-3-g）：**
+  **子任务（实际实现，按字母顺序）：**
   - [x] **M7-3-a** — IND_SUC + IND_0 由 INFINITY_AX 经 Hilbert ε 提取；helper `selectOfExists[predLam, ∃-thm]`
   - [x] **M7-3-b** — NUM_REP 定义；`newBasicTypeDefinition` 切 num 类型；0 / SUC 定义
   - [x] **M7-3-c** — Peano 公理（SUC_NEQ_0、SUC_INJ、归纳定理）
@@ -449,10 +449,17 @@ EndPackage[];
   - [x] **M7-3-e** — `+` = `ITER m SUC`、`×` = `ITER 0 (λa. a + m)`；基本等式 + 左零律
   - [x] **M7-3-f** — `+` 的左后继、交换、结合律
   - [x] **M7-3-g** — `*` 的左后继、交换；`≤` 定义 `m ≤ n ⇔ ∃k. m + k = n` + reflexivity + zero-min
-  - [ ] **M7-3-h** — 加法 / 乘法消去律；乘法结合 / 分配律；`≤` 传递 / 反对称 / 后继单调；`<` 定义 + 基本性质
-  - [ ] **M7-3-i** — `≤` 全序、强归纳、良序原理；带余除法
-  - [ ] **M7-3-j** — `^`（幂）；FTA 的素数 / 整除前置（gcd / Bezout）
-  - [ ] **M7-3-k**（capstone）— 算术基本定理
+  - [x] **M7-3-h** — 加法 / 乘法消去律；乘法结合 / 分配律；`≤` 传递；`<` scaffolding
+  - [x] **M7-3-i** — numCases + addEqZero（左右）+ LEQ 反对称 + LEQ 全序
+  - [x] **M7-3-j** — strong induction + 序辅助（notLtZero / leqSucCase / ltSucEqLeq）
+  - [x] **M7-3-k** — `^`（ITER 形式）+ 良序原理 + leqCaseEqLt + ltZeroNotZero
+  - [x] **M7-3-l** — divisionThm `⊢ ∀m n. ¬(n=0) ⇒ ∃q r. m = n*q + r ∧ r < n`（强归纳 + leqTotal 两路分案）
+  - [x] **M7-3-m** — divides + DIV + MOD（DIV/MOD 由 divisionThm 经 selectAx 抽出），divisionPairThm
+  - [x] **M7-3-n** — divides 算术：refl / zero / add / multRight / addRight（addRight 经 multAddCancel 辅助归纳）
+  - [x] **M7-3-o** — gcd 由唯一性属性 + Hilbert ε 定义；存在性 gcdExistsThm 由 Euclid 算法经强归纳证；gcdSpecThm 派生三性质（divides-left/right/universal）
+  - [x] **M7-3-p** — prime 定义 `prime p ⇔ SUC 0 < p ∧ ∀d. d|p ⇒ d = SUC 0 ∨ d = p`；helper 三件套（oneTimesEq / sucNotEqSelf / ltImpliesNotEq）+ dividesLeqThm
+  - [x] **M7-3-q** — Euclid 引理 `⊢ ∀p a b. prime p ⇒ p|a*b ⇒ p|a ∨ p|b`（强归纳 + 两路 DIV 分案 + r=0 / r>0 子分案，**不用整数 Bezout**）
+  - **FTA 唯一分解** — 延后到 M7-4 之后（list / 有限重数函数表达分解需要 `stdlib/List.wl` 或 `Finite.wl` 才自然）
 - [ ] **M7-4 / `stdlib/List.wl`、`Finite.wl`**（1–2 周）—— list 类型 + `HD` / `TL` / `CONS` / `APPEND` / `LENGTH` / `MAP` / `FILTER` / `FOLD`；`FINITE S ↔ ∃l. ∀x. x ∈ S ↔ MEM x l`；基数 `CARD`；有限和 `∑`
 - [ ] **M7-δ / `auto/Arith.wl`**（1–2 周）—— ℕ / ℤ 上 Presburger 线性算术决策：oracle 用 WL 的整线性规划接口找证据，verifier 拼 `+` 和 `≤` 的可加性引理。capstone：`∀ m n. m + n ≤ m * n + 2` 一行
 - [ ] **M7-5 / `stdlib/Int.wl`**（1–1.5 周）—— **底层走典范代表路线**：`num × num` 上的 `λp. FST p = 0 ∨ SND p = 0` 谓词切 `int` 类型；操作（+, ×, -, |·|）做完 pair-运算后 canonicalize 回典范型；环结构 + 序 + `&_ℤ : num → int` 嵌入。**工作语言层派生 Grothendieck/双向归纳视角**：定义 `intSucc = (+1)`、`intNeg = (0-·)`，导出 `(intNeg ∘ intSucc)² = id` 等代数关系；导出双向归纳定理 `⊢ P 0 ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intSucc⁻¹ z)) ⇒ ∀z. P z`，作为 M9 / M10 用 ℤ 时的首选证明工具——后续证明在 ℤ 上看不到 pair 结构。**为什么不直接走 K_0 商类型**：HOL 无原生商，set-of-pair 切多一层；为什么不直接 Peano-style 公理化 ℤ（S/N + 双向归纳作公理）：bootstrap 后 `newAxiom` 锁死，必须构造模型，模型成本和典范代表一致或更高，且 ℤ-递归原理多一个"S 与 S⁻¹ 互逆"的一致性义务。
