@@ -168,5 +168,80 @@ HOLTest`runTests["stdlib/List: consFAtSucThm[x, l, j] — concl `(λi. ε y. …
     HOLTest`assertEq[hyp[thm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-a.3 tests: repConsHead/Tail + aux ===== *)
+
+HOLTest`runTests["stdlib/List: ltSucMonoCancelThm — ⊢ ∀a b. (SUC a < SUC b) = (a < b), no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`ltSucMonoCancelThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _],
+        abs[bvar[0, tyApp["num", {}]],
+          comb[const["∀", _],
+            abs[bvar[0, tyApp["num", {}]],
+              comb[comb[const["=", _], _], _], _]], _]]],
+      "shape: ∀a. ∀b. (SUC a < SUC b) = (a < b)"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: zeroLtSucThm — ⊢ ∀n. 0 < SUC n, no hyps",
+  Module[{c, expected, nV, zeroC, sucC, ltC, forallC},
+    nV = mkVar["n", numTy];
+    zeroC = mkConst["0", numTy];
+    sucC = mkConst["SUC", tyFun[numTy, numTy]];
+    ltC = mkConst["<", tyFun[numTy, tyFun[numTy, boolTy]]];
+    forallC = mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]];
+    expected = mkComb[forallC,
+      mkAbs[nV, mkComb[mkComb[ltC, zeroC], mkComb[sucC, nV]]]];
+    c = concl[HOL`Stdlib`List`zeroLtSucThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "∀n. 0 < SUC n"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`zeroLtSucThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: someNotEqNoneThm — ⊢ ∀x. ¬(SOME x = NONE), no hyps",
+  Module[{c, expected, xV, someC, noneC, notC, forallC},
+    xV = mkVar["x", αTy];
+    someC = mkConst["SOME", tyFun[αTy, optionATy]];
+    noneC = mkConst["NONE", optionATy];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    forallC = mkConst["∀", tyFun[tyFun[αTy, boolTy], boolTy]];
+    expected = mkComb[forallC,
+      mkAbs[xV, mkComb[notC, mkEq[mkComb[someC, xV], noneC]]]];
+    c = concl[HOL`Stdlib`List`someNotEqNoneThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "∀x. ¬(SOME x = NONE)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`someNotEqNoneThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: repConsHeadThm — ⊢ REP_list (CONS x l) 0 = SOME x, no hyps",
+  Module[{c, dThm, xV, lV, zeroC, expected,
+          someC, repListC, consC},
+    dThm = HOL`Stdlib`List`repConsHeadThm;
+    c = concl[dThm];
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listATy];
+    zeroC = mkConst["0", numTy];
+    someC = mkConst["SOME", tyFun[αTy, optionATy]];
+    repListC = HOL`Stdlib`List`repListConst[];
+    consC = HOL`Stdlib`List`consConst[];
+    expected = mkEq[
+      mkComb[mkComb[repListC, mkComb[mkComb[consC, xV], lV]], zeroC],
+      mkComb[someC, xV]];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "REP_list (CONS x l) 0 = SOME x"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: repConsTailThm — ⊢ ∀i. REP_list (CONS x l) (SUC i) = REP_list l i, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`repConsTailThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _],
+        abs[bvar[0, tyApp["num", {}]],
+          comb[comb[const["=", _], _], _], _]]],
+      "shape ⊢ ∀i. _ = _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];

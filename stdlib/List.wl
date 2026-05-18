@@ -1,6 +1,6 @@
 (* ::Package:: *)
 
-(* M7-4-a.1 + M7-4-a.2 stdlib/List — list type, NIL, CONS definition.
+(* M7-4-a.{1,2,3} stdlib/List — list type, NIL, CONS, round-trip thms.
 
    Encode α list as the subtype of carrier `num → α option` whose elements
    are supported on an initial segment [0, n):
@@ -15,15 +15,11 @@
                                   (∀j. i = SUC j ⇒ y = REP_list l j))
    — head at position 0, tail at SUC.
 
-   M7-4-a.2 lands the CONS definition plus the toolkit needed for
-   the round-trip proof:
-     consFAtZeroThm[x, l]    Wolfram helper → ⊢ (consF x l) 0 = SOME x
-     consFAtSucThm[x, l, j]  Wolfram helper → ⊢ (consF x l) (SUC j) = REP_list l j
-     leqSucMonoCancelThm     ⊢ ∀a b. (SUC a ≤ SUC b) = (a ≤ b)
-     isListPOfRepListThm     ⊢ isListPLambda (REP_list l)
+   Round-trip theorems (M7-4-a.3):
+     repConsHeadThm: ⊢ REP_list (CONS x l) 0 = SOME x
+     repConsTailThm: ⊢ ∀i. REP_list (CONS x l) (SUC i) = REP_list l i
 
-   Round-trip theorems (REP_list (CONS x l) = consF x l, repConsHead/Tail),
-   injectivity, disjointness, induction defer to M7-4-a.3+. *)
+   Injectivity, disjointness, list induction defer to M7-4-a.4+. *)
 
 BeginPackage["HOL`Stdlib`List`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
@@ -58,6 +54,18 @@ leqSucMonoCancelThm::usage =
   "leqSucMonoCancelThm — ⊢ ∀a b. (SUC a ≤ SUC b) = (a ≤ b). Auxiliary num lemma needed for the upcoming isListP-for-CONS proof.";
 isListPOfRepListThm::usage =
   "isListPOfRepListThm — ⊢ isListPLambda (REP_list l). REP_list always lands in the isListP carrier subset (via absRepListThm + repAbsListThm round-trip).";
+
+ltSucMonoCancelThm::usage =
+  "ltSucMonoCancelThm — ⊢ ∀a b. (SUC a < SUC b) = (a < b). Derived from leqSucMonoCancel via ltDefThm.";
+zeroLtSucThm::usage =
+  "zeroLtSucThm — ⊢ ∀n. 0 < SUC n.";
+someNotEqNoneThm::usage =
+  "someNotEqNoneThm — ⊢ ∀x. ¬(SOME x = NONE). Symmetric form of Option's noneNotEqSomeThm.";
+
+repConsHeadThm::usage =
+  "repConsHeadThm — ⊢ REP_list (CONS x l) 0 = SOME x.";
+repConsTailThm::usage =
+  "repConsTailThm — ⊢ ∀i. REP_list (CONS x l) (SUC i) = REP_list l i.";
 
 Begin["`Private`"];
 
@@ -591,18 +599,20 @@ leqSucMonoCancelThm =
     backwardImpl = HOL`Bool`DISCH[aLeqBTm, sucALeqSucB];
     (* ⊢ (a ≤ b) ⇒ (SUC a ≤ SUC b) *)
 
-    (* === Combine via DEDUCTANTISYM === *)
+    (* === Combine via DEDUCTANTISYM ===                          *)
+    (* DEDUCTANTISYM[thm1, thm2] returns ⊢ p = q where             *)
+    (*   p = concl(thm1), q = concl(thm2).                          *)
+    (* For (SUC a ≤ SUC b) = (a ≤ b) we want                        *)
+    (*   thm1: (a ≤ b) ⊢ SUC a ≤ SUC b   (p = SUC a ≤ SUC b)        *)
+    (*   thm2: (SUC a ≤ SUC b) ⊢ a ≤ b   (q = a ≤ b)                *)
     deductRes = HOL`Kernel`DEDUCTANTISYM[
-      HOL`Bool`MP[forwardImpl, sucALeqSucBHyp],
-      HOL`Bool`MP[backwardImpl, aLeqBHyp]];
-    (* This gives (SUC a ≤ SUC b) = (a ≤ b) via DEDUCTANTISYM
-       which derives p = q from (p ⊢ q) and (q ⊢ p). *)
+      HOL`Bool`MP[backwardImpl, aLeqBHyp],
+      HOL`Bool`MP[forwardImpl, sucALeqSucBHyp]];
     genB = HOL`Bool`GEN[bV, deductRes];
     genA = HOL`Bool`GEN[aV, genB]
   ];
 
 (* ============================================================ *)
-(* Helper for the upcoming M7-4-a.3 isListP-for-CONS proof:     *)
 (* ⊢ isListPLambda (REP_list l) — REP_list always lands in the   *)
 (* carrier subset. APTERM-loop through absRepListThm +          *)
 (* repAbsListThm inverted.                                       *)
@@ -620,6 +630,355 @@ isListPOfRepListThm =
       {mkVar["r", carrierTy] -> mkComb[repListConst[], lV]},
       repAbsListThm];
     EQMP[HOL`Equal`SYM[repAbsAtRepL], applyRepBothSides]
+  ];
+
+(* ============================================================ *)
+(* Small derived rules used by the isListP-for-CONS proof.       *)
+(* ============================================================ *)
+
+(* From Γ ⊢ ¬p derive Γ ⊢ p = F. *)
+eqfIntroLocal[thNotP_] :=
+  Module[{p, pToF, fToP, fConst},
+    fConst = mkConst["F", boolTy];
+    p = concl[thNotP][[2]];
+    pToF = HOL`Bool`MP[HOL`Bool`NOTELIM[thNotP], ASSUME[p]];
+    fToP = HOL`Bool`CONTR[p, ASSUME[fConst]];
+    HOL`Kernel`DEDUCTANTISYM[fToP, pToF]
+  ];
+
+(* From Γ ⊢ p derive Γ ⊢ ¬¬p. *)
+notNotIntroLocal[thP_] :=
+  Module[{notP, notPHyp, fThm, dischNotP},
+    notP = mkComb[notC[], concl[thP]];
+    notPHyp = ASSUME[notP];
+    fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[notPHyp], thP];
+    dischNotP = HOL`Bool`DISCH[notP, fThm];
+    HOL`Bool`NOTINTRO[dischNotP]
+  ];
+
+(* ============================================================ *)
+(* someNotEqNoneThm : ⊢ ∀x. ¬(SOME x = NONE)                     *)
+(* Symmetric of Option's noneNotEqSomeThm.                       *)
+(* ============================================================ *)
+
+someNotEqNoneThm =
+  Module[{xV, someX, noneOpt, hypTm, hypAssum, symEq,
+          contradF, dischHyp, notEq, genX},
+    xV = mkVar["x", αTy];
+    someX = mkComb[someAt[αTy], xV];
+    noneOpt = noneAt[αTy];
+    hypTm = mkEq[someX, noneOpt];
+    hypAssum = ASSUME[hypTm];
+    symEq = HOL`Equal`SYM[hypAssum];
+    (* (SOME x = NONE) ⊢ NONE = SOME x *)
+    (* noneNotEqSomeThm is already ⊢ ¬(NONE = SOME x) at free x. *)
+    contradF = HOL`Bool`MP[
+      HOL`Bool`NOTELIM[HOL`Stdlib`Option`noneNotEqSomeThm], symEq];
+    dischHyp = HOL`Bool`DISCH[hypTm, contradF];
+    notEq = HOL`Bool`NOTINTRO[dischHyp];
+    genX = HOL`Bool`GEN[xV, notEq]
+  ];
+
+(* ============================================================ *)
+(* ltSucMonoCancelThm : ⊢ ∀a b. (SUC a < SUC b) = (a < b)        *)
+(* SUC a < SUC b  ⇔  SUC (SUC a) ≤ SUC b  ⇔  SUC a ≤ b  ⇔  a < b. *)
+(* ============================================================ *)
+
+ltSucMonoCancelThm =
+  Module[{aV, bV, lhsUnfold, monoCancelAt, rhsUnfold, chainEq, genB, genA},
+    aV = mkVar["a", numTy];
+    bV = mkVar["b", numTy];
+
+    lhsUnfold = Module[{ap1, ap2},
+      ap1 = HOL`Equal`APTHM[HOL`Stdlib`Num`ltDefThm, sucTm[aV]];
+      ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+      ap2 = HOL`Equal`APTHM[ap1, sucTm[bV]];
+      TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+    ];
+    (* ⊢ (SUC a < SUC b) = (SUC (SUC a) ≤ SUC b) *)
+    monoCancelAt = HOL`Bool`SPEC[bV,
+      HOL`Bool`SPEC[sucTm[aV], leqSucMonoCancelThm]];
+    (* ⊢ (SUC (SUC a) ≤ SUC b) = (SUC a ≤ b) *)
+    rhsUnfold = Module[{ap1, ap2},
+      ap1 = HOL`Equal`APTHM[HOL`Stdlib`Num`ltDefThm, aV];
+      ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+      ap2 = HOL`Equal`APTHM[ap1, bV];
+      TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+    ];
+    (* ⊢ (a < b) = (SUC a ≤ b) *)
+    chainEq = TRANS[TRANS[lhsUnfold, monoCancelAt], HOL`Equal`SYM[rhsUnfold]];
+    (* ⊢ (SUC a < SUC b) = (a < b) *)
+    genB = HOL`Bool`GEN[bV, chainEq];
+    genA = HOL`Bool`GEN[aV, genB]
+  ];
+
+(* ============================================================ *)
+(* zeroLtSucThm : ⊢ ∀n. 0 < SUC n                                *)
+(* 0 < SUC n  ⇔  SUC 0 ≤ SUC n  ⇔  0 ≤ n  (always true).         *)
+(* ============================================================ *)
+
+zeroLtSucThm =
+  Module[{nV, zeroLeqN, monoCancelAt, sucZeroLeqSucN, foldLt, genN},
+    nV = mkVar["n", numTy];
+    zeroLeqN = HOL`Bool`SPEC[nV, HOL`Stdlib`Num`leqZeroThm];
+    (* ⊢ 0 ≤ n *)
+    monoCancelAt = HOL`Bool`SPEC[nV,
+      HOL`Bool`SPEC[zeroConst[], leqSucMonoCancelThm]];
+    (* ⊢ (SUC 0 ≤ SUC n) = (0 ≤ n) *)
+    sucZeroLeqSucN = EQMP[HOL`Equal`SYM[monoCancelAt], zeroLeqN];
+    (* ⊢ SUC 0 ≤ SUC n *)
+    foldLt = EQMP[
+      HOL`Equal`SYM[Module[{ap1, ap2},
+        ap1 = HOL`Equal`APTHM[HOL`Stdlib`Num`ltDefThm, zeroConst[]];
+        ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+        ap2 = HOL`Equal`APTHM[ap1, sucTm[nV]];
+        TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+      ]],
+      sucZeroLeqSucN];
+    (* ⊢ 0 < SUC n *)
+    genN = HOL`Bool`GEN[nV, foldLt]
+  ];
+
+(* ============================================================ *)
+(* consCarrierIsListPThm[x, l]                                   *)
+(*   ⊢ isListPLambdaTerm[] (consFTerm[x, l])                     *)
+(*                                                              *)
+(* Witness n = SUC n_l where n_l comes from isListP (REP_list l). *)
+(* For each i: numCases on i.                                    *)
+(*   i = 0: consF x l 0 = SOME x; (SOME x = NONE) is F;          *)
+(*          0 < SUC n_l is T so ¬(0 < SUC n_l) is F; F = F.       *)
+(*   i = SUC j: consF x l (SUC j) = REP_list l j;                *)
+(*              (REP_list l j = NONE) ⇔ ¬(j < n_l) from witHyp;   *)
+(*              ¬(j < n_l) = ¬(SUC j < SUC n_l) via               *)
+(*              ltSucMonoCancel SYM.                              *)
+(* ============================================================ *)
+
+consCarrierIsListPThm[xTm_, lTm_] :=
+  Module[{nLV, iV, jBndV,
+          isListPRepL, betaUnfold, existsBodyThm, witInnerTm, witHyp,
+          consFXL, eqC,
+          caseZeroBranch, caseSucBranch, perI,
+          numCasesAtI, iEqZeroBranch, iEqSucBranch, perIGenI,
+          existsAtSucNL, foldUnfold, chosenNL},
+
+    nLV = mkVar["nL", numTy];
+    iV = mkVar["i", numTy];
+    (* "jSplit" — name distinct from consFAtSucThm's internal "jBnd" *)
+    jBndV = mkVar["jSplit", numTy];
+
+    consFXL = consFTerm[xTm, lTm];
+    eqC = mkConst["=", tyFun[optionATy, tyFun[optionATy, boolTy]]];
+
+    (* === Step 1+2: ⊢ ∃n_l. ∀i. (REP_list l i = NONE) ⇔ ¬(i < n_l) === *)
+    isListPRepL = HOL`Kernel`INST[
+      {mkVar["l", listTy[αTy]] -> lTm}, isListPOfRepListThm];
+    betaUnfold = BETACONV[
+      mkComb[isListPLambdaTerm[], mkComb[repListConst[], lTm]]];
+    existsBodyThm = EQMP[betaUnfold, isListPRepL];
+
+    (* === Step 3: CHOOSE n_l, ASSUME the inner ∀i body === *)
+    witInnerTm = mkComb[forallC[numTy], mkAbs[iV,
+      mkEq[mkEq[mkComb[mkComb[repListConst[], lTm], iV], noneAt[αTy]],
+           mkComb[notC[], ltTmLocal[iV, nLV]]]]];
+    witHyp = ASSUME[witInnerTm];
+    (* (witHyp) ⊢ ∀i. (REP_list l i = NONE) ⇔ ¬(i < n_l) *)
+
+    (* === Step 4: For arbitrary i, derive
+              ⊢ (consF x l i = NONE) = ¬(i < SUC n_l) === *)
+    numCasesAtI = HOL`Bool`SPEC[iV, HOL`Stdlib`Num`numCasesThm];
+    (* ⊢ i = 0 ∨ ∃j. i = SUC j *)
+
+    (* Sub-case i = 0. *)
+    iEqZeroBranch = Module[{iEqZeroTm, iEqZeroHyp, consFAtZ,
+                            consFAtZAti, lhsRewrite, lhsRewriteAtI,
+                            someXEqNoneEqF, lhsEqF,
+                            zeroLtSucNLAt, notNotZLtSucNL,
+                            notZeroLtSucNLEqF, rhsAtI, rhsAtIeqF,
+                            lhsEqRhs},
+      iEqZeroTm = mkEq[iV, zeroConst[]];
+      iEqZeroHyp = ASSUME[iEqZeroTm];
+      consFAtZ = consFAtZeroThm[xTm, lTm];
+      (* ⊢ consFXL 0 = SOME x *)
+
+      (* Build (consFXL i = NONE) = (consFXL 0 = NONE) via APTHM+APTERM on i=0. *)
+      lhsRewrite = HOL`Equal`APTHM[
+        HOL`Equal`APTERM[eqC,
+          HOL`Equal`APTERM[consFXL, iEqZeroHyp]],
+        noneAt[αTy]];
+      (* (i=0) ⊢ (consFXL i = NONE) = (consFXL 0 = NONE) *)
+      (* Now (consFXL 0 = NONE) = (SOME x = NONE) via consFAtZ. *)
+      lhsRewriteAtI = TRANS[lhsRewrite,
+        HOL`Equal`APTHM[HOL`Equal`APTERM[eqC, consFAtZ], noneAt[αTy]]];
+      (* (i=0) ⊢ (consFXL i = NONE) = (SOME x = NONE) *)
+      someXEqNoneEqF = eqfIntroLocal[HOL`Bool`SPEC[xTm, someNotEqNoneThm]];
+      (* ⊢ (SOME x = NONE) = F *)
+      lhsEqF = TRANS[lhsRewriteAtI, someXEqNoneEqF];
+      (* (i=0) ⊢ (consFXL i = NONE) = F *)
+
+      (* RHS side: ¬(i < SUC n_l).  Under (i=0), this is ¬(0 < SUC n_l).
+         ¬(0 < SUC n_l) = F via eqfIntro[¬¬(0 < SUC n_l)] which needs
+         ¬¬(0 < SUC n_l). Build via notNotIntroLocal[0 < SUC n_l]. *)
+      zeroLtSucNLAt = HOL`Bool`SPEC[nLV, zeroLtSucThm];
+      (* ⊢ 0 < SUC n_l *)
+      notNotZLtSucNL = notNotIntroLocal[zeroLtSucNLAt];
+      (* ⊢ ¬¬(0 < SUC n_l) *)
+      notZeroLtSucNLEqF = eqfIntroLocal[notNotZLtSucNL];
+      (* ⊢ ¬(0 < SUC n_l) = F *)
+      (* Build (¬(i < SUC n_l)) = (¬(0 < SUC n_l)) via i=0 rewrite. *)
+      rhsAtI = HOL`Equal`APTERM[notC[],
+        HOL`Equal`APTHM[
+          HOL`Equal`APTERM[HOL`Stdlib`Num`ltConst[], iEqZeroHyp],
+          sucTm[nLV]]];
+      (* (i=0) ⊢ ¬(i < SUC n_l) = ¬(0 < SUC n_l) *)
+      rhsAtIeqF = TRANS[rhsAtI, notZeroLtSucNLEqF];
+      (* (i=0) ⊢ ¬(i < SUC n_l) = F *)
+
+      lhsEqRhs = TRANS[lhsEqF, HOL`Equal`SYM[rhsAtIeqF]];
+      (* (i=0) ⊢ (consFXL i = NONE) = ¬(i < SUC n_l) *)
+      lhsEqRhs
+    ];
+
+    (* Sub-case ∃j. i = SUC j. *)
+    iEqSucBranch = Module[{exJTm, exJHyp, iEqSucJTm, iEqSucJHyp,
+                           consFAtS, lhsRewrite1, lhsRewrite2, lhsEqRepLj,
+                           witHypAtJ, repLjEqNotLt,
+                           rhsRewrite1, ltSucMCAtJN, rhsRewrite2,
+                           rhsRewrite3, finalIff, choseJ},
+      exJTm = mkComb[existsC[numTy],
+        mkAbs[jBndV, mkEq[iV, sucTm[jBndV]]]];
+      exJHyp = ASSUME[exJTm];
+      iEqSucJTm = mkEq[iV, sucTm[jBndV]];
+      iEqSucJHyp = ASSUME[iEqSucJTm];
+
+      consFAtS = consFAtSucThm[xTm, lTm, jBndV];
+      (* ⊢ consFXL (SUC jBnd) = REP_list l jBnd *)
+
+      (* LHS rewrites:
+         (consFXL i = NONE) → (consFXL (SUC jBnd) = NONE) via i=SUC jBnd.
+         → (REP_list l jBnd = NONE) via consFAtS. *)
+      lhsRewrite1 = HOL`Equal`APTHM[
+        HOL`Equal`APTERM[eqC,
+          HOL`Equal`APTERM[consFXL, iEqSucJHyp]],
+        noneAt[αTy]];
+      (* (i=SUC jBnd) ⊢ (consFXL i = NONE) = (consFXL (SUC jBnd) = NONE) *)
+      lhsRewrite2 = HOL`Equal`APTHM[
+        HOL`Equal`APTERM[eqC, consFAtS], noneAt[αTy]];
+      (* ⊢ (consFXL (SUC jBnd) = NONE) = (REP_list l jBnd = NONE) *)
+      lhsEqRepLj = TRANS[lhsRewrite1, lhsRewrite2];
+      (* (i=SUC jBnd) ⊢ (consFXL i = NONE) = (REP_list l jBnd = NONE) *)
+
+      witHypAtJ = HOL`Bool`SPEC[jBndV, witHyp];
+      (* (witHyp) ⊢ (REP_list l jBnd = NONE) = ¬(jBnd < n_l) *)
+      repLjEqNotLt = TRANS[lhsEqRepLj, witHypAtJ];
+      (* (witHyp, i=SUC jBnd) ⊢ (consFXL i = NONE) = ¬(jBnd < n_l) *)
+
+      (* RHS rewrites:
+         ¬(i < SUC n_l) → ¬(SUC jBnd < SUC n_l) via i=SUC jBnd.
+         → ¬(jBnd < n_l) via ltSucMonoCancel. *)
+      rhsRewrite1 = HOL`Equal`APTERM[notC[],
+        HOL`Equal`APTHM[
+          HOL`Equal`APTERM[HOL`Stdlib`Num`ltConst[], iEqSucJHyp],
+          sucTm[nLV]]];
+      (* (i=SUC jBnd) ⊢ ¬(i < SUC n_l) = ¬(SUC jBnd < SUC n_l) *)
+      ltSucMCAtJN = HOL`Bool`SPEC[nLV,
+        HOL`Bool`SPEC[jBndV, ltSucMonoCancelThm]];
+      (* ⊢ (SUC jBnd < SUC n_l) = (jBnd < n_l) *)
+      rhsRewrite2 = HOL`Equal`APTERM[notC[], ltSucMCAtJN];
+      (* ⊢ ¬(SUC jBnd < SUC n_l) = ¬(jBnd < n_l) *)
+      rhsRewrite3 = TRANS[rhsRewrite1, rhsRewrite2];
+      (* (i=SUC jBnd) ⊢ ¬(i < SUC n_l) = ¬(jBnd < n_l) *)
+
+      finalIff = TRANS[repLjEqNotLt, HOL`Equal`SYM[rhsRewrite3]];
+      (* (witHyp, i=SUC jBnd) ⊢ (consFXL i = NONE) = ¬(i < SUC n_l) *)
+      choseJ = HOL`Bool`CHOOSE[jBndV, exJHyp, finalIff];
+      (* (witHyp, ∃j. i=SUC j) ⊢ (consFXL i = NONE) = ¬(i < SUC n_l) *)
+      choseJ
+    ];
+
+    perI = HOL`Bool`DISJCASES[numCasesAtI, iEqZeroBranch, iEqSucBranch];
+    (* (witHyp) ⊢ (consFXL i = NONE) = ¬(i < SUC n_l) *)
+    perIGenI = HOL`Bool`GEN[iV, perI];
+    (* (witHyp) ⊢ ∀i. (consFXL i = NONE) = ¬(i < SUC n_l) *)
+
+    (* === Step 5: EXISTS at SUC n_l === *)
+    existsAtSucNL = HOL`Bool`EXISTS[
+      mkComb[existsC[numTy], mkAbs[nLV,
+        mkComb[forallC[numTy], mkAbs[iV,
+          mkEq[mkEq[mkComb[consFXL, iV], noneAt[αTy]],
+               mkComb[notC[], ltTmLocal[iV, nLV]]]]]]],
+      sucTm[nLV], perIGenI];
+    (* (witHyp) ⊢ ∃n. ∀i. (consFXL i = NONE) = ¬(i < n) *)
+
+    (* CHOOSE n_l from the existsBodyThm: discharges witHyp. *)
+    chosenNL = HOL`Bool`CHOOSE[nLV, existsBodyThm, existsAtSucNL];
+    (* ⊢ ∃n. ∀i. (consFXL i = NONE) = ¬(i < n) *)
+
+    (* === Step 6: fold back to isListPLambdaTerm[] (consFXL) === *)
+    foldUnfold = BETACONV[mkComb[isListPLambdaTerm[], consFXL]];
+    (* ⊢ isListPLambdaTerm[] (consFXL) = ∃n. ∀i. (consFXL i = NONE) = ¬(i < n) *)
+    EQMP[HOL`Equal`SYM[foldUnfold], chosenNL]
+    (* ⊢ isListPLambdaTerm[] (consFXL) *)
+  ];
+
+(* ============================================================ *)
+(* repConsEqThm[x, l] — ⊢ REP_list (CONS x l) = consFTerm[x, l]   *)
+(* Compose unfoldCons + repAbsListThm INST'd at consF.            *)
+(* ============================================================ *)
+
+repConsEqThm[xTm_, lTm_] :=
+  Module[{unfold, consFXL, applyRep, isListPConsXL,
+          repAbsAtConsF, eqREP},
+    unfold = unfoldCons[xTm, lTm];
+    (* ⊢ CONS x l = ABS_list (consFXL) *)
+    consFXL = consFTerm[xTm, lTm];
+    applyRep = HOL`Equal`APTERM[repListConst[], unfold];
+    (* ⊢ REP_list (CONS x l) = REP_list (ABS_list consFXL) *)
+    isListPConsXL = consCarrierIsListPThm[xTm, lTm];
+    (* ⊢ isListPLambdaTerm[] (consFXL) *)
+    repAbsAtConsF = HOL`Kernel`INST[
+      {mkVar["r", carrierTy] -> consFXL}, repAbsListThm];
+    (* ⊢ isListPLambdaTerm[] consFXL = (REP_list (ABS_list consFXL) = consFXL) *)
+    eqREP = EQMP[repAbsAtConsF, isListPConsXL];
+    (* ⊢ REP_list (ABS_list consFXL) = consFXL *)
+    TRANS[applyRep, eqREP]
+    (* ⊢ REP_list (CONS x l) = consFXL *)
+  ];
+
+(* ============================================================ *)
+(* repConsHeadThm : ⊢ REP_list (CONS x l) 0 = SOME x             *)
+(* repConsTailThm : ⊢ ∀i. REP_list (CONS x l) (SUC i) = REP_list l i *)
+(*                                                              *)
+(* Free x, l (and i for tail). APTHM repConsEqThm at the index +  *)
+(* compose with consFAtZero/SucThm.                               *)
+(* ============================================================ *)
+
+repConsHeadThm =
+  Module[{xV, lV, repEq, applyZero, consFAtZ},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listTy[αTy]];
+    repEq = repConsEqThm[xV, lV];
+    (* ⊢ REP_list (CONS x l) = consFTerm[x, l] *)
+    applyZero = HOL`Equal`APTHM[repEq, zeroConst[]];
+    (* ⊢ REP_list (CONS x l) 0 = consFTerm[x, l] 0 *)
+    consFAtZ = consFAtZeroThm[xV, lV];
+    (* ⊢ consFTerm[x, l] 0 = SOME x *)
+    TRANS[applyZero, consFAtZ]
+    (* ⊢ REP_list (CONS x l) 0 = SOME x *)
+  ];
+
+repConsTailThm =
+  Module[{xV, lV, iV, repEq, applySucI, consFAtS, perI, genI},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listTy[αTy]];
+    iV = mkVar["i", numTy];
+    repEq = repConsEqThm[xV, lV];
+    applySucI = HOL`Equal`APTHM[repEq, sucTm[iV]];
+    (* ⊢ REP_list (CONS x l) (SUC i) = consFTerm[x, l] (SUC i) *)
+    consFAtS = consFAtSucThm[xV, lV, iV];
+    (* ⊢ consFTerm[x, l] (SUC i) = REP_list l i *)
+    perI = TRANS[applySucI, consFAtS];
+    (* ⊢ REP_list (CONS x l) (SUC i) = REP_list l i *)
+    genI = HOL`Bool`GEN[iV, perI]
   ];
 
 End[];
