@@ -96,5 +96,77 @@ HOLTest`runTests["stdlib/List: repNilThm — ⊢ REP_list NIL = (λi. NONE), no 
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-a.2 tests: CONS def + helper lemmas ===== *)
+
+HOLTest`runTests["stdlib/List: CONS has type α → α list → α list",
+  Module[{ty},
+    ty = HOL`Kernel`constType["CONS"];
+    HOLTest`assertEq[ty, tyFun[αTy, tyFun[listATy, listATy]],
+      "CONS : α → α list → α list"];
+]];
+
+HOLTest`runTests["stdlib/List: consDefThm — concl `CONS = …`, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`consDefThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["=", _], const["CONS", _]], _]],
+      "concl shape ⊢ CONS = …"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: leqSucMonoCancelThm — ⊢ ∀a b. (SUC a ≤ SUC b) = (a ≤ b), no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`leqSucMonoCancelThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _],
+        abs[bvar[0, tyApp["num", {}]],
+          comb[const["∀", _],
+            abs[bvar[0, tyApp["num", {}]],
+              comb[comb[const["=", _], _], _], _]], _]]],
+      "shape: ∀a. ∀b. (SUC a ≤ SUC b) = (a ≤ b)"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: isListPOfRepListThm — ⊢ isListPLambda (REP_list l), no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`isListPOfRepListThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[abs[_, _, "f"],
+        comb[const["REP_list", _], var["l", _]]]],
+      "shape: (λf. …) (REP_list l) — isListP-lambda applied to REP_list l"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+(* Smoke test: invoke the consFAt*Thm function helpers and check shape. *)
+HOLTest`runTests["stdlib/List: consFAtZeroThm[x, l] — concl `(λi. ε y. …) 0 = SOME x`, no hyps",
+  Module[{xV, lV, thm, c},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listATy];
+    thm = HOL`Stdlib`List`Private`consFAtZeroThm[xV, lV];
+    c = concl[thm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["=", _], _],
+                     comb[const["SOME", _], var["x", _]]]],
+      "RHS is SOME x"];
+    HOLTest`assertEq[hyp[thm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: consFAtSucThm[x, l, j] — concl `(λi. ε y. …) (SUC j) = REP_list l j`, no hyps",
+  Module[{xV, lV, jV, thm, c},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listATy];
+    jV = mkVar["j", numTy];
+    thm = HOL`Stdlib`List`Private`consFAtSucThm[xV, lV, jV];
+    c = concl[thm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["=", _], _],
+                     comb[comb[const["REP_list", _], var["l", _]], var["j", _]]]],
+      "RHS is REP_list l j"];
+    HOLTest`assertEq[hyp[thm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];
