@@ -335,5 +335,20 @@ HOLTest`runTests["stdlib/List: consHeadTailEqLThm smoke test",
     HOLTest`assertEq[hyp[thm], {witTm}, "single hyp = witTm"];
 ]];
 
+(* ===== M7-4-a.6 tests: list induction ===== *)
+
+HOLTest`runTests["stdlib/List: listInductionThm — ⊢ ∀P. P NIL ∧ (∀x l. P l ⇒ P (CONS x l)) ⇒ ∀l. P l, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`listInductionThm;
+    c = concl[dThm];
+    (* Shape: ∀P. (P NIL ∧ stepHyp) ⇒ (∀l. P l) *)
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _],
+        abs[bvar[0, _],
+          comb[comb[const["⇒", _], _], _], _]]],
+      "shape: ∀P. _ ⇒ _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];

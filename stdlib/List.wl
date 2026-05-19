@@ -1,6 +1,6 @@
 (* ::Package:: *)
 
-(* M7-4-a.{1,2,3,4,5} stdlib/List — list type, NIL, CONS, induction prep.
+(* M7-4-a.{1..6} stdlib/List — list type, NIL, CONS, list induction.
 
    Encode α list as the subtype of carrier `num → α option` whose elements
    are supported on an initial segment [0, n):
@@ -35,7 +35,12 @@
      tailLengthThm:         IH-ready length-n' witness for tailFnOf l
      consHeadTailEqLThm:    ⊢ CONS (headTermOf l) (tailFnOf l) = l
 
-   List induction defers to M7-4-a.6. *)
+   List induction (M7-4-a.6):
+     funcExtThm:       Wolfram helper, ⊢ ∀x. f x = g x → ⊢ f = g
+     listInductionThm: ⊢ ∀P. P NIL ∧ (∀x l. P l ⇒ P (CONS x l)) ⇒ ∀l. P l
+
+   This completes M7-4-a (the foundation slice of stdlib/List.wl).
+   Next slices (M7-4-b+) add HD/TL/APPEND/LENGTH/MAP/FILTER/FOLD. *)
 
 BeginPackage["HOL`Stdlib`List`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
@@ -107,6 +112,11 @@ headTermOf::usage =
   "headTermOf[lTm] — Wolfram term builder for `ε x. REP_list l 0 = SOME x`.";
 consHeadTailEqLThm::usage =
   "consHeadTailEqLThm[lTm, nPrimeTm, witHypThm] — given the length-SUC-n' witness, derive `(witHyp) ⊢ CONS (headTermOf l) (tailFnOf l) = l`.";
+
+funcExtThm::usage =
+  "funcExtThm[fTm, gTm, perITh] — from Γ ⊢ ∀x. fTm x = gTm x, derive Γ ⊢ fTm = gTm. Inline SPEC + ABS + etaAx chain.";
+listInductionThm::usage =
+  "listInductionThm — ⊢ ∀P. P NIL ∧ (∀x l. P l ⇒ P (CONS x l)) ⇒ ∀l. P l.";
 
 Begin["`Private`"];
 
@@ -1601,6 +1611,235 @@ consHeadTailEqLThm[lTm_, nPrimeTm_, witHypThm_] :=
     finalEq = TRANS[HOL`Equal`SYM[absRepAtCHT],
                     TRANS[applyAbs, absRepAtL2]]
     (* (witHyp) ⊢ CONS (headTermOf l) (tailFnOf l) = l *)
+  ];
+
+(* ============================================================ *)
+(* M7-4-a.6 : list induction theorem.                            *)
+(* ============================================================ *)
+
+(* funcExtThm[fTm, gTm, perITh] : Γ ⊢ ∀x. fTm x = gTm x → Γ ⊢ fTm = gTm *)
+funcExtThm[fTm_, gTm_, perITh_] :=
+  Module[{fTy, dom, xV, specXth, absXth, etaAtF, etaAtG},
+    fTy = typeOf[fTm];
+    dom = fTy[[2, 1]];
+    xV = mkVar["xFE", dom];
+    specXth = HOL`Bool`SPEC[xV, perITh];
+    (* Γ ⊢ fTm xFE = gTm xFE *)
+    absXth = HOL`Kernel`ABS[xV, specXth];
+    (* Γ ⊢ (λxFE. fTm xFE) = (λxFE. gTm xFE) *)
+    etaAtF = HOL`Bool`ISPEC[fTm, HOL`Bootstrap`etaAx];
+    etaAtG = HOL`Bool`ISPEC[gTm, HOL`Bootstrap`etaAx];
+    TRANS[TRANS[HOL`Equal`SYM[etaAtF], absXth], etaAtG]
+    (* Γ ⊢ fTm = gTm *)
+  ];
+
+(* ============================================================ *)
+(* listInductionThm                                              *)
+(*   ⊢ ∀P. P NIL ∧ (∀x l. P l ⇒ P (CONS x l)) ⇒ ∀l. P l          *)
+(*                                                              *)
+(* Num induction on the length witness n from isListP (REP_list l). *)
+(* Predicate Q n = ∀l'. (∀i. REP_list l' i = NONE ⇔ ¬(i < n)) ⇒ P l'.*)
+(*   Q 0:    REP_list l' = (λi. NONE) = REP_list NIL → l' = NIL →   *)
+(*           P l' from P NIL.                                       *)
+(*   Q(SUC n): consHeadTailEqL gives CONS h (tail l') = l';         *)
+(*           tailLengthThm gives the n-witness for tail l';         *)
+(*           Q n SPEC at tail l' + MP → P (tail l');                *)
+(*           step hyp SPEC at h, tail l' + MP → P (CONS h tail);    *)
+(*           rewrite via consHeadTailEqL → P l'.                    *)
+(* ============================================================ *)
+
+listInductionThm =
+  Module[{pV, lV, lpV, nV, iV, xV2,
+          stepXV, stepLV, pNilTm, stepImpTm, stepInner, stepTm,
+          conjTm, conjHyp, pNil, stepHyp,
+          qLamBody, qLam,
+          baseTh, stepTh, indResult,
+          isListPRepL, unfoldIsListPRepL, existsN,
+          witInnerTm, witHyp, qAtN, qAtNAtL, plUnderWit,
+          chooseN, genL, dischConj, genP,
+          repListLTy},
+    pV = mkVar["P", tyFun[listTy[αTy], boolTy]];
+    lV = mkVar["l", listTy[αTy]];
+    lpV = mkVar["lP", listTy[αTy]];
+    nV = mkVar["n", numTy];
+    iV = mkVar["i", numTy];
+    stepXV = mkVar["x", αTy];
+    stepLV = mkVar["lS", listTy[αTy]];
+    repListLTy = listTy[αTy];
+
+    (* === Hyps. === *)
+    pNilTm = mkComb[pV, nilConst[]];
+    stepInner = impTm[
+      mkComb[pV, stepLV],
+      mkComb[pV, mkComb[mkComb[consConst[], stepXV], stepLV]]];
+    stepImpTm = mkComb[forallC[αTy], mkAbs[stepXV,
+      mkComb[forallC[repListLTy], mkAbs[stepLV, stepInner]]]];
+    stepTm = stepImpTm;
+    conjTm = andTm[pNilTm, stepTm];
+    conjHyp = ASSUME[conjTm];
+    pNil = HOL`Bool`CONJUNCT1[conjHyp];
+    (* (conjHyp) ⊢ P NIL *)
+    stepHyp = HOL`Bool`CONJUNCT2[conjHyp];
+    (* (conjHyp) ⊢ ∀x lS. P lS ⇒ P (CONS x lS) *)
+
+    (* === Induction predicate Q n. === *)
+    qLamBody[nTm_] :=
+      mkComb[forallC[repListLTy], mkAbs[lpV,
+        impTm[
+          mkComb[forallC[numTy], mkAbs[iV,
+            mkEq[
+              mkEq[mkComb[mkComb[repListConst[], lpV], iV], noneAt[αTy]],
+              mkComb[notC[], ltTmLocal[iV, nTm]]]]],
+          mkComb[pV, lpV]]]];
+    qLam = mkAbs[nV, qLamBody[nV]];
+
+    (* === Base case ⊢ qLamBody[0]. === *)
+    baseTh = Module[{lpHyp, witTm, witHyp1, perI, repLpEqNone, funExtNil,
+                     repNilSymTh, repLpEqRepNil, applyAbsCH, absRepAtLp2,
+                     absRepAtNil2, lpEqNil, pNilEqPLp, plpTh,
+                     dischWit, genLp},
+      witTm = mkComb[forallC[numTy], mkAbs[iV,
+        mkEq[
+          mkEq[mkComb[mkComb[repListConst[], lpV], iV], noneAt[αTy]],
+          mkComb[notC[], ltTmLocal[iV, zeroConst[]]]]]];
+      witHyp1 = ASSUME[witTm];
+      (* (wit) ⊢ ∀i. (REP_list lP i = NONE) = ¬(i < 0) *)
+
+      (* For arbitrary i, derive REP_list lP i = NONE. *)
+      perI = Module[{specAtI, symEq, notLtZero, repLpAtI},
+        specAtI = HOL`Bool`SPEC[iV, witHyp1];
+        (* (wit) ⊢ (REP_list lP i = NONE) = ¬(i < 0) *)
+        symEq = HOL`Equal`SYM[specAtI];
+        (* (wit) ⊢ ¬(i < 0) = (REP_list lP i = NONE) *)
+        notLtZero = HOL`Bool`SPEC[iV, HOL`Stdlib`Num`notLtZeroThm];
+        (* ⊢ ¬(i < 0) *)
+        repLpAtI = EQMP[symEq, notLtZero];
+        (* (wit) ⊢ REP_list lP i = NONE *)
+        repLpAtI
+      ];
+      (* Need ∀i. REP_list lP i = NONE = (λi. NONE) i.                *)
+      (* Build perITh : ⊢ ∀i. REP_list lP i = (λi. NONE) i.            *)
+      Module[{nilFunc, betaNilFnAtI, repLpEqLamNone, genIThm},
+        nilFunc = mkAbs[iV, noneAt[αTy]];
+        betaNilFnAtI = BETACONV[mkComb[nilFunc, iV]];
+        (* ⊢ (λi. NONE) i = NONE *)
+        repLpEqLamNone = TRANS[perI, HOL`Equal`SYM[betaNilFnAtI]];
+        (* (wit) ⊢ REP_list lP i = (λi. NONE) i *)
+        genIThm = HOL`Bool`GEN[iV, repLpEqLamNone];
+        (* (wit) ⊢ ∀i. REP_list lP i = (λi. NONE) i *)
+        repLpEqNone = funcExtThm[
+          mkComb[repListConst[], lpV], nilFunc, genIThm]
+        (* (wit) ⊢ REP_list lP = (λi. NONE) *)
+      ];
+
+      (* repNilThm : ⊢ REP_list NIL = (λi. NONE). SYM and TRANS. *)
+      repNilSymTh = HOL`Equal`SYM[repNilThm];
+      (* ⊢ (λi. NONE) = REP_list NIL *)
+      repLpEqRepNil = TRANS[repLpEqNone, repNilSymTh];
+      (* (wit) ⊢ REP_list lP = REP_list NIL *)
+      applyAbsCH = HOL`Equal`APTERM[absListConst[], repLpEqRepNil];
+      (* (wit) ⊢ ABS_list (REP_list lP) = ABS_list (REP_list NIL) *)
+      absRepAtLp2 = HOL`Kernel`INST[
+        {mkVar["a", repListLTy] -> lpV}, absRepListThm];
+      absRepAtNil2 = HOL`Kernel`INST[
+        {mkVar["a", repListLTy] -> nilConst[]}, absRepListThm];
+      lpEqNil = TRANS[HOL`Equal`SYM[absRepAtLp2],
+                      TRANS[applyAbsCH, absRepAtNil2]];
+      (* (wit) ⊢ lP = NIL *)
+
+      (* Use P NIL → P lP. APTERM P on SYM[lpEqNil] : NIL = lP gives
+         P NIL = P lP; EQMP P NIL → P lP. *)
+      pNilEqPLp = HOL`Equal`APTERM[pV, HOL`Equal`SYM[lpEqNil]];
+      (* (wit) ⊢ P NIL = P lP *)
+      plpTh = EQMP[pNilEqPLp, pNil];
+      (* (conjHyp, wit) ⊢ P lP *)
+      dischWit = HOL`Bool`DISCH[witTm, plpTh];
+      (* (conjHyp) ⊢ (∀i. ...) ⇒ P lP *)
+      genLp = HOL`Bool`GEN[lpV, dischWit]
+      (* (conjHyp) ⊢ ∀lP. (∀i. ...) ⇒ P lP    — i.e. qLamBody[0] *)
+    ];
+
+    (* === Step case ⊢ ∀n. qLamBody[n] ⇒ qLamBody[SUC n]. === *)
+    stepTh = Module[{ihTm, ihHyp, witTm, witHyp2,
+                     consHTeqL, tailLenWit, qNAtTail, ihAtTail, ihMP,
+                     pTail, stepAtH, stepAtHL, pConsHTail,
+                     pConsEqPL, pLp,
+                     dischWit, genLp, dischIh, genN, lpHypTm},
+      ihTm = qLamBody[nV];
+      ihHyp = ASSUME[ihTm];
+      (* (ih) ⊢ ∀lP. (∀i. REP_list lP i = NONE = ¬(i < n)) ⇒ P lP *)
+
+      witTm = mkComb[forallC[numTy], mkAbs[iV,
+        mkEq[
+          mkEq[mkComb[mkComb[repListConst[], lpV], iV], noneAt[αTy]],
+          mkComb[notC[], ltTmLocal[iV, sucTm[nV]]]]]];
+      witHyp2 = ASSUME[witTm];
+      (* (wit) ⊢ ∀i. REP_list lP i = NONE = ¬(i < SUC n) *)
+
+      consHTeqL = consHeadTailEqLThm[lpV, nV, witHyp2];
+      (* (wit) ⊢ CONS (headTermOf lP) (tailFnOf lP) = lP *)
+      tailLenWit = tailLengthThm[lpV, nV, witHyp2];
+      (* (wit) ⊢ ∀i. REP_list (tailFnOf lP) i = NONE = ¬(i < n) *)
+
+      qNAtTail = HOL`Bool`SPEC[tailFnOf[lpV], ihHyp];
+      (* (ih) ⊢ (∀i. ...) ⇒ P (tailFnOf lP) *)
+      pTail = HOL`Bool`MP[qNAtTail, tailLenWit];
+      (* (ih, wit) ⊢ P (tailFnOf lP) *)
+
+      stepAtH = HOL`Bool`SPEC[headTermOf[lpV], stepHyp];
+      (* (conjHyp) ⊢ ∀lS. P lS ⇒ P (CONS (headTermOf lP) lS) *)
+      stepAtHL = HOL`Bool`SPEC[tailFnOf[lpV], stepAtH];
+      (* (conjHyp) ⊢ P (tailFnOf lP)
+                     ⇒ P (CONS (headTermOf lP) (tailFnOf lP)) *)
+      pConsHTail = HOL`Bool`MP[stepAtHL, pTail];
+      (* (conjHyp, ih, wit) ⊢ P (CONS (headTermOf lP) (tailFnOf lP)) *)
+
+      (* Rewrite via consHTeqL. *)
+      pConsEqPL = HOL`Equal`APTERM[pV, consHTeqL];
+      (* (wit) ⊢ P (CONS (headTermOf lP) (tailFnOf lP)) = P lP *)
+      pLp = EQMP[pConsEqPL, pConsHTail];
+      (* (conjHyp, ih, wit) ⊢ P lP *)
+
+      dischWit = HOL`Bool`DISCH[witTm, pLp];
+      (* (conjHyp, ih) ⊢ (∀i. ...) ⇒ P lP *)
+      genLp = HOL`Bool`GEN[lpV, dischWit];
+      (* (conjHyp, ih) ⊢ qLamBody[SUC n] *)
+      dischIh = HOL`Bool`DISCH[ihTm, genLp];
+      (* (conjHyp) ⊢ qLamBody[n] ⇒ qLamBody[SUC n] *)
+      genN = HOL`Bool`GEN[nV, dischIh]
+      (* (conjHyp) ⊢ ∀n. qLamBody[n] ⇒ qLamBody[SUC n] *)
+    ];
+
+    indResult = HOL`Stdlib`Num`Private`numInductBy[qLam, baseTh, stepTh];
+    (* (conjHyp) ⊢ ∀n. qLamBody[n] *)
+
+    (* Apply at our l. *)
+    isListPRepL = HOL`Kernel`INST[
+      {mkVar["l", repListLTy] -> lV}, isListPOfRepListThm];
+    unfoldIsListPRepL = BETACONV[
+      mkComb[isListPLambdaTerm[], mkComb[repListConst[], lV]]];
+    existsN = EQMP[unfoldIsListPRepL, isListPRepL];
+    (* ⊢ ∃n. ∀i. REP_list l i = NONE = ¬(i < n) *)
+
+    witInnerTm = mkComb[forallC[numTy], mkAbs[iV,
+      mkEq[
+        mkEq[mkComb[mkComb[repListConst[], lV], iV], noneAt[αTy]],
+        mkComb[notC[], ltTmLocal[iV, nV]]]]];
+    witHyp = ASSUME[witInnerTm];
+    (* (wit) ⊢ ∀i. REP_list l i = NONE = ¬(i < n) *)
+
+    qAtN = HOL`Bool`SPEC[nV, indResult];
+    (* (conjHyp) ⊢ qLamBody[n] = ∀l'. (∀i. ...) ⇒ P l' *)
+    qAtNAtL = HOL`Bool`SPEC[lV, qAtN];
+    (* (conjHyp) ⊢ (∀i. REP_list l i = NONE = ¬(i < n)) ⇒ P l *)
+    plUnderWit = HOL`Bool`MP[qAtNAtL, witHyp];
+    (* (conjHyp, wit) ⊢ P l *)
+
+    chooseN = HOL`Bool`CHOOSE[nV, existsN, plUnderWit];
+    (* (conjHyp) ⊢ P l *)
+    genL = HOL`Bool`GEN[lV, chooseN];
+    dischConj = HOL`Bool`DISCH[conjTm, genL];
+    genP = HOL`Bool`GEN[pV, dischConj]
   ];
 
 End[];
