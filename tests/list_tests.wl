@@ -282,5 +282,58 @@ HOLTest`runTests["stdlib/List: nilNotEqConsThm — ⊢ ∀x l. ¬(NIL = CONS x l
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-a.5 tests: option cases + tail/shift toolkit ===== *)
+
+HOLTest`runTests["stdlib/List: optionCasesThm — ⊢ ∀y. y = NONE ∨ ∃x. y = SOME x, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`optionCasesThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _],
+        abs[bvar[0, _],
+          comb[comb[const["∨", _], _], _], _]]],
+      "shape ⊢ ∀y. _ ∨ _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+(* Smoke test: invoke notNoneImpliesSome[⊢ ¬(y = NONE)] for a concrete y. *)
+HOLTest`runTests["stdlib/List: notNoneImpliesSome smoke test",
+  Module[{yV, notNoneTm, thm, c, optionATyLocal},
+    optionATyLocal = HOL`Stdlib`Option`optionTy[αTy];
+    yV = mkVar["y", optionATyLocal];
+    notNoneTm = mkComb[mkConst["¬", tyFun[boolTy, boolTy]],
+      mkEq[yV, mkConst["NONE", optionATyLocal]]];
+    thm = HOL`Stdlib`List`notNoneImpliesSome[ASSUME[notNoneTm]];
+    c = concl[thm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∃", _], abs[bvar[0, _], _, _]]],
+      "concl is ∃x. _"];
+    HOLTest`assertEq[hyp[thm], {notNoneTm}, "hyp = {¬(y = NONE)}"];
+]];
+
+(* Smoke test: invoke consHeadTailEqLThm at a free l with explicit witness hyp. *)
+HOLTest`runTests["stdlib/List: consHeadTailEqLThm smoke test",
+  Module[{lV, nPrimeV, iV, witTm, witThm, thm, c},
+    lV = mkVar["l", listATy];
+    nPrimeV = mkVar["nP", numTy];
+    iV = mkVar["i", numTy];
+    (* witTm = ∀i. (REP_list l i = NONE) ⇔ ¬(i < SUC nP) *)
+    witTm = mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[iV, mkEq[
+        mkEq[
+          mkComb[mkComb[HOL`Stdlib`List`repListConst[], lV], iV],
+          mkConst["NONE", HOL`Stdlib`Option`optionTy[αTy]]],
+        mkComb[mkConst["¬", tyFun[boolTy, boolTy]],
+          mkComb[mkComb[mkConst["<", tyFun[numTy, tyFun[numTy, boolTy]]], iV],
+            mkComb[mkConst["SUC", tyFun[numTy, numTy]], nPrimeV]]]]]];
+    witThm = ASSUME[witTm];
+    thm = HOL`Stdlib`List`consHeadTailEqLThm[lV, nPrimeV, witThm];
+    c = concl[thm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["=", _], _], var["l", _]]],
+      "concl is _ = l"];
+    HOLTest`assertEq[hyp[thm], {witTm}, "single hyp = witTm"];
+]];
+
 End[];
 EndPackage[];
