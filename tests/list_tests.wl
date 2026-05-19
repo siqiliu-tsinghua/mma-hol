@@ -243,5 +243,44 @@ HOLTest`runTests["stdlib/List: repConsTailThm — ⊢ ∀i. REP_list (CONS x l) 
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-a.4 tests: CONS injectivity + NIL/CONS disjointness ===== *)
+
+HOLTest`runTests["stdlib/List: consInjThm — ⊢ ∀x xP l lP. CONS x l = CONS xP lP ⇒ x = xP ∧ l = lP, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`consInjThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _],
+        abs[bvar[0, _],
+          comb[const["∀", _],
+            abs[bvar[0, _],
+              comb[const["∀", _],
+                abs[bvar[0, _],
+                  comb[const["∀", _],
+                    abs[bvar[0, _],
+                      comb[comb[const["⇒", _], _], _], _]], _]], _]], _]]],
+      "shape: ∀x xP l lP. _ ⇒ _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: nilNotEqConsThm — ⊢ ∀x l. ¬(NIL = CONS x l), no hyps",
+  Module[{c, dThm, expected, xV, lV, nilC, consC, notC, forallC},
+    dThm = HOL`Stdlib`List`nilNotEqConsThm;
+    c = concl[dThm];
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listATy];
+    nilC = HOL`Stdlib`List`nilConst[];
+    consC = HOL`Stdlib`List`consConst[];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    forallC = mkConst["∀", tyFun[tyFun[αTy, boolTy], boolTy]];
+    expected = mkComb[forallC,
+      mkAbs[xV, mkComb[mkConst["∀", tyFun[tyFun[listATy, boolTy], boolTy]],
+        mkAbs[lV, mkComb[notC,
+          mkEq[nilC, mkComb[mkComb[consC, xV], lV]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀x l. ¬(NIL = CONS x l)"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];

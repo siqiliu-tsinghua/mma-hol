@@ -1,6 +1,6 @@
 (* ::Package:: *)
 
-(* M7-4-a.{1,2,3} stdlib/List — list type, NIL, CONS, round-trip thms.
+(* M7-4-a.{1,2,3,4} stdlib/List — list type, NIL, CONS, Peano-like thms.
 
    Encode α list as the subtype of carrier `num → α option` whose elements
    are supported on an initial segment [0, n):
@@ -19,7 +19,11 @@
      repConsHeadThm: ⊢ REP_list (CONS x l) 0 = SOME x
      repConsTailThm: ⊢ ∀i. REP_list (CONS x l) (SUC i) = REP_list l i
 
-   Injectivity, disjointness, list induction defer to M7-4-a.4+. *)
+   Peano-like theorems (M7-4-a.4):
+     consInjThm:      ⊢ ∀x xP l lP. CONS x l = CONS xP lP ⇒ x = xP ∧ l = lP
+     nilNotEqConsThm: ⊢ ∀x l. ¬(NIL = CONS x l)
+
+   List induction defers to M7-4-a.5. *)
 
 BeginPackage["HOL`Stdlib`List`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
@@ -66,6 +70,11 @@ repConsHeadThm::usage =
   "repConsHeadThm — ⊢ REP_list (CONS x l) 0 = SOME x.";
 repConsTailThm::usage =
   "repConsTailThm — ⊢ ∀i. REP_list (CONS x l) (SUC i) = REP_list l i.";
+
+consInjThm::usage =
+  "consInjThm — ⊢ ∀x xP l lP. CONS x l = CONS xP lP ⇒ x = xP ∧ l = lP.";
+nilNotEqConsThm::usage =
+  "nilNotEqConsThm — ⊢ ∀x l. ¬ (NIL = CONS x l).";
 
 Begin["`Private`"];
 
@@ -979,6 +988,155 @@ repConsTailThm =
     perI = TRANS[applySucI, consFAtS];
     (* ⊢ REP_list (CONS x l) (SUC i) = REP_list l i *)
     genI = HOL`Bool`GEN[iV, perI]
+  ];
+
+(* ============================================================ *)
+(* CONS injectivity                                              *)
+(*   ⊢ ∀x xP l lP. CONS x l = CONS xP lP ⇒ x = xP ∧ l = lP        *)
+(*                                                              *)
+(* APTERM REP_list both sides.                                    *)
+(*   At index 0: repConsHead gives SOME x and SOME xP, then       *)
+(*               someInj gives x = xP.                            *)
+(*   At index SUC i (any i): repConsTail gives                    *)
+(*               REP_list l i = REP_list l' i.                    *)
+(*               GEN i; funcExt via ABS + etaAx → REP_list l =    *)
+(*               REP_list l'. APTERM ABS_list + absRepListThm     *)
+(*               twice → l = l'.                                  *)
+(* ============================================================ *)
+
+consInjThm =
+  Module[{xV, xpV, lV, lpV, iV, consXL, consXpLp,
+          hypTm, hypAssum, applyRep,
+          atZero, repConsHeadAtXL, repConsHeadAtXpLp, someXEqSomeXp,
+          someInjAtXXp, xEqXp,
+          atSucI, repConsTailAtXL, repConsTailAtXpLp, repLEqRepLpAtI,
+          genI, specI, absI, etaAtRepL, etaAtRepLp, repLEqRepLp,
+          applyAbsList, absRepAtL, absRepAtLp, lEqLp,
+          conjResult, dischHyp, genLp, genL, genXp, genX},
+    xV = mkVar["x", αTy];
+    xpV = mkVar["xP", αTy];
+    lV = mkVar["l", listTy[αTy]];
+    lpV = mkVar["lP", listTy[αTy]];
+    iV = mkVar["i", numTy];
+
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+    consXpLp = mkComb[mkComb[consConst[], xpV], lpV];
+    hypTm = mkEq[consXL, consXpLp];
+    hypAssum = ASSUME[hypTm];
+    applyRep = HOL`Equal`APTERM[repListConst[], hypAssum];
+    (* (hyp) ⊢ REP_list (CONS x l) = REP_list (CONS xP lP) *)
+
+    (* === x = xP === *)
+    atZero = HOL`Equal`APTHM[applyRep, zeroConst[]];
+    repConsHeadAtXL = repConsHeadThm;
+    (* ⊢ REP_list (CONS x l) 0 = SOME x — already at xV, lV *)
+    repConsHeadAtXpLp = HOL`Kernel`INST[
+      {mkVar["x", αTy] -> xpV, mkVar["l", listTy[αTy]] -> lpV},
+      repConsHeadThm];
+    (* ⊢ REP_list (CONS xP lP) 0 = SOME xP *)
+    someXEqSomeXp = TRANS[TRANS[HOL`Equal`SYM[repConsHeadAtXL], atZero],
+                          repConsHeadAtXpLp];
+    (* (hyp) ⊢ SOME x = SOME xP *)
+    someInjAtXXp = HOL`Stdlib`Option`someInjThm;
+    (* ⊢ (SOME x = SOME xP) ⇒ (x = xP) — Option's names match *)
+    xEqXp = HOL`Bool`MP[someInjAtXXp, someXEqSomeXp];
+    (* (hyp) ⊢ x = xP *)
+
+    (* === l = lP via per-i + funcExt === *)
+    atSucI = HOL`Equal`APTHM[applyRep, sucTm[iV]];
+    repConsTailAtXL = HOL`Bool`SPEC[iV, repConsTailThm];
+    (* ⊢ REP_list (CONS x l) (SUC i) = REP_list l i *)
+    repConsTailAtXpLp = HOL`Bool`SPEC[iV, HOL`Kernel`INST[
+      {mkVar["x", αTy] -> xpV, mkVar["l", listTy[αTy]] -> lpV},
+      repConsTailThm]];
+    (* ⊢ REP_list (CONS xP lP) (SUC i) = REP_list lP i *)
+    repLEqRepLpAtI = TRANS[TRANS[HOL`Equal`SYM[repConsTailAtXL], atSucI],
+                            repConsTailAtXpLp];
+    (* (hyp) ⊢ REP_list l i = REP_list lP i *)
+    genI = HOL`Bool`GEN[iV, repLEqRepLpAtI];
+    (* (hyp) ⊢ ∀i. REP_list l i = REP_list lP i *)
+
+    (* funcExt step: from genI derive REP_list l = REP_list lP. *)
+    specI = HOL`Bool`SPEC[iV, genI];
+    (* (hyp) ⊢ REP_list l i = REP_list lP i *)
+    absI = HOL`Kernel`ABS[iV, specI];
+    (* (hyp) ⊢ (λi. REP_list l i) = (λi. REP_list lP i) *)
+    etaAtRepL = HOL`Bool`ISPEC[
+      mkComb[repListConst[], lV], HOL`Bootstrap`etaAx];
+    (* ⊢ (λx. REP_list l x) = REP_list l *)
+    etaAtRepLp = HOL`Bool`ISPEC[
+      mkComb[repListConst[], lpV], HOL`Bootstrap`etaAx];
+    repLEqRepLp = TRANS[TRANS[HOL`Equal`SYM[etaAtRepL], absI], etaAtRepLp];
+    (* (hyp) ⊢ REP_list l = REP_list lP *)
+
+    applyAbsList = HOL`Equal`APTERM[absListConst[], repLEqRepLp];
+    (* (hyp) ⊢ ABS_list (REP_list l) = ABS_list (REP_list lP) *)
+    absRepAtL = HOL`Kernel`INST[
+      {mkVar["a", listTy[αTy]] -> lV}, absRepListThm];
+    absRepAtLp = HOL`Kernel`INST[
+      {mkVar["a", listTy[αTy]] -> lpV}, absRepListThm];
+    lEqLp = TRANS[TRANS[HOL`Equal`SYM[absRepAtL], applyAbsList], absRepAtLp];
+    (* (hyp) ⊢ l = lP *)
+
+    conjResult = HOL`Bool`CONJ[xEqXp, lEqLp];
+    dischHyp = HOL`Bool`DISCH[hypTm, conjResult];
+    genLp = HOL`Bool`GEN[lpV, dischHyp];
+    genL = HOL`Bool`GEN[lV, genLp];
+    genXp = HOL`Bool`GEN[xpV, genL];
+    genX = HOL`Bool`GEN[xV, genXp]
+  ];
+
+(* ============================================================ *)
+(* NIL ≠ CONS disjointness                                       *)
+(*   ⊢ ∀x l. ¬(NIL = CONS x l)                                   *)
+(*                                                              *)
+(* APTERM REP_list, APTHM at 0:                                   *)
+(*   repNilThm + BETA: REP_list NIL 0 = NONE.                     *)
+(*   repConsHead: REP_list (CONS x l) 0 = SOME x.                 *)
+(*   TRANS chain: NONE = SOME x.                                  *)
+(* noneNotEqSomeThm: ¬(NONE = SOME x). Contradiction.             *)
+(* DISCH + NOTINTRO + GEN.                                        *)
+(* ============================================================ *)
+
+nilNotEqConsThm =
+  Module[{xV, lV, consXL, hypTm, hypAssum, applyRep, atZero,
+          repNilAt0Beta, repNilAt0, repConsHeadAt,
+          noneEqSomeX, noneNotEqAt, contradF, dischHyp, notEq, genL, genX},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listTy[αTy]];
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+
+    hypTm = mkEq[nilConst[], consXL];
+    hypAssum = ASSUME[hypTm];
+    applyRep = HOL`Equal`APTERM[repListConst[], hypAssum];
+    (* (NIL = CONS x l) ⊢ REP_list NIL = REP_list (CONS x l) *)
+    atZero = HOL`Equal`APTHM[applyRep, zeroConst[]];
+    (* (...) ⊢ REP_list NIL 0 = REP_list (CONS x l) 0 *)
+
+    (* REP_list NIL 0 = NONE via repNilThm + BETACONV. *)
+    repNilAt0Beta = HOL`Equal`APTHM[repNilThm, zeroConst[]];
+    (* ⊢ REP_list NIL 0 = (λi. NONE) 0 *)
+    repNilAt0 = TRANS[repNilAt0Beta,
+      BETACONV[concl[repNilAt0Beta][[2]]]];
+    (* ⊢ REP_list NIL 0 = NONE *)
+
+    (* REP_list (CONS x l) 0 = SOME x (already at xV, lV). *)
+    repConsHeadAt = repConsHeadThm;
+    (* ⊢ REP_list (CONS x l) 0 = SOME x *)
+
+    noneEqSomeX = TRANS[TRANS[HOL`Equal`SYM[repNilAt0], atZero],
+                        repConsHeadAt];
+    (* (NIL = CONS x l) ⊢ NONE = SOME x *)
+
+    noneNotEqAt = HOL`Stdlib`Option`noneNotEqSomeThm;
+    (* ⊢ ¬(NONE = SOME x) — already at xV *)
+    contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[noneNotEqAt], noneEqSomeX];
+    (* (NIL = CONS x l) ⊢ F *)
+    dischHyp = HOL`Bool`DISCH[hypTm, contradF];
+    notEq = HOL`Bool`NOTINTRO[dischHyp];
+    (* ⊢ ¬(NIL = CONS x l) *)
+    genL = HOL`Bool`GEN[lV, notEq];
+    genX = HOL`Bool`GEN[xV, genL]
   ];
 
 End[];
