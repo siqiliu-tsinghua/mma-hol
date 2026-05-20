@@ -433,5 +433,78 @@ HOLTest`runTests["stdlib/List: tlConsThm — ⊢ ∀x l. TL (CONS x l) = l, no h
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-c.1 tests: list iteration graph toolbox ===== *)
+
+HOLTest`runTests["stdlib/List: LIST_ITER_GRAPH has type β → (α→β→β) → α list → β → bool",
+  Module[{ty, βTy, fTy},
+    βTy = mkVarType["B"];
+    fTy = tyFun[αTy, tyFun[βTy, βTy]];
+    ty = HOL`Kernel`constType["LIST_ITER_GRAPH"];
+    HOLTest`assertEq[ty,
+      tyFun[βTy, tyFun[fTy, tyFun[listATy, tyFun[βTy, boolTy]]]],
+      "LIST_ITER_GRAPH : β → (α→β→β) → α list → β → bool"];
+]];
+
+HOLTest`runTests["stdlib/List: graphNilThm — ⊢ G NIL e, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`graphNilThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[comb[comb[const["LIST_ITER_GRAPH", _],
+        var["e", _]], var["f", _]], const["NIL", _]], var["e", _]]],
+      "shape: LIST_ITER_GRAPH e f NIL e"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: graphConsThm — shape ∀x t y. G t y ⇒ G (CONS x t)(f x y), no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`graphConsThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _],
+            comb[comb[const["⇒", _], _], _], _]], _]], _]]],
+      "shape: ∀x t y. _ ⇒ _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: graphExistsThm — shape ∀l. ∃z. G l z, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`graphExistsThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∃", _], abs[bvar[0, _], _, _]], _]]],
+      "shape: ∀l. ∃z. _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: graphNilValThm — shape ∀z. G NIL z ⇒ z = e, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`graphNilValThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["⇒", _], _],
+          comb[comb[const["=", _], bvar[0, _]], var["e", _]]], _]]],
+      "shape: ∀z. _ ⇒ z = e"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: graphInversionThm — shape ∀x l z. G (CONS x l) z ⇒ ∃y. …, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`graphInversionThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _],
+            comb[comb[const["⇒", _], _],
+              comb[const["∃", _], abs[bvar[0, _], _, _]]], _]], _]], _]]],
+      "shape: ∀x l z. _ ⇒ ∃y. _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];
