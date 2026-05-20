@@ -398,5 +398,40 @@ HOLTest`runTests["stdlib/List: lengthConsThm — ⊢ ∀x l. LENGTH (CONS x l) =
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-b.2 tests: HD, TL ===== *)
+
+HOLTest`runTests["stdlib/List: HD has type α list → α, TL has type α list → α list",
+  (HOLTest`assertEq[HOL`Kernel`constType["HD"], tyFun[listATy, αTy], "HD : α list → α"];
+   HOLTest`assertEq[HOL`Kernel`constType["TL"], tyFun[listATy, listATy], "TL : α list → α list"];)
+];
+
+HOLTest`runTests["stdlib/List: hdConsThm — ⊢ ∀x l. HD (CONS x l) = x, no hyps",
+  Module[{c, dThm, expected, xV, lV, hdC, consC},
+    dThm = HOL`Stdlib`List`hdConsThm;
+    c = concl[dThm];
+    xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    hdC = HOL`Stdlib`List`hdConst[];
+    consC = HOL`Stdlib`List`consConst[];
+    expected = mkComb[mkConst["∀", tyFun[tyFun[αTy, boolTy], boolTy]],
+      mkAbs[xV, mkComb[mkConst["∀", tyFun[tyFun[listATy, boolTy], boolTy]],
+        mkAbs[lV, mkEq[mkComb[hdC, mkComb[mkComb[consC, xV], lV]], xV]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "∀x l. HD (CONS x l) = x"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: tlConsThm — ⊢ ∀x l. TL (CONS x l) = l, no hyps",
+  Module[{c, dThm, expected, xV, lV, tlC, consC},
+    dThm = HOL`Stdlib`List`tlConsThm;
+    c = concl[dThm];
+    xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    tlC = HOL`Stdlib`List`tlConst[];
+    consC = HOL`Stdlib`List`consConst[];
+    expected = mkComb[mkConst["∀", tyFun[tyFun[αTy, boolTy], boolTy]],
+      mkAbs[xV, mkComb[mkConst["∀", tyFun[tyFun[listATy, boolTy], boolTy]],
+        mkAbs[lV, mkEq[mkComb[tlC, mkComb[mkComb[consC, xV], lV]], lV]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "∀x l. TL (CONS x l) = l"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];

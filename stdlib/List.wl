@@ -39,8 +39,9 @@
      funcExtThm:       Wolfram helper, ⊢ ∀x. f x = g x → ⊢ f = g
      listInductionThm: ⊢ ∀P. P NIL ∧ (∀x l. P l ⇒ P (CONS x l)) ⇒ ∀l. P l
 
-   This completes M7-4-a (the foundation slice of stdlib/List.wl).
-   Next slices (M7-4-b+) add HD/TL/APPEND/LENGTH/MAP/FILTER/FOLD. *)
+   M7-4-a is the foundation slice. M7-4-b adds LENGTH (b.1) and
+   HD/TL (b.2). Next: list recursion theorem, then APPEND/MAP/
+   FILTER/FOLD. *)
 
 BeginPackage["HOL`Stdlib`List`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
@@ -135,6 +136,20 @@ lengthNilThm::usage =
   "lengthNilThm — ⊢ LENGTH NIL = 0.";
 lengthConsThm::usage =
   "lengthConsThm — ⊢ ∀x l. LENGTH (CONS x l) = SUC (LENGTH l).";
+
+hdConst::usage =
+  "hdConst[] — HD : α list → α. HD l = ε x. REP_list l 0 = SOME x (head; unspecified ε at NIL).";
+hdDefThm::usage =
+  "hdDefThm — ⊢ HD = (λl. ε x. REP_list l 0 = SOME x).";
+hdConsThm::usage =
+  "hdConsThm — ⊢ ∀x l. HD (CONS x l) = x.";
+
+tlConst::usage =
+  "tlConst[] — TL : α list → α list. TL l = ABS_list (λj. REP_list l (SUC j)).";
+tlDefThm::usage =
+  "tlDefThm — ⊢ TL = (λl. ABS_list (λj. REP_list l (SUC j))).";
+tlConsThm::usage =
+  "tlConsThm — ⊢ ∀x l. TL (CONS x l) = l.";
 
 Begin["`Private`"];
 
@@ -2180,6 +2195,126 @@ lengthConsThm =
     lenEq = HOL`Bool`MP[uniqAtCons, witCons];
     (* ⊢ LENGTH (CONS x l) = SUC (LENGTH l) *)
     genL = HOL`Bool`GEN[lV, lenEq];
+    genX = HOL`Bool`GEN[xV, genL]
+  ];
+
+(* ============================================================ *)
+(* M7-4-b.2 : HD, TL                                             *)
+(* ============================================================ *)
+
+(* HD = λl. ε x. REP_list l 0 = SOME x                          *)
+
+hdTy = tyFun[listTy[αTy], αTy];
+
+hdDefBody[] :=
+  Module[{lV, zV},
+    lV = mkVar["l", listTy[αTy]];
+    zV = mkVar["zHd", αTy];
+    mkAbs[lV, mkComb[selectC[αTy], mkAbs[zV,
+      mkEq[mkComb[mkComb[repListConst[], lV], zeroConst[]],
+           mkComb[someAt[αTy], zV]]]]]
+  ];
+
+hdDefThm = newDefinition[mkEq[mkVar["HD", hdTy], hdDefBody[]]];
+hdConst[] := mkConst["HD", hdTy];
+hdTm[lTm_] := mkComb[hdConst[], lTm];
+
+unfoldHd[lTm_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[hdDefThm, lTm];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* hdConsThm : ⊢ ∀x l. HD (CONS x l) = x                        *)
+hdConsThm =
+  Module[{xV, lV, zV, consXL, repCH, predLam, existsZ, atSelect,
+          hdEqSome, someEq, someInjAt, hdEqX, genL, genX},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listTy[αTy]];
+    zV = mkVar["zHd", αTy];
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+
+    repCH = HOL`Kernel`INST[
+      {mkVar["x", αTy] -> xV, mkVar["l", listTy[αTy]] -> lV},
+      repConsHeadThm];
+    (* ⊢ REP_list (CONS x l) 0 = SOME x *)
+    predLam = mkAbs[zV,
+      mkEq[mkComb[mkComb[repListConst[], consXL], zeroConst[]],
+           mkComb[someAt[αTy], zV]]];
+    existsZ = HOL`Bool`EXISTS[
+      mkComb[existsC[αTy], predLam], xV, repCH];
+    (* ⊢ ∃z. REP_list (CONS x l) 0 = SOME z *)
+    atSelect = HOL`Stdlib`Num`selectOfExists[predLam, existsZ];
+    (* ⊢ REP_list (CONS x l) 0 = SOME (@predLam) *)
+    hdEqSome = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[
+        HOL`Drule`REWRCONV[HOL`Equal`SYM[unfoldHd[consXL]]]],
+      atSelect];
+    (* ⊢ REP_list (CONS x l) 0 = SOME (HD (CONS x l)) *)
+    someEq = TRANS[HOL`Equal`SYM[hdEqSome], repCH];
+    (* ⊢ SOME (HD (CONS x l)) = SOME x *)
+    someInjAt = HOL`Kernel`INST[
+      {mkVar["x", αTy] -> hdTm[consXL], mkVar["xP", αTy] -> xV},
+      HOL`Stdlib`Option`someInjThm];
+    (* ⊢ (SOME (HD (CONS x l)) = SOME x) ⇒ (HD (CONS x l) = x) *)
+    hdEqX = HOL`Bool`MP[someInjAt, someEq];
+    (* ⊢ HD (CONS x l) = x *)
+    genL = HOL`Bool`GEN[lV, hdEqX];
+    genX = HOL`Bool`GEN[xV, genL]
+  ];
+
+(* TL = λl. ABS_list (λj. REP_list l (SUC j))                   *)
+
+tlTy = tyFun[listTy[αTy], listTy[αTy]];
+
+tlDefBody[] :=
+  Module[{lV, jV},
+    lV = mkVar["l", listTy[αTy]];
+    jV = mkVar["jTl", numTy];
+    mkAbs[lV, mkComb[absListConst[],
+      mkAbs[jV, mkComb[mkComb[repListConst[], lV], sucTm[jV]]]]]
+  ];
+
+tlDefThm = newDefinition[mkEq[mkVar["TL", tlTy], tlDefBody[]]];
+tlConst[] := mkConst["TL", tlTy];
+tlTm[lTm_] := mkComb[tlConst[], lTm];
+
+unfoldTl[lTm_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[tlDefThm, lTm];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* tlConsThm : ⊢ ∀x l. TL (CONS x l) = l                        *)
+tlConsThm =
+  Module[{xV, lV, jV, consXL, unfoldTlCons, repCTAtJ, absJ,
+          etaRepL, shfEqRepL, applyAbs, absRepL, tlEqL, genL, genX},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listTy[αTy]];
+    jV = mkVar["jTl", numTy];
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+
+    unfoldTlCons = unfoldTl[consXL];
+    (* ⊢ TL (CONS x l) = ABS_list (λj. REP_list (CONS x l) (SUC j)) *)
+    repCTAtJ = HOL`Bool`SPEC[jV, HOL`Kernel`INST[
+      {mkVar["x", αTy] -> xV, mkVar["l", listTy[αTy]] -> lV},
+      repConsTailThm]];
+    (* ⊢ REP_list (CONS x l) (SUC j) = REP_list l j *)
+    absJ = HOL`Kernel`ABS[jV, repCTAtJ];
+    (* ⊢ (λj. REP_list (CONS x l) (SUC j)) = (λj. REP_list l j) *)
+    etaRepL = HOL`Bool`ISPEC[
+      mkComb[repListConst[], lV], HOL`Bootstrap`etaAx];
+    (* ⊢ (λj. REP_list l j) = REP_list l *)
+    shfEqRepL = TRANS[absJ, etaRepL];
+    (* ⊢ (λj. REP_list (CONS x l) (SUC j)) = REP_list l *)
+    applyAbs = HOL`Equal`APTERM[absListConst[], shfEqRepL];
+    (* ⊢ ABS_list (λj. REP_list (CONS x l) (SUC j)) = ABS_list (REP_list l) *)
+    absRepL = HOL`Kernel`INST[
+      {mkVar["a", listTy[αTy]] -> lV}, absRepListThm];
+    (* ⊢ ABS_list (REP_list l) = l *)
+    tlEqL = TRANS[unfoldTlCons, TRANS[applyAbs, absRepL]];
+    (* ⊢ TL (CONS x l) = l *)
+    genL = HOL`Bool`GEN[lV, tlEqL];
     genX = HOL`Bool`GEN[xV, genL]
   ];
 
