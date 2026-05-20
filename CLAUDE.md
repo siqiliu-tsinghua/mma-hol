@@ -35,6 +35,7 @@ Hard rules:
 - **WL comments close at the first `*)`** — `(a*)`, `(SUC k*)` etc. in comment prose silently terminate the comment; error points far below the cause.
 - **`mkAbs` binds by (name, type), not reference** — an internal binder `mkVar["j", ty]` captures a caller-supplied free var of the same name. Use distinctive internal binder names (`jBnd`, `kBnd`) or `freshName`.
 - **Resource cost vs convenience**: on hot paths (anything per-node in proof traversal — `freesIn`, `vsubst`, `instType`, `betaSubst`, `tyvarsInTerm`, `aconv`) prefer the costlier-to-write but cheaper-to-run alternative. (Worked precedent: structural `bvar[k, ty]` head over name-encoded indices — ~2× faster per traversal at the price of a `bvar` clause in every term walker.)
+- **Debug with narrow probes, never whole-term dumps.** When a kernel rule fails mid-proof, do NOT `Print` the full term tree (`Print[concl[th]]` / `Print[…Short[#,5]&]` on a deep term) — one such dump is thousands of chars, and every later turn re-pays for it in context. Instead probe narrowly: `Head[th]` (is it a `thmTag` or an unevaluated call?), `hyp[th]`, `MatchQ[concl[th], <small pattern>]`, or print a single sub-slot (`concl[th][[1,2]]`). Binary-search the failing step by moving a single shape check, not by dumping everything. Token cost is dominated by accumulated context, so a few KB of term-tree spam per build round compounds fast. (Snapshot rebuilds are wall-clock-heavy but token-cheap; the expensive thing is large tool output.)
 
 ## Directory layout (see PLAN §8 for the full tree)
 
