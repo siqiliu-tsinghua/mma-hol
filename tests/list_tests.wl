@@ -350,5 +350,53 @@ HOLTest`runTests["stdlib/List: listInductionThm — ⊢ ∀P. P NIL ∧ (∀x l.
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-b.1 tests: LENGTH ===== *)
+
+HOLTest`runTests["stdlib/List: LENGTH has type α list → num",
+  HOLTest`assertEq[HOL`Kernel`constType["LENGTH"], tyFun[listATy, numTy],
+    "LENGTH : α list → num"];
+];
+
+HOLTest`runTests["stdlib/List: ltExtThm — ⊢ ∀m n. (∀i. ¬(i<m)=¬(i<n)) ⇒ m=n, no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`ltExtThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[comb[const["⇒", _], _], _], _]], _]]],
+      "shape: ∀m n. _ ⇒ _"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: lengthNilThm — ⊢ LENGTH NIL = 0, no hyps",
+  Module[{c, dThm, expected},
+    dThm = HOL`Stdlib`List`lengthNilThm;
+    c = concl[dThm];
+    expected = mkEq[
+      mkComb[HOL`Stdlib`List`lengthConst[], HOL`Stdlib`List`nilConst[]],
+      mkConst["0", numTy]];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "LENGTH NIL = 0"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: lengthConsThm — ⊢ ∀x l. LENGTH (CONS x l) = SUC (LENGTH l), no hyps",
+  Module[{c, dThm, expected, xV, lV, lenC, consC, sucC},
+    dThm = HOL`Stdlib`List`lengthConsThm;
+    c = concl[dThm];
+    xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    lenC = HOL`Stdlib`List`lengthConst[];
+    consC = HOL`Stdlib`List`consConst[];
+    sucC = mkConst["SUC", tyFun[numTy, numTy]];
+    expected = mkComb[mkConst["∀", tyFun[tyFun[αTy, boolTy], boolTy]],
+      mkAbs[xV, mkComb[mkConst["∀", tyFun[tyFun[listATy, boolTy], boolTy]],
+        mkAbs[lV, mkEq[
+          mkComb[lenC, mkComb[mkComb[consC, xV], lV]],
+          mkComb[sucC, mkComb[lenC, lV]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀x l. LENGTH (CONS x l) = SUC (LENGTH l)"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];

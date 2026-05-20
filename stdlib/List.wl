@@ -118,6 +118,24 @@ funcExtThm::usage =
 listInductionThm::usage =
   "listInductionThm — ⊢ ∀P. P NIL ∧ (∀x l. P l ⇒ P (CONS x l)) ⇒ ∀l. P l.";
 
+ltNotReflThm::usage =
+  "ltNotReflThm — ⊢ ∀m. ¬(m < m).";
+ltExtThm::usage =
+  "ltExtThm — ⊢ ∀m n. (∀i. ¬(i < m) = ¬(i < n)) ⇒ m = n.";
+
+lengthConst::usage =
+  "lengthConst[] — LENGTH : α list → num. LENGTH l = ε n. ∀i. REP_list l i = NONE ⇔ ¬(i < n).";
+lengthDefThm::usage =
+  "lengthDefThm — ⊢ LENGTH = (λl. ε n. ∀i. REP_list l i = NONE ⇔ ¬(i < n)).";
+lengthSpecThm::usage =
+  "lengthSpecThm — ⊢ ∀l. ∀i. REP_list l i = NONE ⇔ ¬(i < LENGTH l).";
+lengthUniqueThm::usage =
+  "lengthUniqueThm — ⊢ ∀l n. (∀i. REP_list l i = NONE ⇔ ¬(i < n)) ⇒ LENGTH l = n.";
+lengthNilThm::usage =
+  "lengthNilThm — ⊢ LENGTH NIL = 0.";
+lengthConsThm::usage =
+  "lengthConsThm — ⊢ ∀x l. LENGTH (CONS x l) = SUC (LENGTH l).";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -149,6 +167,8 @@ impTm[a_, b_] := mkComb[mkComb[impC[], a], b];
 (* Local num-term builders (Num.wl's ltTm/plusTm/etc. are Private). *)
 ltTmLocal[aTm_, bTm_] :=
   mkComb[mkComb[HOL`Stdlib`Num`ltConst[], aTm], bTm];
+leqTmLocal[aTm_, bTm_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`leqConst[], aTm], bTm];
 sucTm[nTm_] := mkComb[HOL`Stdlib`Num`sucConst[], nTm];
 
 (* ============================================================ *)
@@ -1840,6 +1860,327 @@ listInductionThm =
     genL = HOL`Bool`GEN[lV, chooseN];
     dischConj = HOL`Bool`DISCH[conjTm, genL];
     genP = HOL`Bool`GEN[pV, dischConj]
+  ];
+
+(* ============================================================ *)
+(* M7-4-b.1 : LENGTH                                             *)
+(* ============================================================ *)
+
+(* ltNotReflThm : ⊢ ∀m. ¬(m < m) *)
+ltNotReflThm =
+  Module[{mV, mLtMTm, mLtMHyp, notMEqM, contradF, dischLt, genM},
+    mV = mkVar["m", numTy];
+    mLtMTm = ltTmLocal[mV, mV];
+    mLtMHyp = ASSUME[mLtMTm];
+    notMEqM = HOL`Bool`MP[
+      HOL`Bool`SPEC[mV, HOL`Bool`SPEC[mV, HOL`Stdlib`Num`ltImpliesNotEqThm]],
+      mLtMHyp];
+    (* (m<m) ⊢ ¬(m = m) *)
+    contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[notMEqM], REFL[mV]];
+    (* (m<m) ⊢ F *)
+    dischLt = HOL`Bool`DISCH[mLtMTm, contradF];
+    genM = HOL`Bool`GEN[mV, HOL`Bool`NOTINTRO[dischLt]]
+  ];
+
+(* ltExtThm : ⊢ ∀m n. (∀i. ¬(i < m) = ¬(i < n)) ⇒ m = n          *)
+(* Instantiate at i=m and i=n; ¬(m<m), ¬(n<n) collapse via       *)
+(* EQTINTRO/EQTELIM to give ¬(m<n) and ¬(n<m); leqTotal +         *)
+(* leqCaseEqLt then forces m = n.                                 *)
+ltExtThm =
+  Module[{mV, nV, iV, hypTm, hypHyp, hypAtM, hypAtN,
+          notMLtM, notNLtN, notMLtN, notNLtM, mEqN,
+          dischHyp, genN, genM},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy]; iV = mkVar["i", numTy];
+    hypTm = mkComb[forallC[numTy], mkAbs[iV,
+      mkEq[mkComb[notC[], ltTmLocal[iV, mV]],
+           mkComb[notC[], ltTmLocal[iV, nV]]]]];
+    hypHyp = ASSUME[hypTm];
+
+    hypAtM = HOL`Bool`SPEC[mV, hypHyp];
+    (* ⊢ ¬(m<m) = ¬(m<n) *)
+    notMLtM = HOL`Bool`SPEC[mV, ltNotReflThm];
+    (* ⊢ ¬(m<m) *)
+    notMLtN = HOL`Bool`EQTELIM[
+      TRANS[HOL`Equal`SYM[hypAtM], HOL`Bool`EQTINTRO[notMLtM]]];
+    (* ⊢ ¬(m<n) *)
+
+    hypAtN = HOL`Bool`SPEC[nV, hypHyp];
+    (* ⊢ ¬(n<m) = ¬(n<n) *)
+    notNLtN = HOL`Bool`SPEC[nV, ltNotReflThm];
+    notNLtM = HOL`Bool`EQTELIM[
+      TRANS[hypAtN, HOL`Bool`EQTINTRO[notNLtN]]];
+    (* ⊢ ¬(n<m) *)
+
+    mEqN = Module[{leqTotalAt, caseMLeqN, caseNLeqM},
+      leqTotalAt = HOL`Bool`SPEC[nV,
+        HOL`Bool`SPEC[mV, HOL`Stdlib`Num`leqTotalThm]];
+      caseMLeqN = Module[{mLeqNHyp, mEqNOrLt, mEqNCase, mLtNCase},
+        mLeqNHyp = ASSUME[leqTmLocal[mV, nV]];
+        mEqNOrLt = HOL`Bool`MP[
+          HOL`Bool`SPEC[nV,
+            HOL`Bool`SPEC[mV, HOL`Stdlib`Num`leqCaseEqLtThm]],
+          mLeqNHyp];
+        (* ⊢ m = n ∨ m < n *)
+        mEqNCase = ASSUME[mkEq[mV, nV]];
+        mLtNCase = HOL`Bool`CONTR[mkEq[mV, nV],
+          HOL`Bool`MP[HOL`Bool`NOTELIM[notMLtN],
+            ASSUME[ltTmLocal[mV, nV]]]];
+        HOL`Bool`DISJCASES[mEqNOrLt, mEqNCase, mLtNCase]
+      ];
+      caseNLeqM = Module[{nLeqMHyp, nEqMOrLt, nEqMCase, nLtMCase},
+        nLeqMHyp = ASSUME[leqTmLocal[nV, mV]];
+        nEqMOrLt = HOL`Bool`MP[
+          HOL`Bool`SPEC[mV,
+            HOL`Bool`SPEC[nV, HOL`Stdlib`Num`leqCaseEqLtThm]],
+          nLeqMHyp];
+        (* ⊢ n = m ∨ n < m *)
+        nEqMCase = HOL`Equal`SYM[ASSUME[mkEq[nV, mV]]];
+        nLtMCase = HOL`Bool`CONTR[mkEq[mV, nV],
+          HOL`Bool`MP[HOL`Bool`NOTELIM[notNLtM],
+            ASSUME[ltTmLocal[nV, mV]]]];
+        HOL`Bool`DISJCASES[nEqMOrLt, nEqMCase, nLtMCase]
+      ];
+      HOL`Bool`DISJCASES[leqTotalAt, caseMLeqN, caseNLeqM]
+      (* ⊢ m = n *)
+    ];
+    dischHyp = HOL`Bool`DISCH[hypTm, mEqN];
+    genN = HOL`Bool`GEN[nV, dischHyp];
+    genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* LENGTH = λl. ε n. ∀i. REP_list l i = NONE ⇔ ¬(i < n)          *)
+(* ============================================================ *)
+
+lengthTy = tyFun[listTy[αTy], numTy];
+
+lengthPredLam[lTm_] :=
+  Module[{nV, iV},
+    nV = mkVar["n", numTy];
+    iV = mkVar["i", numTy];
+    mkAbs[nV, mkComb[forallC[numTy], mkAbs[iV,
+      mkEq[
+        mkEq[mkComb[mkComb[repListConst[], lTm], iV], noneAt[αTy]],
+        mkComb[notC[], ltTmLocal[iV, nV]]]]]]
+  ];
+
+lengthDefBody[] :=
+  Module[{lV},
+    lV = mkVar["l", listTy[αTy]];
+    mkAbs[lV, mkComb[selectC[numTy], lengthPredLam[lV]]]
+  ];
+
+lengthDefThm = newDefinition[
+  mkEq[mkVar["LENGTH", lengthTy], lengthDefBody[]]];
+lengthConst[] := mkConst["LENGTH", lengthTy];
+lengthTm[lTm_] := mkComb[lengthConst[], lTm];
+
+unfoldLength[lTm_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[lengthDefThm, lTm];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* lengthSpecAt[l] : ⊢ ∀i. REP_list l i = NONE ⇔ ¬(i < LENGTH l)  *)
+lengthSpecAt[lTm_] :=
+  Module[{predLam, isListPRepL, betaUnfold, existsN, atSelect},
+    predLam = lengthPredLam[lTm];
+    isListPRepL = HOL`Kernel`INST[
+      {mkVar["l", listTy[αTy]] -> lTm}, isListPOfRepListThm];
+    betaUnfold = BETACONV[
+      mkComb[isListPLambdaTerm[], mkComb[repListConst[], lTm]]];
+    existsN = EQMP[betaUnfold, isListPRepL];
+    (* ⊢ ∃n. ∀i. REP_list l i = NONE ⇔ ¬(i < n) *)
+    atSelect = HOL`Stdlib`Num`selectOfExists[predLam, existsN];
+    (* ⊢ ∀i. REP_list l i = NONE ⇔ ¬(i < @predLam) *)
+    HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[
+        HOL`Drule`REWRCONV[HOL`Equal`SYM[unfoldLength[lTm]]]],
+      atSelect]
+    (* ⊢ ∀i. REP_list l i = NONE ⇔ ¬(i < LENGTH l) *)
+  ];
+
+lengthSpecThm =
+  Module[{lV},
+    lV = mkVar["l", listTy[αTy]];
+    HOL`Bool`GEN[lV, lengthSpecAt[lV]]
+  ];
+
+(* lengthUniqueThm : ⊢ ∀l n. (∀i. REP_list l i = NONE ⇔ ¬(i < n)) *)
+(*                          ⇒ LENGTH l = n                         *)
+lengthUniqueThm =
+  Module[{lV, nV, iV, hypTm, hypHyp, lenSpec,
+          notIffTm, perI, genI, ltExtAt, nEqLen,
+          dischHyp, genN, genL},
+    lV = mkVar["l", listTy[αTy]];
+    nV = mkVar["n", numTy];
+    iV = mkVar["i", numTy];
+    hypTm = mkComb[forallC[numTy], mkAbs[iV,
+      mkEq[
+        mkEq[mkComb[mkComb[repListConst[], lV], iV], noneAt[αTy]],
+        mkComb[notC[], ltTmLocal[iV, nV]]]]];
+    hypHyp = ASSUME[hypTm];
+    lenSpec = lengthSpecAt[lV];
+    (* ⊢ ∀i. REP_list l i = NONE ⇔ ¬(i < LENGTH l) *)
+
+    (* For each i: ¬(i < n) = ¬(i < LENGTH l). *)
+    perI = Module[{hypAtI, lenAtI},
+      hypAtI = HOL`Bool`SPEC[iV, hypHyp];
+      (* ⊢ (REP_list l i = NONE) = ¬(i < n) *)
+      lenAtI = HOL`Bool`SPEC[iV, lenSpec];
+      (* ⊢ (REP_list l i = NONE) = ¬(i < LENGTH l) *)
+      TRANS[HOL`Equal`SYM[hypAtI], lenAtI]
+      (* ⊢ ¬(i < n) = ¬(i < LENGTH l) *)
+    ];
+    genI = HOL`Bool`GEN[iV, perI];
+    (* ⊢ ∀i. ¬(i < n) = ¬(i < LENGTH l) *)
+    ltExtAt = HOL`Bool`SPEC[lengthTm[lV],
+      HOL`Bool`SPEC[nV, ltExtThm]];
+    (* ⊢ (∀i. ¬(i < n) = ¬(i < LENGTH l)) ⇒ n = LENGTH l *)
+    nEqLen = HOL`Bool`MP[ltExtAt, genI];
+    (* ⊢ n = LENGTH l *)
+    dischHyp = HOL`Bool`DISCH[hypTm, HOL`Equal`SYM[nEqLen]];
+    (* ⊢ (∀i. …) ⇒ LENGTH l = n *)
+    genN = HOL`Bool`GEN[nV, dischHyp];
+    genL = HOL`Bool`GEN[lV, genN]
+  ];
+
+(* lengthNilThm : ⊢ LENGTH NIL = 0                               *)
+(* lengthUnique at (NIL, 0): need ∀i. REP_list NIL i = NONE ⇔     *)
+(* ¬(i < 0). REP_list NIL i = NONE always (repNil + beta);        *)
+(* ¬(i < 0) always (notLtZero). Both T.                           *)
+lengthNilThm =
+  Module[{iV, repNilAtI, repNilEqNone, notLtZeroAtI,
+          iffAtI, genI, uniqAtNil0},
+    iV = mkVar["i", numTy];
+    repNilAtI = HOL`Equal`APTHM[repNilThm, iV];
+    (* ⊢ REP_list NIL i = (λi. NONE) i *)
+    repNilEqNone = TRANS[repNilAtI, BETACONV[concl[repNilAtI][[2]]]];
+    (* ⊢ REP_list NIL i = NONE *)
+    notLtZeroAtI = HOL`Bool`SPEC[iV, HOL`Stdlib`Num`notLtZeroThm];
+    (* ⊢ ¬(i < 0) *)
+    iffAtI = TRANS[HOL`Bool`EQTINTRO[repNilEqNone],
+                   HOL`Equal`SYM[HOL`Bool`EQTINTRO[notLtZeroAtI]]];
+    (* ⊢ (REP_list NIL i = NONE) = ¬(i < 0) *)
+    genI = HOL`Bool`GEN[iV, iffAtI];
+    (* ⊢ ∀i. (REP_list NIL i = NONE) = ¬(i < 0) *)
+    uniqAtNil0 = HOL`Bool`SPEC[zeroConst[],
+      HOL`Bool`SPEC[nilConst[], lengthUniqueThm]];
+    (* ⊢ (∀i. REP_list NIL i = NONE ⇔ ¬(i < 0)) ⇒ LENGTH NIL = 0 *)
+    HOL`Bool`MP[uniqAtNil0, genI]
+    (* ⊢ LENGTH NIL = 0 *)
+  ];
+
+(* consLengthWitnessAt[x, l] :                                    *)
+(*   ⊢ ∀i. REP_list (CONS x l) i = NONE ⇔ ¬(i < SUC (LENGTH l))   *)
+(* Per-index, mirroring consCarrierIsListP but with n' = LENGTH l *)
+(* supplied by lengthSpecAt[l].                                   *)
+consLengthWitnessAt[xTm_, lTm_] :=
+  Module[{iV, jLenV, eqC, consXL, lenSpecL, numCasesAtI,
+          iEqZeroBranch, iEqSucBranch, perI, genI},
+    iV = mkVar["i", numTy];
+    jLenV = mkVar["jLen", numTy];
+    eqC = mkConst["=", tyFun[optionATy, tyFun[optionATy, boolTy]]];
+    consXL = mkComb[mkComb[consConst[], xTm], lTm];
+    lenSpecL = lengthSpecAt[lTm];
+    (* ⊢ ∀i. REP_list l i = NONE ⇔ ¬(i < LENGTH l) *)
+    numCasesAtI = HOL`Bool`SPEC[iV, HOL`Stdlib`Num`numCasesThm];
+
+    iEqZeroBranch = Module[{iEqZeroHyp, repCHAt0, lhsRw, lhsEqF,
+                            zeroLtSucLen, notNot, notZeroLtEqF, rhsRw, rhsEqF},
+      iEqZeroHyp = ASSUME[mkEq[iV, zeroConst[]]];
+      repCHAt0 = HOL`Kernel`INST[
+        {mkVar["x", αTy] -> xTm, mkVar["l", listTy[αTy]] -> lTm},
+        repConsHeadThm];
+      (* ⊢ REP_list (CONS x l) 0 = SOME x *)
+      lhsRw = TRANS[
+        HOL`Equal`APTHM[HOL`Equal`APTERM[eqC,
+          HOL`Equal`APTERM[mkComb[repListConst[], consXL], iEqZeroHyp]],
+          noneAt[αTy]],
+        HOL`Equal`APTHM[HOL`Equal`APTERM[eqC, repCHAt0], noneAt[αTy]]];
+      (* (i=0) ⊢ (REP_list (CONS x l) i = NONE) = (SOME x = NONE) *)
+      lhsEqF = TRANS[lhsRw,
+        eqfIntroLocal[HOL`Bool`SPEC[xTm, someNotEqNoneThm]]];
+      (* (i=0) ⊢ (REP_list (CONS x l) i = NONE) = F *)
+      zeroLtSucLen = HOL`Bool`SPEC[lengthTm[lTm], zeroLtSucThm];
+      (* ⊢ 0 < SUC (LENGTH l) *)
+      notNot = notNotIntroLocal[zeroLtSucLen];
+      notZeroLtEqF = eqfIntroLocal[notNot];
+      (* ⊢ ¬(0 < SUC (LENGTH l)) = F *)
+      rhsRw = HOL`Equal`APTERM[notC[],
+        HOL`Equal`APTHM[
+          HOL`Equal`APTERM[HOL`Stdlib`Num`ltConst[], iEqZeroHyp],
+          sucTm[lengthTm[lTm]]]];
+      (* (i=0) ⊢ ¬(i < SUC (LENGTH l)) = ¬(0 < SUC (LENGTH l)) *)
+      rhsEqF = TRANS[rhsRw, notZeroLtEqF];
+      (* (i=0) ⊢ ¬(i < SUC (LENGTH l)) = F *)
+      TRANS[lhsEqF, HOL`Equal`SYM[rhsEqF]]
+      (* (i=0) ⊢ (REP_list (CONS x l) i = NONE) = ¬(i < SUC (LENGTH l)) *)
+    ];
+
+    iEqSucBranch = Module[{exJTm, exJHyp, iEqSucJ, iEqSucJHyp,
+                           repCTAt, lhsRw, lenAtJ, lhsEqNotLt,
+                           ltSucMC, rhsRw1, rhsRw2, rhsRw3, finalIff, choseJ},
+      exJTm = mkComb[existsC[numTy], mkAbs[jLenV, mkEq[iV, sucTm[jLenV]]]];
+      exJHyp = ASSUME[exJTm];
+      iEqSucJ = mkEq[iV, sucTm[jLenV]];
+      iEqSucJHyp = ASSUME[iEqSucJ];
+      repCTAt = HOL`Bool`SPEC[jLenV, HOL`Kernel`INST[
+        {mkVar["x", αTy] -> xTm, mkVar["l", listTy[αTy]] -> lTm},
+        repConsTailThm]];
+      (* ⊢ REP_list (CONS x l) (SUC jLen) = REP_list l jLen *)
+      lhsRw = TRANS[
+        HOL`Equal`APTHM[HOL`Equal`APTERM[eqC,
+          HOL`Equal`APTERM[mkComb[repListConst[], consXL], iEqSucJHyp]],
+          noneAt[αTy]],
+        HOL`Equal`APTHM[HOL`Equal`APTERM[eqC, repCTAt], noneAt[αTy]]];
+      (* (i=SUC jLen) ⊢ (REP_list (CONS x l) i = NONE)
+                        = (REP_list l jLen = NONE) *)
+      lenAtJ = HOL`Bool`SPEC[jLenV, lenSpecL];
+      (* ⊢ (REP_list l jLen = NONE) = ¬(jLen < LENGTH l) *)
+      lhsEqNotLt = TRANS[lhsRw, lenAtJ];
+      (* (i=SUC jLen) ⊢ (REP_list (CONS x l) i = NONE)
+                        = ¬(jLen < LENGTH l) *)
+      ltSucMC = HOL`Bool`SPEC[lengthTm[lTm],
+        HOL`Bool`SPEC[jLenV, ltSucMonoCancelThm]];
+      (* ⊢ (SUC jLen < SUC (LENGTH l)) = (jLen < LENGTH l) *)
+      rhsRw1 = HOL`Equal`APTERM[notC[],
+        HOL`Equal`APTHM[
+          HOL`Equal`APTERM[HOL`Stdlib`Num`ltConst[], iEqSucJHyp],
+          sucTm[lengthTm[lTm]]]];
+      (* (i=SUC jLen) ⊢ ¬(i < SUC (LENGTH l))
+                        = ¬(SUC jLen < SUC (LENGTH l)) *)
+      rhsRw2 = HOL`Equal`APTERM[notC[], ltSucMC];
+      (* ⊢ ¬(SUC jLen < SUC (LENGTH l)) = ¬(jLen < LENGTH l) *)
+      rhsRw3 = TRANS[rhsRw1, rhsRw2];
+      (* (i=SUC jLen) ⊢ ¬(i < SUC (LENGTH l)) = ¬(jLen < LENGTH l) *)
+      finalIff = TRANS[lhsEqNotLt, HOL`Equal`SYM[rhsRw3]];
+      (* (i=SUC jLen) ⊢ (REP_list (CONS x l) i = NONE)
+                        = ¬(i < SUC (LENGTH l)) *)
+      choseJ = HOL`Bool`CHOOSE[jLenV, exJHyp, finalIff];
+      choseJ
+    ];
+
+    perI = HOL`Bool`DISJCASES[numCasesAtI, iEqZeroBranch, iEqSucBranch];
+    genI = HOL`Bool`GEN[iV, perI]
+    (* ⊢ ∀i. REP_list (CONS x l) i = NONE ⇔ ¬(i < SUC (LENGTH l)) *)
+  ];
+
+(* lengthConsThm : ⊢ ∀x l. LENGTH (CONS x l) = SUC (LENGTH l)    *)
+lengthConsThm =
+  Module[{xV, lV, consXL, witCons, uniqAtCons, lenEq, genL, genX},
+    xV = mkVar["x", αTy];
+    lV = mkVar["l", listTy[αTy]];
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+    witCons = consLengthWitnessAt[xV, lV];
+    (* ⊢ ∀i. REP_list (CONS x l) i = NONE ⇔ ¬(i < SUC (LENGTH l)) *)
+    uniqAtCons = HOL`Bool`SPEC[sucTm[lengthTm[lV]],
+      HOL`Bool`SPEC[consXL, lengthUniqueThm]];
+    (* ⊢ (∀i. …) ⇒ LENGTH (CONS x l) = SUC (LENGTH l) *)
+    lenEq = HOL`Bool`MP[uniqAtCons, witCons];
+    (* ⊢ LENGTH (CONS x l) = SUC (LENGTH l) *)
+    genL = HOL`Bool`GEN[lV, lenEq];
+    genX = HOL`Bool`GEN[xV, genL]
   ];
 
 End[];
