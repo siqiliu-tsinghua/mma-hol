@@ -42,8 +42,9 @@
    M7-4-a is the foundation slice. M7-4-b adds LENGTH (b.1) and
    HD/TL (b.2). M7-4-c builds the list iteration theorem: c.1 is
    the LIST_ITER_GRAPH toolbox (closed/exists/nilVal/inversion);
-   c.2 will assemble uniqueness + listIterationThm, the enabler
-   for APPEND/MAP/FILTER/FOLD. *)
+   c.2 adds uniqueness + listIterationThm
+     ⊢ ∀e f. ∃g. g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l),
+   the enabler for APPEND/MAP/FILTER/FOLD (M7-4-d). *)
 
 BeginPackage["HOL`Stdlib`List`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
@@ -167,6 +168,10 @@ graphNilValThm::usage =
   "graphNilValThm — ⊢ ∀z. LIST_ITER_GRAPH e f NIL z ⇒ z = e.";
 graphInversionThm::usage =
   "graphInversionThm — ⊢ ∀x l z. LIST_ITER_GRAPH e f (CONS x l) z ⇒ ∃y. LIST_ITER_GRAPH e f l y ∧ z = f x y.";
+graphUniqueThm::usage =
+  "graphUniqueThm — ⊢ ∀l z z'. LIST_ITER_GRAPH e f l z ⇒ LIST_ITER_GRAPH e f l z' ⇒ z = z'.";
+listIterationThm::usage =
+  "listIterationThm — ⊢ ∀e f. ∃g. g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l). List iteration principle (analogue of numIterationThm).";
 
 Begin["`Private`"];
 
@@ -2703,6 +2708,207 @@ graphInversionThm =
     genZ = HOL`Bool`GEN[zV, dischGConsZ];
     genL = HOL`Bool`GEN[lV, genZ];
     genX = HOL`Bool`GEN[xV, genL]
+  ];
+
+(* ============================================================ *)
+(* M7-4-c.2 : uniqueness + list iteration theorem                *)
+(* ============================================================ *)
+
+(* === Lemma 5 (uniqueness) :                                    *)
+(*   ⊢ ∀l z z'. G l z ⇒ G l z' ⇒ z = z'                          *)
+(* Rule induction: take Φ = λl z. ∀z'. G l z' ⇒ z = z'.          *)
+(* closed[Φ] via graphNilValThm (NIL clause) and                 *)
+(* graphInversionThm (CONS clause); minimality (instantiate ∀R   *)
+(* at Φ) gives G ⊆ Φ, i.e. uniqueness.                            *)
+(* ============================================================ *)
+graphUniqueThm =
+  Module[{eV, fV, lV, zV, zpV, phiTm,
+          gLZTm, gLZHyp, gLZUnf, specPhi, specPhiBeta,
+          closedPhi, phiLZBeta, specZp, dischGLZ, genZp2, genZ, genL},
+    eV = mkVar["e", βTy]; fV = mkVar["f", iterFnTy];
+    lV = mkVar["l", listTy[αTy]]; zV = mkVar["z", βTy];
+    zpV = mkVar["zp", βTy];
+
+    (* Φ = λl z. ∀z'. G l z' ⇒ z = z' *)
+    phiTm = mkAbs[lV, mkAbs[zV,
+      mkComb[forallC[βTy], mkAbs[zpV,
+        impTm[graphAppTm[eV, fV, lV, zpV], mkEq[zV, zpV]]]]]];
+
+    (* closed[Φ] (beta-normal). *)
+    closedPhi = Module[{conj1, conj2},
+      (* conj1 = Φ NIL e beta = ∀z'. G NIL z' ⇒ e = z' *)
+      conj1 = Module[{zp, gNilZpHyp, nilValAt, zpEqE, dischG, genZpC1},
+        zp = mkVar["zp", βTy];
+        gNilZpHyp = ASSUME[graphAppTm[eV, fV, nilConst[], zp]];
+        nilValAt = HOL`Bool`SPEC[zp, graphNilValThm];
+        (* ⊢ G NIL zp ⇒ zp = e *)
+        zpEqE = HOL`Bool`MP[nilValAt, gNilZpHyp];
+        (* (G NIL zp) ⊢ zp = e *)
+        dischG = HOL`Bool`DISCH[graphAppTm[eV, fV, nilConst[], zp],
+          HOL`Equal`SYM[zpEqE]];
+        (* ⊢ G NIL zp ⇒ e = zp *)
+        genZpC1 = HOL`Bool`GEN[zp, dischG]
+        (* ⊢ ∀z'. G NIL z' ⇒ e = z' *)
+      ];
+      (* conj2 = Φ-step beta:
+         ∀x t y. (∀z'. G t z' ⇒ y = z')
+                  ⇒ (∀z'. G (CONS x t) z' ⇒ f x y = z') *)
+      conj2 = Module[{xV, tV, yV, phiTYTm, phiTYHyp, zp, consXT,
+                      gConsZpTm, gConsZpHyp, invMP, ypV, gTypEqTm,
+                      gTypEqHyp, gTyp, zpEqFxyp, phiAtYp, yEqYp,
+                      fxyEqFxyp, fxyEqZp, choseYp, dischGCons, genZpC2,
+                      dischPhiTY, genY, genT, genX},
+        xV = mkVar["x", αTy]; tV = mkVar["t", listTy[αTy]];
+        yV = mkVar["y", βTy]; zp = mkVar["zp", βTy]; ypV = mkVar["yp", βTy];
+        consXT = mkComb[mkComb[consConst[], xV], tV];
+        phiTYTm = mkComb[forallC[βTy], mkAbs[zp,
+          impTm[graphAppTm[eV, fV, tV, zp], mkEq[yV, zp]]]];
+        phiTYHyp = ASSUME[phiTYTm];
+        (* (Φ t y) ⊢ ∀z'. G t z' ⇒ y = z' *)
+        gConsZpTm = graphAppTm[eV, fV, consXT, zp];
+        gConsZpHyp = ASSUME[gConsZpTm];
+        invMP = HOL`Bool`MP[
+          HOL`Bool`SPEC[zp,
+            HOL`Bool`SPEC[tV, HOL`Bool`SPEC[xV, graphInversionThm]]],
+          gConsZpHyp];
+        (* (G (CONS x t) zp) ⊢ ∃y. G t y ∧ zp = f x y *)
+        gTypEqTm = andTm[graphAppTm[eV, fV, tV, ypV],
+                         mkEq[zp, mkComb[mkComb[fV, xV], ypV]]];
+        gTypEqHyp = ASSUME[gTypEqTm];
+        gTyp = HOL`Bool`CONJUNCT1[gTypEqHyp];
+        (* (G t yp ∧ zp = f x yp) ⊢ G t yp *)
+        zpEqFxyp = HOL`Bool`CONJUNCT2[gTypEqHyp];
+        (* (…) ⊢ zp = f x yp *)
+        phiAtYp = HOL`Bool`SPEC[ypV, phiTYHyp];
+        (* (Φ t y) ⊢ G t yp ⇒ y = yp *)
+        yEqYp = HOL`Bool`MP[phiAtYp, gTyp];
+        (* (Φ t y, …) ⊢ y = yp *)
+        fxyEqFxyp = HOL`Equal`APTERM[mkComb[fV, xV], yEqYp];
+        (* (…) ⊢ f x y = f x yp *)
+        fxyEqZp = TRANS[fxyEqFxyp, HOL`Equal`SYM[zpEqFxyp]];
+        (* (Φ t y, G t yp ∧ zp = f x yp) ⊢ f x y = zp *)
+        choseYp = HOL`Bool`CHOOSE[ypV, invMP, fxyEqZp];
+        (* (Φ t y, G (CONS x t) zp) ⊢ f x y = zp *)
+        dischGCons = HOL`Bool`DISCH[gConsZpTm, choseYp];
+        (* (Φ t y) ⊢ G (CONS x t) zp ⇒ f x y = zp *)
+        genZpC2 = HOL`Bool`GEN[zp, dischGCons];
+        (* (Φ t y) ⊢ ∀z'. G (CONS x t) z' ⇒ f x y = z' *)
+        dischPhiTY = HOL`Bool`DISCH[phiTYTm, genZpC2];
+        genY = HOL`Bool`GEN[yV, dischPhiTY];
+        genT = HOL`Bool`GEN[tV, genY];
+        genX = HOL`Bool`GEN[xV, genT]
+      ];
+      HOL`Bool`CONJ[conj1, conj2]
+    ];
+
+    (* Minimality: instantiate ∀R at Φ. *)
+    gLZTm = graphAppTm[eV, fV, lV, zV];
+    gLZHyp = ASSUME[gLZTm];
+    gLZUnf = EQMP[unfoldGraphApp[eV, fV, lV, zV], gLZHyp];
+    (* (G l z) ⊢ ∀R. closed[R] ⇒ R l z *)
+    specPhi = HOL`Bool`SPEC[phiTm, gLZUnf];
+    specPhiBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specPhi];
+    (* (G l z) ⊢ closedBeta[Φ] ⇒ (∀z'. G l z' ⇒ z = z') *)
+    phiLZBeta = HOL`Bool`MP[specPhiBeta, closedPhi];
+    (* (G l z) ⊢ ∀z'. G l z' ⇒ z = z' *)
+    specZp = HOL`Bool`SPEC[zpV, phiLZBeta];
+    (* (G l z) ⊢ G l z' ⇒ z = z' *)
+    dischGLZ = HOL`Bool`DISCH[gLZTm, specZp];
+    (* ⊢ G l z ⇒ G l z' ⇒ z = z' *)
+    genZp2 = HOL`Bool`GEN[zpV, dischGLZ];
+    genZ = HOL`Bool`GEN[zV, genZp2];
+    genL = HOL`Bool`GEN[lV, genZ]
+  ];
+
+(* === listIterationThm : assemble g = λl. ε z. G l z === *)
+listIterationThm =
+  Module[{eV, fV, lV, zV, xV, gVarBndr, gTermVal, gAppTm, gGraphAt,
+          gNilEq, gConsEq, genConsEq, exBody, exTm, conjEqs,
+          existsG, genF, genE},
+    eV = mkVar["e", βTy]; fV = mkVar["f", iterFnTy];
+    lV = mkVar["l", listTy[αTy]]; zV = mkVar["z", βTy]; xV = mkVar["x", αTy];
+
+    (* g = λl. ε z. G l z *)
+    gTermVal = mkAbs[lV, mkComb[selectC[βTy],
+      mkAbs[zV, graphAppTm[eV, fV, lV, zV]]]];
+    gAppTm[lTm_] := mkComb[gTermVal, lTm];
+
+    (* gGraphAt[l] : ⊢ G l (g l) *)
+    gGraphAt[lTm_] := Module[{existsAtL, predLam, atSelect, betaGL, rewriteEq},
+      existsAtL = HOL`Bool`SPEC[lTm, graphExistsThm];
+      (* ⊢ ∃z. G l z *)
+      predLam = mkAbs[zV, graphAppTm[eV, fV, lTm, zV]];
+      atSelect = HOL`Stdlib`Num`selectOfExists[predLam, existsAtL];
+      (* ⊢ G l (ε z. G l z) *)
+      betaGL = BETACONV[gAppTm[lTm]];
+      (* ⊢ g l = ε z. G l z *)
+      rewriteEq = HOL`Equal`APTERM[
+        mkComb[mkComb[mkComb[listIterGraphConst[], eV], fV], lTm],
+        HOL`Equal`SYM[betaGL]];
+      (* ⊢ G l (ε z. G l z) = G l (g l) *)
+      EQMP[rewriteEq, atSelect]
+      (* ⊢ G l (g l) *)
+    ];
+
+    (* g NIL = e *)
+    gNilEq = HOL`Bool`MP[
+      HOL`Bool`SPEC[gAppTm[nilConst[]], graphNilValThm],
+      gGraphAt[nilConst[]]];
+    (* ⊢ g NIL = e *)
+
+    (* g (CONS x l) = f x (g l) *)
+    gConsEq = Module[{consXL, gGraphCons, invMP, ypV, gLypEqTm, gLypEqHyp,
+                      gLyp, gConsEqFxyp, gGraphL, uniqAt, ypEqGL,
+                      fxGLeq, fxyEqGCons, choseYp},
+      consXL = mkComb[mkComb[consConst[], xV], lV];
+      gGraphCons = gGraphAt[consXL];
+      (* ⊢ G (CONS x l) (g (CONS x l)) *)
+      invMP = HOL`Bool`MP[
+        HOL`Bool`SPEC[gAppTm[consXL],
+          HOL`Bool`SPEC[lV, HOL`Bool`SPEC[xV, graphInversionThm]]],
+        gGraphCons];
+      (* ⊢ ∃y. G l y ∧ g (CONS x l) = f x y *)
+      ypV = mkVar["yp", βTy];
+      gLypEqTm = andTm[graphAppTm[eV, fV, lV, ypV],
+                       mkEq[gAppTm[consXL], mkComb[mkComb[fV, xV], ypV]]];
+      gLypEqHyp = ASSUME[gLypEqTm];
+      gLyp = HOL`Bool`CONJUNCT1[gLypEqHyp];
+      (* (G l yp ∧ g (CONS x l) = f x yp) ⊢ G l yp *)
+      gConsEqFxyp = HOL`Bool`CONJUNCT2[gLypEqHyp];
+      (* (…) ⊢ g (CONS x l) = f x yp *)
+      gGraphL = gGraphAt[lV];
+      (* ⊢ G l (g l) *)
+      uniqAt = HOL`Bool`SPEC[gAppTm[lV],
+        HOL`Bool`SPEC[ypV, HOL`Bool`SPEC[lV, graphUniqueThm]]];
+      (* ⊢ G l yp ⇒ G l (g l) ⇒ yp = g l *)
+      ypEqGL = HOL`Bool`MP[HOL`Bool`MP[uniqAt, gLyp], gGraphL];
+      (* (G l yp ∧ …) ⊢ yp = g l *)
+      fxGLeq = HOL`Equal`APTERM[mkComb[fV, xV], ypEqGL];
+      (* (…) ⊢ f x yp = f x (g l) *)
+      fxyEqGCons = TRANS[gConsEqFxyp, fxGLeq];
+      (* (G l yp ∧ g (CONS x l) = f x yp) ⊢ g (CONS x l) = f x (g l) *)
+      choseYp = HOL`Bool`CHOOSE[ypV, invMP, fxyEqGCons]
+      (* ⊢ g (CONS x l) = f x (g l) *)
+    ];
+
+    genConsEq = HOL`Bool`GEN[xV, HOL`Bool`GEN[lV, gConsEq]];
+    (* ⊢ ∀x l. g (CONS x l) = f x (g l) *)
+    conjEqs = HOL`Bool`CONJ[gNilEq, genConsEq];
+    (* ⊢ g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l) *)
+
+    gVarBndr = mkVar["g", tyFun[listTy[αTy], βTy]];
+    exBody = andTm[
+      mkEq[mkComb[gVarBndr, nilConst[]], eV],
+      mkComb[forallC[αTy], mkAbs[xV,
+        mkComb[forallC[listTy[αTy]], mkAbs[lV,
+          mkEq[mkComb[gVarBndr, mkComb[mkComb[consConst[], xV], lV]],
+               mkComb[mkComb[fV, xV], mkComb[gVarBndr, lV]]]]]]]];
+    exTm = mkComb[existsC[tyFun[listTy[αTy], βTy]], mkAbs[gVarBndr, exBody]];
+    existsG = HOL`Bool`EXISTS[exTm, gTermVal, conjEqs];
+    (* ⊢ ∃g. g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l) *)
+    genF = HOL`Bool`GEN[fV, existsG];
+    genE = HOL`Bool`GEN[eV, genF]
   ];
 
 End[];

@@ -506,5 +506,39 @@ HOLTest`runTests["stdlib/List: graphInversionThm — shape ∀x l z. G (CONS x l
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-c.2 tests: uniqueness + listIterationThm ===== *)
+
+HOLTest`runTests["stdlib/List: graphUniqueThm — shape ∀l z z'. G l z ⇒ G l z' ⇒ z = z', no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`List`graphUniqueThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _],
+            comb[comb[const["⇒", _], _],
+              comb[comb[const["⇒", _], _],
+                comb[comb[const["=", _], bvar[1, _]], bvar[0, _]]]], _]], _]], _]]],
+      "shape: ∀l z z'. _ ⇒ _ ⇒ z = z'"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: listIterationThm — ⊢ ∀e f. ∃g. g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l), no hyps",
+  Module[{c, dThm, βTy},
+    βTy = mkVarType["B"];
+    dThm = HOL`Stdlib`List`listIterationThm;
+    c = concl[dThm];
+    (* ∀e. ∀f. ∃g. (g NIL = e) ∧ (∀x l. ...) *)
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∃", _], abs[bvar[0, _],
+            comb[comb[const["∧", _],
+              comb[comb[const["=", _], comb[bvar[0, _], const["NIL", _]]], _]],
+              comb[const["∀", _], _]], _]], _]], _]]],
+      "shape: ∀e f. ∃g. (g NIL = e) ∧ ∀x l. …"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
 End[];
 EndPackage[];
