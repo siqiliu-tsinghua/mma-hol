@@ -27,6 +27,11 @@ DISJCASES::usage = "DISJCASES[thOr, thPR, thQR] — from Γ ⊢ p ∨ q, (Δ₁,
 EXCLUDEDMIDDLE::usage = "EXCLUDEDMIDDLE[t] — for t:bool, derive ⊢ t ∨ ¬ t via Diaconescu on SELECT_AX.";
 CCONTR::usage    = "CCONTR[p, thF] — from Γ ⊢ F with ¬ p possibly in Γ, derive (Γ\\{¬p}) ⊢ p.";
 
+condConst::usage = "condConst[ty] — COND : bool → ty → ty → ty. The conditional; COND b t e selects t when b is T, e when b is F.";
+condDefThm::usage = "condDefThm — ⊢ COND = (λt a b. @x. ((t = T) ⇒ (x = a)) ∧ ((t = F) ⇒ (x = b))).";
+condTThm::usage = "condTThm — ⊢ ∀a b. COND T a b = a.";
+condFThm::usage = "condFThm — ⊢ ∀a b. COND F a b = b.";
+
 Begin["`Private`"];
 
 destEqTh[th_] :=
@@ -519,6 +524,112 @@ HOL`Bool`CCONTR[p_, thF_] :=
     pBranch = ASSUME[p];
     notPBranch = HOL`Bool`CONTR[p, thF];
     HOL`Bool`DISJCASES[emTh, pBranch, notPBranch]
+  ];
+
+(* ============================================================ *)
+(* COND : the conditional (bool.ml COND + COND_CLAUSES).        *)
+(*   COND = λt a b. @x. ((t=T) ⇒ x=a) ∧ ((t=F) ⇒ x=b).          *)
+(* Below the SIMP layer, so the clauses are proved with raw     *)
+(* Bool/Equal rules + selectAx.                                  *)
+(* ============================================================ *)
+
+conjTmInt[a_, b_] :=
+  mkComb[mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+
+Module[{aTy, tV, aV, bV, xV, tConst, fConst, condTy, selTm, predLam,
+        condBody},
+  aTy = mkVarType["A"];
+  tV = mkVar["t", boolTy]; aV = mkVar["a", aTy]; bV = mkVar["b", aTy];
+  xV = mkVar["x", aTy];
+  tConst = mkConst["T", boolTy]; fConst = mkConst["F", boolTy];
+  condTy = tyFun[boolTy, tyFun[aTy, tyFun[aTy, aTy]]];
+  predLam = mkAbs[xV,
+    conjTmInt[
+      impTmInt[mkEq[tV, tConst], mkEq[xV, aV]],
+      impTmInt[mkEq[tV, fConst], mkEq[xV, bV]]]];
+  selTm = mkComb[mkConst["@", tyFun[tyFun[aTy, boolTy], aTy]], predLam];
+  condBody = mkAbs[tV, mkAbs[aV, mkAbs[bV, selTm]]];
+  HOL`Bool`condDefThm = newDefinition[mkEq[mkVar["COND", condTy], condBody]];
+];
+
+HOL`Bool`condConst[ty_] :=
+  mkConst["COND", tyFun[boolTy, tyFun[ty, tyFun[ty, ty]]]];
+
+(* ⊢ COND t a b = @x. ((t=T)⇒x=a) ∧ ((t=F)⇒x=b) for given t,a,b. *)
+unfoldCond[tTm_, aTm_, bTm_] :=
+  Module[{ap1, e1, ap2, e2, ap3},
+    ap1 = APTHM[HOL`Bool`condDefThm, tTm];
+    e1 = TRANS[ap1, BETACONV[rhsOfConcl[ap1]]];
+    ap2 = APTHM[e1, aTm];
+    e2 = TRANS[ap2, BETACONV[rhsOfConcl[ap2]]];
+    ap3 = APTHM[e2, bTm];
+    TRANS[ap3, BETACONV[rhsOfConcl[ap3]]]
+  ];
+
+(* Given uf : ⊢ COND … = @P, a witness w, predAtW : ⊢ P w, and    *)
+(* uniqGen : ⊢ ∀x. P x ⇒ x = w, derive ⊢ COND … = w via selectAx. *)
+epsEqWitness[uf_, wTm_, predAtW_, uniqGen_] :=
+  Module[{selP, predLam, atSel, pOfSel, specUniq},
+    selP = rhsOfConcl[uf];
+    predLam = selP[[2]];
+    atSel = HOL`Bool`SPEC[wTm, HOL`Bool`ISPEC[predLam, HOL`Bootstrap`selectAx]];
+    pOfSel = HOL`Bool`MP[atSel, predAtW];
+    specUniq = HOL`Bool`SPEC[selP, uniqGen];
+    TRANS[uf, HOL`Bool`MP[specUniq, pOfSel]]
+  ];
+
+(* condTThm : ⊢ ∀a b. COND T a b = a *)
+HOL`Bool`condTThm =
+  Module[{aTy, aV, bV, xx, tConst, fConst, uf, predLam, betaPa,
+          c1, hTF, fF, c2, predAtA, Pxx, betaPxx, unf, xxEqA, uniqGen,
+          condEqA},
+    aTy = mkVarType["A"];
+    aV = mkVar["a", aTy]; bV = mkVar["b", aTy]; xx = mkVar["xx", aTy];
+    tConst = mkConst["T", boolTy]; fConst = mkConst["F", boolTy];
+    uf = unfoldCond[tConst, aV, bV];
+    predLam = rhsOfConcl[uf][[2]];
+    (* predAtA : ⊢ P a *)
+    betaPa = BETACONV[mkComb[predLam, aV]];
+    c1 = HOL`Bool`DISCH[mkEq[tConst, tConst], REFL[aV]];
+    hTF = ASSUME[mkEq[tConst, fConst]];
+    fF = EQMP[hTF, HOL`Bool`TRUTH];
+    c2 = HOL`Bool`DISCH[mkEq[tConst, fConst], HOL`Bool`CONTR[mkEq[aV, bV], fF]];
+    predAtA = EQMP[SYM[betaPa], HOL`Bool`CONJ[c1, c2]];
+    (* uniqGen : ⊢ ∀x. P x ⇒ x = a *)
+    Pxx = mkComb[predLam, xx];
+    betaPxx = BETACONV[Pxx];
+    unf = EQMP[betaPxx, ASSUME[Pxx]];
+    xxEqA = HOL`Bool`MP[HOL`Bool`CONJUNCT1[unf], REFL[tConst]];
+    uniqGen = HOL`Bool`GEN[xx, HOL`Bool`DISCH[Pxx, xxEqA]];
+    condEqA = epsEqWitness[uf, aV, predAtA, uniqGen];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, condEqA]]
+  ];
+
+(* condFThm : ⊢ ∀a b. COND F a b = b *)
+HOL`Bool`condFThm =
+  Module[{aTy, aV, bV, xx, tConst, fConst, uf, predLam, betaPb,
+          hFT, fF, c1, c2, predAtB, Pxx, betaPxx, unf, xxEqB, uniqGen,
+          condEqB},
+    aTy = mkVarType["A"];
+    aV = mkVar["a", aTy]; bV = mkVar["b", aTy]; xx = mkVar["xx", aTy];
+    tConst = mkConst["T", boolTy]; fConst = mkConst["F", boolTy];
+    uf = unfoldCond[fConst, aV, bV];
+    predLam = rhsOfConcl[uf][[2]];
+    (* predAtB : ⊢ P b *)
+    betaPb = BETACONV[mkComb[predLam, bV]];
+    hFT = ASSUME[mkEq[fConst, tConst]];
+    fF = EQMP[SYM[hFT], HOL`Bool`TRUTH];
+    c1 = HOL`Bool`DISCH[mkEq[fConst, tConst], HOL`Bool`CONTR[mkEq[bV, aV], fF]];
+    c2 = HOL`Bool`DISCH[mkEq[fConst, fConst], REFL[bV]];
+    predAtB = EQMP[SYM[betaPb], HOL`Bool`CONJ[c1, c2]];
+    (* uniqGen : ⊢ ∀x. P x ⇒ x = b *)
+    Pxx = mkComb[predLam, xx];
+    betaPxx = BETACONV[Pxx];
+    unf = EQMP[betaPxx, ASSUME[Pxx]];
+    xxEqB = HOL`Bool`MP[HOL`Bool`CONJUNCT2[unf], REFL[fConst]];
+    uniqGen = HOL`Bool`GEN[xx, HOL`Bool`DISCH[Pxx, xxEqB]];
+    condEqB = epsEqWitness[uf, bV, predAtB, uniqGen];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, condEqB]]
   ];
 
 End[];

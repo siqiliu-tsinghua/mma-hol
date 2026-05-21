@@ -405,3 +405,21 @@ HOLTest`runTests["bool: M4 acceptance — symmetry of equality",
     "⊢ ∀x y. x = y ⇒ y = x"];
   HOLTest`assertEq[hyp[outerGen], {}, "closed theorem"];
 ]];
+
+(* COND : definition + clauses *)
+HOLTest`runTests["bool: COND clauses",
+  Module[{aTy, aV, bV, tConst, fConst, condT, condF, expT, expF},
+  aTy = mkVarType["A"];
+  aV = mkVar["a", aTy]; bV = mkVar["b", aTy];
+  tConst = mkConst["T", boolTy]; fConst = mkConst["F", boolTy];
+  HOLTest`assertEq[hyp[condTThm], {}, "condTThm closed"];
+  HOLTest`assertEq[hyp[condFThm], {}, "condFThm closed"];
+  condT = SPEC[bV, SPEC[aV, condTThm]];
+  HOLTest`assertEq[concl[condT],
+    mkEq[mkComb[mkComb[mkComb[condConst[aTy], tConst], aV], bV], aV],
+    "⊢ COND T a b = a"];
+  condF = SPEC[bV, SPEC[aV, condFThm]];
+  HOLTest`assertEq[concl[condF],
+    mkEq[mkComb[mkComb[mkComb[condConst[aTy], fConst], aV], bV], bV],
+    "⊢ COND F a b = b"];
+]];
