@@ -17,7 +17,7 @@
 BeginPackage["HOL`Stdlib`Finite`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
-  "HOL`Stdlib`Set`"
+  "HOL`Auto`Simp`", "HOL`Auto`PropTaut`", "HOL`Stdlib`Set`"
 }];
 
 finiteConst::usage = "finiteConst[] — FINITE : (α → bool) → bool. Smallest predicate with FINITE EMPTY and FINITE s ⇒ FINITE (x INSERT s).";
@@ -28,6 +28,7 @@ finiteEmptyThm::usage  = "finiteEmptyThm — ⊢ FINITE EMPTY.";
 finiteInsertThm::usage = "finiteInsertThm — ⊢ ∀x s. FINITE s ⇒ FINITE (x INSERT s).";
 finiteSingThm::usage   = "finiteSingThm — ⊢ ∀x. FINITE (SING x).";
 finiteInductThm::usage = "finiteInductThm — ⊢ ∀P. P EMPTY ∧ (∀x s. FINITE s ∧ P s ⇒ P (x INSERT s)) ⇒ ∀s. FINITE s ⇒ P s.";
+finiteUnionThm::usage  = "finiteUnionThm — ⊢ ∀s t. FINITE s ⇒ FINITE t ⇒ FINITE (s ∪ t).";
 
 Begin["`Private`"];
 
@@ -209,6 +210,101 @@ finiteInductThm =
     genS = HOL`Bool`GEN[sV, dischFin];
     dischH = HOL`Bool`DISCH[hypTm, genS];
     HOL`Bool`GEN[pV, dischH]
+  ];
+
+(* ============================================================ *)
+(* Local set-equality helper for the propositional identities.  *)
+(* Mirrors auto/Set`setProve but with a caller-chosen rule set   *)
+(* (so INSERT unfolds). Sound only for equalities whose per-     *)
+(* element membership is a propositional tautology.              *)
+(* ============================================================ *)
+
+unionTm[a_, b_] := HOL`Stdlib`Set`unionTerm[a, b];
+
+funcExtLocal[yV_, fTm_, gTm_, bodyTh_] :=
+  Module[{absEq, etaF, etaG},
+    absEq = ABS[yV, bodyTh];
+    etaF = HOL`Bool`ISPEC[fTm, HOL`Bootstrap`etaAx];
+    etaG = HOL`Bool`ISPEC[gTm, HOL`Bootstrap`etaAx];
+    TRANS[TRANS[HOL`Equal`SYM[etaF], absEq], etaG]
+  ];
+
+setUnfoldRules[] := {HOL`Stdlib`Set`unionDefThm,
+  HOL`Stdlib`Set`insertDefThm, HOL`Stdlib`Set`emptyDefThm};
+
+freshLocal[base_String, forbidden_List] :=
+  Module[{i = 0, cand = base},
+    While[MemberQ[forbidden, cand], i++; cand = base <> ToString[i]];
+    cand
+  ];
+
+propSetEq[lhsSet_, rhsSet_, rules_] :=
+  Module[{domTy, yName, yV, appEq, simpEq, propTh, bodyTh},
+    domTy = typeOf[lhsSet][[2, 1]];
+    yName = freshLocal["y", First /@ freesIn[mkEq[lhsSet, rhsSet]]];
+    yV = mkVar[yName, domTy];
+    appEq = mkEq[mkComb[lhsSet, yV], mkComb[rhsSet, yV]];
+    simpEq = HOL`Auto`Simp`simpConv[rules][appEq];
+    propTh = HOL`Auto`PropTaut`propTaut[concl[simpEq][[2]]];
+    bodyTh = EQMP[HOL`Equal`SYM[simpEq], propTh];
+    funcExtLocal[yV, lhsSet, rhsSet, bodyTh]
+  ];
+
+(* ============================================================ *)
+(* finiteUnionThm : ⊢ ∀s t. FINITE s ⇒ FINITE t ⇒ FINITE (s ∪ t) *)
+(* Induct on s with P s = FINITE t ⇒ FINITE (s ∪ t).             *)
+(* ============================================================ *)
+
+finiteUnionThm =
+  Module[{pBody, pLam, specInduct, specBeta, rules, emptyUnionEq,
+          conj1, stepClean, ante, mainConcl, base},
+    pBody[sArg_] := impTm[finiteAppTerm[tV], finiteAppTerm[unionTm[sArg, tV]]];
+    pLam = mkAbs[sV, pBody[sV]];
+    specInduct = HOL`Bool`ISPEC[pLam, finiteInductThm];
+    specBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInduct];
+    (* ⊢ (conj1 ∧ step) ⇒ ∀s. FINITE s ⇒ (FINITE t ⇒ FINITE (s ∪ t)) *)
+    rules = setUnfoldRules[];
+
+    (* conj1 : FINITE t ⇒ FINITE (EMPTY ∪ t) *)
+    conj1 = Module[{eqE, ft, finEU},
+      eqE = propSetEq[unionTm[emptyTm[], tV], tV, rules];
+      (* ⊢ EMPTY ∪ t = t *)
+      ft = ASSUME[finiteAppTerm[tV]];
+      finEU = EQMP[HOL`Equal`SYM[HOL`Equal`APTERM[finiteConst[], eqE]], ft];
+      (* ⊢ FINITE (EMPTY ∪ t) *)
+      HOL`Bool`DISCH[finiteAppTerm[tV], finEU]
+    ];
+
+    (* step : ∀x s. (FINITE s ∧ P s) ⇒ (FINITE t ⇒ FINITE ((x INSERT s) ∪ t)) *)
+    stepClean = Module[{conjTm, conjHyp, ps, ft, finSU, eqIns, finIns,
+                        finXIns, dischFt, dischConj},
+      conjTm = andTm[finiteAppTerm[sV], pBody[sV]];
+      conjHyp = ASSUME[conjTm];
+      ps = HOL`Bool`CONJUNCT2[conjHyp];
+      ft = ASSUME[finiteAppTerm[tV]];
+      finSU = HOL`Bool`MP[ps, ft];
+      (* (conjHyp, FINITE t) ⊢ FINITE (s ∪ t) *)
+      eqIns = propSetEq[unionTm[insertTm[xV, sV], tV],
+        insertTm[xV, unionTm[sV, tV]], rules];
+      (* ⊢ (x INSERT s) ∪ t = x INSERT (s ∪ t) *)
+      finIns = HOL`Bool`MP[
+        HOL`Bool`SPEC[unionTm[sV, tV], HOL`Bool`SPEC[xV, finiteInsertThm]],
+        finSU];
+      (* ⊢ FINITE (x INSERT (s ∪ t)) *)
+      finXIns = EQMP[HOL`Equal`SYM[HOL`Equal`APTERM[finiteConst[], eqIns]],
+        finIns];
+      (* ⊢ FINITE ((x INSERT s) ∪ t) *)
+      dischFt = HOL`Bool`DISCH[finiteAppTerm[tV], finXIns];
+      dischConj = HOL`Bool`DISCH[conjTm, dischFt];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[sV, dischConj]]
+    ];
+
+    ante = HOL`Bool`CONJ[conj1, stepClean];
+    mainConcl = HOL`Bool`MP[specBeta, ante];
+    (* ⊢ ∀s. FINITE s ⇒ (FINITE t ⇒ FINITE (s ∪ t)) *)
+    base = HOL`Bool`SPEC[sV, mainConcl];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[tV, base]]
   ];
 
 End[];

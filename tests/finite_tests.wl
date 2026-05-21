@@ -106,3 +106,33 @@ HOLTest`runTests["finite: FINITE (a INSERT (b INSERT EMPTY)) by the rules",
       "⊢ FINITE (a INSERT (b INSERT EMPTY))"];
     HOLTest`assertEq[hyp[fin2], {}, "no hyps"];
 ]];
+
+HOLTest`runTests["finite: finiteUnionThm — ⊢ ∀s t. FINITE s ⇒ FINITE t ⇒ FINITE (s ∪ t)",
+  Module[{dThm, s, t, impC, finC, expected},
+    dThm = HOL`Stdlib`Finite`finiteUnionThm;
+    s = mkVar["s", setTy]; t = mkVar["t", setTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    finC = HOL`Stdlib`Finite`finiteAppTerm;
+    expected = mkComb[mkConst["∀", tyFun[tyFun[setTy, boolTy], boolTy]],
+      mkAbs[s, mkComb[mkConst["∀", tyFun[tyFun[setTy, boolTy], boolTy]],
+        mkAbs[t, mkComb[mkComb[impC, finC[s]],
+          mkComb[mkComb[impC, finC[t]],
+            finC[HOL`Stdlib`Set`unionTerm[s, t]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[dThm], expected],
+      "⊢ ∀s t. FINITE s ⇒ FINITE t ⇒ FINITE (s ∪ t)"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["finite: FINITE (SING a ∪ SING b) via finiteUnionThm",
+  Module[{a, b, sa, sb, finUnion},
+    a = mkVar["a", αTy]; b = mkVar["b", αTy];
+    sa = HOL`Stdlib`Set`singTerm[a]; sb = HOL`Stdlib`Set`singTerm[b];
+    finUnion = MP[MP[
+        SPEC[sb, SPEC[sa, HOL`Stdlib`Finite`finiteUnionThm]],
+        SPEC[a, HOL`Stdlib`Finite`finiteSingThm]],
+      SPEC[b, HOL`Stdlib`Finite`finiteSingThm]];
+    HOLTest`assertEq[concl[finUnion],
+      HOL`Stdlib`Finite`finiteAppTerm[HOL`Stdlib`Set`unionTerm[sa, sb]],
+      "⊢ FINITE (SING a ∪ SING b)"];
+    HOLTest`assertEq[hyp[finUnion], {}, "no hyps"];
+]];
