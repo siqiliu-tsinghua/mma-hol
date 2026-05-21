@@ -417,3 +417,41 @@ HOLTest`runTests["set: INJ / SURJ / BIJ def thms are equations",
       ],
       {{injDefThm, "INJ"}, {surjDefThm, "SURJ"}, {bijDefThm, "BIJ"}}];
 ]];
+
+(* ===== INSERT / SING / DELETE ===== *)
+
+HOLTest`runTests["set: inInsertThm — y ∈ (x INSERT S) = (y = x) ∨ y ∈ S",
+  Module[{alpha, setT, x, y, S, orC, expected},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    x = mkVar["x", alpha]; y = mkVar["y", alpha]; S = mkVar["S", setT];
+    orC = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    expected = mkEq[
+      inTerm[y, insertTerm[x, S]],
+      mkComb[mkComb[orC, mkEq[y, x]], inTerm[y, S]]];
+    HOLTest`assertEq[concl[inInsertThm], expected,
+      "⊢ y ∈ (x INSERT S) = (y = x) ∨ (y ∈ S)"];
+    HOLTest`assertEq[hyp[inInsertThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: inSingThm — y ∈ SING x = (y = x)",
+  Module[{alpha, x, y, expected},
+    alpha = mkVarType["A"];
+    x = mkVar["x", alpha]; y = mkVar["y", alpha];
+    expected = mkEq[inTerm[y, singTerm[x]], mkEq[y, x]];
+    HOLTest`assertEq[concl[inSingThm], expected, "⊢ y ∈ SING x = (y = x)"];
+    HOLTest`assertEq[hyp[inSingThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["set: inDeleteThm — y ∈ DELETE S x = y ∈ S ∧ ¬(y = x)",
+  Module[{alpha, setT, x, y, S, andC, notC, expected},
+    alpha = mkVarType["A"]; setT = tyFun[alpha, boolTy];
+    x = mkVar["x", alpha]; y = mkVar["y", alpha]; S = mkVar["S", setT];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    notC = mkConst["¬", tyFun[boolTy, boolTy]];
+    expected = mkEq[
+      inTerm[y, deleteTerm[S, x]],
+      mkComb[mkComb[andC, inTerm[y, S]], mkComb[notC, mkEq[y, x]]]];
+    HOLTest`assertEq[concl[inDeleteThm], expected,
+      "⊢ y ∈ DELETE S x = (y ∈ S) ∧ ¬ (y = x)"];
+    HOLTest`assertEq[hyp[inDeleteThm], {}, "no hyps"];
+]];

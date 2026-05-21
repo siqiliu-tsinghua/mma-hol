@@ -64,6 +64,22 @@ inDiffThm::usage  = "inDiffThm  — ⊢ x ∈ A ∖ B = (x ∈ A) ∧ ¬ (x ∈ 
 inEmptyThm::usage = "inEmptyThm — ⊢ x ∈ EMPTY = F.";
 inUnivThm::usage  = "inUnivThm  — ⊢ x ∈ UNIV  = T.";
 
+insertConst::usage = "insertConst[] — INSERT : α → set → set. x INSERT S = {y | y = x ∨ y ∈ S}.";
+singConst::usage   = "singConst[] — SING : α → set. SING x = x INSERT EMPTY (the singleton {x}).";
+deleteConst::usage = "deleteConst[] — DELETE : set → α → set. DELETE S x = {y | y ∈ S ∧ ¬(y = x)}.";
+
+insertDefThm::usage = "insertDefThm — ⊢ INSERT = (λx S. λy. y = x ∨ S y).";
+singDefThm::usage   = "singDefThm — ⊢ SING = (λx. x INSERT EMPTY).";
+deleteDefThm::usage = "deleteDefThm — ⊢ DELETE = (λS x. λy. S y ∧ ¬ (y = x)).";
+
+insertTerm::usage = "insertTerm[x, S] — build `x INSERT S`.";
+singTerm::usage   = "singTerm[x] — build `SING x`.";
+deleteTerm::usage = "deleteTerm[S, x] — build `DELETE S x`.";
+
+inInsertThm::usage = "inInsertThm — ⊢ y ∈ (x INSERT S) = (y = x) ∨ (y ∈ S).";
+inSingThm::usage   = "inSingThm — ⊢ y ∈ SING x = (y = x).";
+inDeleteThm::usage = "inDeleteThm — ⊢ y ∈ DELETE S x = (y ∈ S) ∧ ¬ (y = x).";
+
 subsetReflThm::usage = "subsetReflThm — ⊢ A ⊆ A.";
 subsetTransThm::usage = "subsetTransThm — ⊢ A ⊆ B ⇒ B ⊆ C ⇒ A ⊆ C.";
 unionSubsetLeftThm::usage  = "unionSubsetLeftThm  — ⊢ A ⊆ A ∪ B.";
@@ -282,6 +298,81 @@ inUnivThm =
     xV = mkVar["x", αTy];
     lhsTerm = inTerm[xV, univConst[]];
     HOL`Auto`Simp`simpConv[{inDefThm, univDefThm}][lhsTerm]
+  ];
+
+(* ============================================================ *)
+(* INSERT, SING, DELETE                                         *)
+(* ============================================================ *)
+
+insertTy = tyFun[αTy, tyFun[setTy, setTy]];
+deleteTy = tyFun[setTy, tyFun[αTy, setTy]];
+
+insertDefBody[] :=
+  Module[{xV, S, yV},
+    xV = mkVar["x", αTy]; S = mkVar["S", setTy]; yV = mkVar["y", αTy];
+    mkAbs[xV, mkAbs[S, mkAbs[yV,
+      mkComb[mkComb[orC[], mkEq[yV, xV]], mkComb[S, yV]]]]]
+  ];
+
+deleteDefBody[] :=
+  Module[{S, xV, yV},
+    S = mkVar["S", setTy]; xV = mkVar["x", αTy]; yV = mkVar["y", αTy];
+    mkAbs[S, mkAbs[xV, mkAbs[yV,
+      mkComb[mkComb[andC[], mkComb[S, yV]],
+             mkComb[notC[], mkEq[yV, xV]]]]]]
+  ];
+
+insertDefThm = newDefinition[mkEq[mkVar["INSERT", insertTy], insertDefBody[]]];
+deleteDefThm = newDefinition[mkEq[mkVar["DELETE", deleteTy], deleteDefBody[]]];
+
+insertConst[] := mkConst["INSERT", insertTy];
+deleteConst[] := mkConst["DELETE", deleteTy];
+
+insertTerm[x_, s_] := mkComb[mkComb[insertConst[], x], s];
+deleteTerm[s_, x_] := mkComb[mkComb[deleteConst[], s], x];
+
+singTy = tyFun[αTy, setTy];
+singDefThm = newDefinition[mkEq[mkVar["SING", singTy],
+  mkAbs[mkVar["x", αTy], insertTerm[mkVar["x", αTy], emptyConst[]]]]];
+singConst[] := mkConst["SING", singTy];
+singTerm[x_] := mkComb[singConst[], x];
+
+inInsertThm =
+  Module[{xV, yV, SV, lhsTerm, rhsTerm, lhsRedTh, rhsRedTh},
+    xV = mkVar["x", αTy]; yV = mkVar["y", αTy]; SV = mkVar["S", setTy];
+    lhsTerm = inTerm[yV, insertTerm[xV, SV]];
+    rhsTerm = mkComb[mkComb[orC[], mkEq[yV, xV]], inTerm[yV, SV]];
+    lhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm, insertDefThm}][lhsTerm];
+    rhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm}][rhsTerm];
+    TRANS[lhsRedTh, HOL`Equal`SYM[rhsRedTh]]
+  ];
+
+inDeleteThm =
+  Module[{xV, yV, SV, lhsTerm, rhsTerm, lhsRedTh, rhsRedTh},
+    xV = mkVar["x", αTy]; yV = mkVar["y", αTy]; SV = mkVar["S", setTy];
+    lhsTerm = inTerm[yV, deleteTerm[SV, xV]];
+    rhsTerm = mkComb[mkComb[andC[], inTerm[yV, SV]],
+      mkComb[notC[], mkEq[yV, xV]]];
+    lhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm, deleteDefThm}][lhsTerm];
+    rhsRedTh = HOL`Auto`Simp`simpConv[{inDefThm}][rhsTerm];
+    TRANS[lhsRedTh, HOL`Equal`SYM[rhsRedTh]]
+  ];
+
+(* y ∈ SING x = (y = x): unfold SING via singDefThm + β, then     *)
+(* inInsertThm, then drop the `∨ y ∈ EMPTY` disjunct (= ∨ F).      *)
+inSingThm =
+  Module[{xV, yV, singUnfold, inInsertAt, inEmptyAt, orFcollapse},
+    xV = mkVar["x", αTy]; yV = mkVar["y", αTy];
+    singUnfold = HOL`Equal`APTHM[singDefThm, xV];
+    singUnfold = TRANS[singUnfold, BETACONV[concl[singUnfold][[2]]]];
+    (* ⊢ SING x = x INSERT EMPTY *)
+    inInsertAt = HOL`Auto`Simp`simpConv[{inDefThm, insertDefThm, emptyDefThm}][
+      inTerm[yV, insertTerm[xV, emptyConst[]]]];
+    (* ⊢ y ∈ (x INSERT EMPTY) = (y = x) ∨ F  → simp collapses ∨ F *)
+    orFcollapse = HOL`Equal`APTERM[
+      mkComb[inConst[], yV], singUnfold];
+    (* ⊢ (y ∈ SING x) = (y ∈ (x INSERT EMPTY)) *)
+    TRANS[orFcollapse, inInsertAt]
   ];
 
 (* ============================================================ *)
