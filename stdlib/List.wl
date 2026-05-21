@@ -2954,15 +2954,22 @@ consApp[ty_, xTm_, lTm_] := mkComb[mkComb[consAt[ty], xTm], lTm];
 (* g. Returns {satThm, selTerm} where selTerm = ε g. P g (the chosen  *)
 (* function) and satThm ⊢ selTerm NIL = e ∧ ∀x l. selTerm (CONS x l)  *)
 (* = f x (selTerm l). NIL/CONS in the recursion are at elemTy.        *)
+(* selectOfExists β-reduces the predicate-application internally, so   *)
+(* the existsTh handed to it must already be β-normal — otherwise a     *)
+(* lambda step f (MAP/FILTER) leaves f x (g l) unreduced in existsTh    *)
+(* but reduced in the CHOOSE body, the hyp fails to discharge, and the  *)
+(* leftover hyp (carrying f's free vars) later blocks GEN. Normalize.   *)
 listRecExists[elemTy_, eTm_, fTm_] :=
-  Module[{bTy, gTy, instThm, specEF, predLam, selTerm, satThm},
+  Module[{bTy, gTy, instThm, specEF, specNorm, predLam, selTerm, satThm},
     bTy = typeOf[eTm];
     gTy = tyFun[listTy[elemTy], bTy];
     instThm = INSTTYPE[{αTy -> elemTy, βTy -> bTy}, listIterationThm];
     specEF = HOL`Bool`SPEC[fTm, HOL`Bool`SPEC[eTm, instThm]];
-    predLam = concl[specEF][[2]];
+    specNorm = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specEF];
+    predLam = concl[specNorm][[2]];
     selTerm = mkComb[selectC[gTy], predLam];
-    satThm = HOL`Stdlib`Num`selectOfExists[predLam, specEF];
+    satThm = HOL`Stdlib`Num`selectOfExists[predLam, specNorm];
     {satThm, selTerm}
   ];
 
@@ -3019,6 +3026,255 @@ foldrAppEq[fTm_, eTm_] :=
     {HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, foldrNilBase]],
      HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, HOL`Bool`GEN[xV,
        HOL`Bool`GEN[lV, foldrConsBase]]]]}
+  ];
+
+(* ---- APPEND ------------------------------------------------ *)
+(* APPEND l1 l2 recurses on l1 with base l2, step CONS.          *)
+
+appendTy = tyFun[listTy[αTy], tyFun[listTy[αTy], listTy[αTy]]];
+
+Module[{l1V, l2V, selTerm, appendBody},
+  l1V = mkVar["l1", listTy[αTy]]; l2V = mkVar["l2", listTy[αTy]];
+  selTerm = listRecExists[αTy, l2V, consConst[]][[2]];
+  appendBody = mkAbs[l1V, mkAbs[l2V, mkComb[selTerm, l1V]]];
+  appendDefThm = newDefinition[mkEq[mkVar["APPEND", appendTy], appendBody]];
+];
+
+appendConst[] := mkConst["APPEND", appendTy];
+
+appendAppEq[l1Tm_, l2Tm_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[appendDefThm, l1Tm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, l2Tm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+{appendNilThm, appendConsThm} =
+  Module[{xV, l1V, l2V, satThm, selTerm, gNilEq, nilBase,
+          consXL1, gConsSpec, stepThm, eqRec, consBase},
+    xV = mkVar["x", αTy];
+    l1V = mkVar["l1", listTy[αTy]]; l2V = mkVar["l2", listTy[αTy]];
+    {satThm, selTerm} = listRecExists[αTy, l2V, consConst[]];
+
+    gNilEq = HOL`Bool`CONJUNCT1[satThm];
+    (* ⊢ selTerm NIL = l2 *)
+    nilBase = TRANS[appendAppEq[nilConst[], l2V], gNilEq];
+    (* ⊢ APPEND NIL l2 = l2 *)
+
+    consXL1 = mkComb[mkComb[consConst[], xV], l1V];
+    gConsSpec = HOL`Bool`SPEC[l1V, HOL`Bool`SPEC[xV,
+      HOL`Bool`CONJUNCT2[satThm]]];
+    (* ⊢ selTerm (CONS x l1) = CONS x (selTerm l1) *)
+    stepThm = TRANS[appendAppEq[consXL1, l2V], gConsSpec];
+    (* ⊢ APPEND (CONS x l1) l2 = CONS x (selTerm l1) *)
+    eqRec = HOL`Equal`SYM[appendAppEq[l1V, l2V]];
+    (* ⊢ selTerm l1 = APPEND l1 l2 *)
+    consBase = HOL`Drule`SUBS[{eqRec}, stepThm];
+    (* ⊢ APPEND (CONS x l1) l2 = CONS x (APPEND l1 l2) *)
+
+    {HOL`Bool`GEN[l2V, nilBase],
+     HOL`Bool`GEN[xV, HOL`Bool`GEN[l1V, HOL`Bool`GEN[l2V, consBase]]]}
+  ];
+
+(* ---- MAP --------------------------------------------------- *)
+(* MAP h l recurses on l; base NIL:β list, step λx r. CONS(h x) r. *)
+
+Module[{hTy, hV, lV, xV, rV, fMap, eMap, selTerm, mapTy, mapBody},
+  hTy = tyFun[αTy, βTy];
+  hV = mkVar["h", hTy]; lV = mkVar["l", listTy[αTy]];
+  xV = mkVar["x", αTy]; rV = mkVar["r", listTy[βTy]];
+  fMap = mkAbs[xV, mkAbs[rV, consApp[βTy, mkComb[hV, xV], rV]]];
+  eMap = nilAt[βTy];
+  selTerm = listRecExists[αTy, eMap, fMap][[2]];
+  mapTy = tyFun[hTy, tyFun[listTy[αTy], listTy[βTy]]];
+  mapBody = mkAbs[hV, mkAbs[lV, mkComb[selTerm, lV]]];
+  mapDefThm = newDefinition[mkEq[mkVar["MAP", mapTy], mapBody]];
+];
+
+mapConst[] := mkConst["MAP", tyFun[tyFun[αTy, βTy],
+  tyFun[listTy[αTy], listTy[βTy]]]];
+
+mapAppEq[hTm_, lTm_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[mapDefThm, hTm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, lTm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+{mapNilThm, mapConsThm} =
+  Module[{hTy, hV, lV, xV, fMap, eMap, satThm, selTerm, gNilEq, nilBase,
+          consXL, gConsSpec, stepThm, eqRec, consBase},
+    hTy = tyFun[αTy, βTy];
+    hV = mkVar["h", hTy]; lV = mkVar["l", listTy[αTy]]; xV = mkVar["x", αTy];
+    fMap = mkAbs[xV, mkAbs[mkVar["r", listTy[βTy]],
+      consApp[βTy, mkComb[hV, xV], mkVar["r", listTy[βTy]]]]];
+    eMap = nilAt[βTy];
+    {satThm, selTerm} = listRecExists[αTy, eMap, fMap];
+
+    gNilEq = HOL`Bool`CONJUNCT1[satThm];
+    (* ⊢ selTerm NIL = NIL *)
+    nilBase = TRANS[mapAppEq[hV, nilConst[]], gNilEq];
+    (* ⊢ MAP h NIL = NIL *)
+
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+    gConsSpec = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[xV,
+      HOL`Bool`CONJUNCT2[satThm]]];
+    (* ⊢ selTerm (CONS x l) = CONS (h x) (selTerm l) *)
+    stepThm = TRANS[mapAppEq[hV, consXL], gConsSpec];
+    (* ⊢ MAP h (CONS x l) = CONS (h x) (selTerm l) *)
+    eqRec = HOL`Equal`SYM[mapAppEq[hV, lV]];
+    (* ⊢ selTerm l = MAP h l *)
+    consBase = HOL`Drule`SUBS[{eqRec}, stepThm];
+    (* ⊢ MAP h (CONS x l) = CONS (h x) (MAP h l) *)
+
+    {HOL`Bool`GEN[hV, nilBase],
+     HOL`Bool`GEN[hV, HOL`Bool`GEN[xV, HOL`Bool`GEN[lV, consBase]]]}
+  ];
+
+(* ---- FILTER ------------------------------------------------ *)
+(* step λx r. COND (p x) (CONS x r) r ; base NIL.                *)
+
+filterTy = tyFun[tyFun[αTy, boolTy], tyFun[listTy[αTy], listTy[αTy]]];
+
+filterStep[pV_] :=
+  Module[{xV, rV, condTm},
+    xV = mkVar["x", αTy]; rV = mkVar["r", listTy[αTy]];
+    condTm = HOL`Bool`condConst[listTy[αTy]];
+    mkAbs[xV, mkAbs[rV,
+      mkComb[mkComb[mkComb[condTm, mkComb[pV, xV]],
+        consApp[αTy, xV, rV]], rV]]]
+  ];
+
+Module[{pV, selTerm, filterBody},
+  pV = mkVar["p", tyFun[αTy, boolTy]];
+  selTerm = listRecExists[αTy, nilConst[], filterStep[pV]][[2]];
+  filterBody = mkAbs[pV, mkAbs[mkVar["l", listTy[αTy]],
+    mkComb[selTerm, mkVar["l", listTy[αTy]]]]];
+  filterDefThm = newDefinition[mkEq[mkVar["FILTER", filterTy], filterBody]];
+];
+
+filterConst[] := mkConst["FILTER", filterTy];
+
+filterAppEq[pTm_, lTm_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[filterDefThm, pTm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, lTm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+{filterNilThm, filterConsThm} =
+  Module[{pV, lV, xV, satThm, selTerm, gNilEq, nilBase,
+          consXL, gConsSpec, stepThm, eqRec, consBase},
+    pV = mkVar["p", tyFun[αTy, boolTy]];
+    lV = mkVar["l", listTy[αTy]]; xV = mkVar["x", αTy];
+    {satThm, selTerm} = listRecExists[αTy, nilConst[], filterStep[pV]];
+
+    gNilEq = HOL`Bool`CONJUNCT1[satThm];
+    nilBase = TRANS[filterAppEq[pV, nilConst[]], gNilEq];
+    (* ⊢ FILTER p NIL = NIL *)
+
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+    gConsSpec = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[xV,
+      HOL`Bool`CONJUNCT2[satThm]]];
+    (* ⊢ selTerm (CONS x l) = COND (p x) (CONS x (selTerm l)) (selTerm l) *)
+    stepThm = TRANS[filterAppEq[pV, consXL], gConsSpec];
+    eqRec = HOL`Equal`SYM[filterAppEq[pV, lV]];
+    (* ⊢ selTerm l = FILTER p l *)
+    consBase = HOL`Drule`SUBS[{eqRec}, stepThm];
+    (* ⊢ FILTER p (CONS x l)
+         = COND (p x) (CONS x (FILTER p l)) (FILTER p l) *)
+
+    {HOL`Bool`GEN[pV, nilBase],
+     HOL`Bool`GEN[pV, HOL`Bool`GEN[xV, HOL`Bool`GEN[lV, consBase]]]}
+  ];
+
+(* ---- FOLDL ------------------------------------------------- *)
+(* FOLDL f e l = FOLDR (λx rec a. rec (f a x)) (λa. a) l e,       *)
+(* the inner FOLDR at target type β→β.                           *)
+
+bbTy = tyFun[βTy, βTy];
+foldlFnTy = tyFun[βTy, tyFun[αTy, βTy]];
+foldlTy = tyFun[foldlFnTy, tyFun[βTy, tyFun[listTy[αTy], βTy]]];
+foldrInstTy = tyFun[tyFun[αTy, tyFun[bbTy, bbTy]],
+  tyFun[bbTy, tyFun[listTy[αTy], bbTy]]];
+
+foldlStep[fTm_] :=
+  Module[{xV, recV, aV},
+    xV = mkVar["x", αTy]; recV = mkVar["rec", bbTy]; aV = mkVar["a", βTy];
+    mkAbs[xV, mkAbs[recV, mkAbs[aV,
+      mkComb[recV, mkComb[mkComb[fTm, aV], xV]]]]]
+  ];
+
+foldlBase[] := mkAbs[mkVar["a", βTy], mkVar["a", βTy]];
+
+Module[{fV, eV, lV, foldrInst, foldrApplied, foldlInner, foldlBody},
+  fV = mkVar["f", foldlFnTy]; eV = mkVar["e", βTy];
+  lV = mkVar["l", listTy[αTy]];
+  foldrInst = mkConst["FOLDR", foldrInstTy];
+  foldrApplied = mkComb[mkComb[mkComb[foldrInst, foldlStep[fV]],
+    foldlBase[]], lV];
+  foldlInner = mkComb[foldrApplied, eV];
+  foldlBody = mkAbs[fV, mkAbs[eV, mkAbs[lV, foldlInner]]];
+  foldlDefThm = newDefinition[mkEq[mkVar["FOLDL", foldlTy], foldlBody]];
+];
+
+foldlConst[] := mkConst["FOLDL", foldlTy];
+
+foldlAppEq[fTm_, eTm_, lTm_] :=
+  Module[{ap1, e1, ap2, e2, ap3},
+    ap1 = HOL`Equal`APTHM[foldlDefThm, fTm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, eTm];
+    e2 = TRANS[ap2, BETACONV[concl[ap2][[2]]]];
+    ap3 = HOL`Equal`APTHM[e2, lTm];
+    TRANS[ap3, BETACONV[concl[ap3][[2]]]]
+  ];
+
+{foldlNilThm, foldlConsThm} =
+  Module[{fV, eV, xV, lV, foldrNilInst, foldrConsInst, step, base,
+          foldrNilAt, applyE, baseEbeta, nilBase, consXL, foldrConsAt,
+          applyEcons, reducedRhs, foldlAppCons, recCall, consBase},
+    fV = mkVar["f", foldlFnTy]; eV = mkVar["e", βTy];
+    xV = mkVar["x", αTy]; lV = mkVar["l", listTy[αTy]];
+    step = foldlStep[fV]; base = foldlBase[];
+    foldrNilInst = INSTTYPE[{βTy -> bbTy}, foldrNilThm];
+    foldrConsInst = INSTTYPE[{βTy -> bbTy}, foldrConsThm];
+
+    (* NIL clause *)
+    foldrNilAt = HOL`Bool`SPEC[base, HOL`Bool`SPEC[step, foldrNilInst]];
+    (* ⊢ FOLDR step base NIL = base *)
+    applyE = HOL`Equal`APTHM[foldrNilAt, eV];
+    (* ⊢ (FOLDR step base NIL) e = base e *)
+    baseEbeta = BETACONV[concl[applyE][[2]]];
+    (* ⊢ base e = e *)
+    nilBase = TRANS[foldlAppEq[fV, eV, nilConst[]],
+      TRANS[applyE, baseEbeta]];
+    (* ⊢ FOLDL f e NIL = e *)
+
+    (* CONS clause *)
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+    foldrConsAt = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[xV,
+      HOL`Bool`SPEC[base, HOL`Bool`SPEC[step, foldrConsInst]]]];
+    (* ⊢ FOLDR step base (CONS x l) = step x (FOLDR step base l) *)
+    applyEcons = HOL`Equal`APTHM[foldrConsAt, eV];
+    (* ⊢ (FOLDR step base (CONS x l)) e = (step x (FOLDR step base l)) e *)
+    reducedRhs = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], applyEcons];
+    (* ⊢ (FOLDR step base (CONS x l)) e = (FOLDR step base l) (f e x) *)
+    foldlAppCons = foldlAppEq[fV, eV, consXL];
+    (* ⊢ FOLDL f e (CONS x l) = (FOLDR step base (CONS x l)) e *)
+    recCall = HOL`Equal`SYM[
+      foldlAppEq[fV, mkComb[mkComb[fV, eV], xV], lV]];
+    (* ⊢ (FOLDR step base l) (f e x) = FOLDL f (f e x) l *)
+    consBase = TRANS[foldlAppCons, TRANS[reducedRhs, recCall]];
+    (* ⊢ FOLDL f e (CONS x l) = FOLDL f (f e x) l *)
+
+    {HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, nilBase]],
+     HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, HOL`Bool`GEN[xV,
+       HOL`Bool`GEN[lV, consBase]]]]}
   ];
 
 End[];

@@ -540,5 +540,121 @@ HOLTest`runTests["stdlib/List: listIterationThm — ⊢ ∀e f. ∃g. g NIL = e 
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
 ]];
 
+(* ===== M7-4-d tests: FOLDR / APPEND / MAP / FILTER / FOLDL ===== *)
+
+forallAt[ty_] := mkConst["∀", tyFun[tyFun[ty, boolTy], boolTy]];
+consAtTy[ty_] := mkConst["CONS",
+  tyFun[ty, tyFun[HOL`Stdlib`List`listTy[ty], HOL`Stdlib`List`listTy[ty]]]];
+nilAtTy[ty_]  := mkConst["NIL", HOL`Stdlib`List`listTy[ty]];
+ap2[f_, x_, y_] := mkComb[mkComb[f, x], y];
+
+HOLTest`runTests["stdlib/List: foldrNilThm / foldrConsThm",
+  Module[{βTy, fTy, fV, eV, xV, lV, foldrC, consC, nilC, expN, expC},
+    βTy = mkVarType["B"]; fTy = tyFun[αTy, tyFun[βTy, βTy]];
+    fV = mkVar["f", fTy]; eV = mkVar["e", βTy];
+    xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    foldrC = HOL`Stdlib`List`foldrConst[];
+    consC = HOL`Stdlib`List`consConst[]; nilC = HOL`Stdlib`List`nilConst[];
+    expN = mkComb[forallAt[fTy], mkAbs[fV, mkComb[forallAt[βTy], mkAbs[eV,
+      mkEq[mkComb[ap2[foldrC, fV, eV], nilC], eV]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`foldrNilThm], expN],
+      "∀f e. FOLDR f e NIL = e"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`foldrNilThm], {}, "foldrNil no hyps"];
+    expC = mkComb[forallAt[fTy], mkAbs[fV, mkComb[forallAt[βTy], mkAbs[eV,
+      mkComb[forallAt[αTy], mkAbs[xV, mkComb[forallAt[listATy], mkAbs[lV,
+        mkEq[
+          mkComb[ap2[foldrC, fV, eV], ap2[consC, xV, lV]],
+          ap2[fV, xV, mkComb[ap2[foldrC, fV, eV], lV]]]]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`foldrConsThm], expC],
+      "∀f e x l. FOLDR f e (CONS x l) = f x (FOLDR f e l)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`foldrConsThm], {}, "foldrCons no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: appendNilThm / appendConsThm",
+  Module[{xV, l1V, l2V, appC, consC, nilC, expN, expC},
+    xV = mkVar["x", αTy];
+    l1V = mkVar["l1", listATy]; l2V = mkVar["l2", listATy];
+    appC = HOL`Stdlib`List`appendConst[];
+    consC = HOL`Stdlib`List`consConst[]; nilC = HOL`Stdlib`List`nilConst[];
+    expN = mkComb[forallAt[listATy], mkAbs[l2V,
+      mkEq[ap2[appC, nilC, l2V], l2V]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`appendNilThm], expN],
+      "∀l. APPEND NIL l = l"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`appendNilThm], {}, "appendNil no hyps"];
+    expC = mkComb[forallAt[αTy], mkAbs[xV, mkComb[forallAt[listATy], mkAbs[l1V,
+      mkComb[forallAt[listATy], mkAbs[l2V,
+        mkEq[ap2[appC, ap2[consC, xV, l1V], l2V],
+             ap2[consC, xV, ap2[appC, l1V, l2V]]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`appendConsThm], expC],
+      "∀x l1 l2. APPEND (CONS x l1) l2 = CONS x (APPEND l1 l2)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`appendConsThm], {}, "appendCons no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: mapNilThm / mapConsThm",
+  Module[{βTy, listBTy, hTy, hV, xV, lV, mapC, consA, nilA, consB, nilB,
+          expN, expC},
+    βTy = mkVarType["B"]; listBTy = listTy[βTy]; hTy = tyFun[αTy, βTy];
+    hV = mkVar["h", hTy]; xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    mapC = HOL`Stdlib`List`mapConst[];
+    consA = HOL`Stdlib`List`consConst[]; nilA = HOL`Stdlib`List`nilConst[];
+    consB = consAtTy[βTy]; nilB = nilAtTy[βTy];
+    expN = mkComb[forallAt[hTy], mkAbs[hV,
+      mkEq[ap2[mapC, hV, nilA], nilB]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`mapNilThm], expN],
+      "∀h. MAP h NIL = NIL"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`mapNilThm], {}, "mapNil no hyps"];
+    expC = mkComb[forallAt[hTy], mkAbs[hV, mkComb[forallAt[αTy], mkAbs[xV,
+      mkComb[forallAt[listATy], mkAbs[lV,
+        mkEq[ap2[mapC, hV, ap2[consA, xV, lV]],
+             ap2[consB, mkComb[hV, xV], ap2[mapC, hV, lV]]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`mapConsThm], expC],
+      "∀h x l. MAP h (CONS x l) = CONS (h x) (MAP h l)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`mapConsThm], {}, "mapCons no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: filterNilThm / filterConsThm",
+  Module[{pTy, pV, xV, lV, filC, consC, nilC, condC, px, recCall, expN, expC},
+    pTy = tyFun[αTy, boolTy];
+    pV = mkVar["p", pTy]; xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    filC = HOL`Stdlib`List`filterConst[];
+    consC = HOL`Stdlib`List`consConst[]; nilC = HOL`Stdlib`List`nilConst[];
+    condC = HOL`Bool`condConst[listATy];
+    px = mkComb[pV, xV]; recCall = ap2[filC, pV, lV];
+    expN = mkComb[forallAt[pTy], mkAbs[pV,
+      mkEq[ap2[filC, pV, nilC], nilC]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`filterNilThm], expN],
+      "∀p. FILTER p NIL = NIL"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`filterNilThm], {}, "filterNil no hyps"];
+    expC = mkComb[forallAt[pTy], mkAbs[pV, mkComb[forallAt[αTy], mkAbs[xV,
+      mkComb[forallAt[listATy], mkAbs[lV,
+        mkEq[ap2[filC, pV, ap2[consC, xV, lV]],
+             ap2[mkComb[condC, px], ap2[consC, xV, recCall], recCall]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`filterConsThm], expC],
+      "∀p x l. FILTER p (CONS x l) = COND (p x) (CONS x (FILTER p l)) (FILTER p l)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`filterConsThm], {}, "filterCons no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: foldlNilThm / foldlConsThm",
+  Module[{βTy, fTy, fV, eV, xV, lV, foldlC, consC, nilC, expN, expC},
+    βTy = mkVarType["B"]; fTy = tyFun[βTy, tyFun[αTy, βTy]];
+    fV = mkVar["f", fTy]; eV = mkVar["e", βTy];
+    xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    foldlC = HOL`Stdlib`List`foldlConst[];
+    consC = HOL`Stdlib`List`consConst[]; nilC = HOL`Stdlib`List`nilConst[];
+    expN = mkComb[forallAt[fTy], mkAbs[fV, mkComb[forallAt[βTy], mkAbs[eV,
+      mkEq[mkComb[ap2[foldlC, fV, eV], nilC], eV]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`foldlNilThm], expN],
+      "∀f e. FOLDL f e NIL = e"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`foldlNilThm], {}, "foldlNil no hyps"];
+    expC = mkComb[forallAt[fTy], mkAbs[fV, mkComb[forallAt[βTy], mkAbs[eV,
+      mkComb[forallAt[αTy], mkAbs[xV, mkComb[forallAt[listATy], mkAbs[lV,
+        mkEq[
+          mkComb[ap2[foldlC, fV, eV], ap2[consC, xV, lV]],
+          mkComb[ap2[foldlC, fV, ap2[fV, eV, xV]], lV]]]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`foldlConsThm], expC],
+      "∀f e x l. FOLDL f e (CONS x l) = FOLDL f (f e x) l"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`foldlConsThm], {}, "foldlCons no hyps"];
+]];
+
 End[];
 EndPackage[];
