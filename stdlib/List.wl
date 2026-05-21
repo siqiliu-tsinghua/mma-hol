@@ -173,6 +173,36 @@ graphUniqueThm::usage =
 listIterationThm::usage =
   "listIterationThm — ⊢ ∀e f. ∃g. g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l). List iteration principle (analogue of numIterationThm).";
 
+foldrConst::usage =
+  "foldrConst[] — FOLDR : (α→β→β) → β → α list → β. Right fold; FOLDR f e [x1,…,xn] = f x1 (… (f xn e)).";
+foldrDefThm::usage = "foldrDefThm — ⊢ FOLDR = (λf e. ε g. g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l)).";
+foldrNilThm::usage = "foldrNilThm — ⊢ ∀f e. FOLDR f e NIL = e.";
+foldrConsThm::usage = "foldrConsThm — ⊢ ∀f e x l. FOLDR f e (CONS x l) = f x (FOLDR f e l).";
+
+appendConst::usage =
+  "appendConst[] — APPEND : α list → α list → α list. List concatenation.";
+appendDefThm::usage = "appendDefThm — ⊢ APPEND = (λl1 l2. (ε g. …) l1) recursing on l1 with base l2.";
+appendNilThm::usage = "appendNilThm — ⊢ ∀l. APPEND NIL l = l.";
+appendConsThm::usage = "appendConsThm — ⊢ ∀x l1 l2. APPEND (CONS x l1) l2 = CONS x (APPEND l1 l2).";
+
+mapConst::usage =
+  "mapConst[] — MAP : (α→β) → α list → β list. Map a function over a list.";
+mapDefThm::usage = "mapDefThm — ⊢ MAP = (λh l. (ε g. …) l).";
+mapNilThm::usage = "mapNilThm — ⊢ ∀h. MAP h NIL = NIL.";
+mapConsThm::usage = "mapConsThm — ⊢ ∀h x l. MAP h (CONS x l) = CONS (h x) (MAP h l).";
+
+filterConst::usage =
+  "filterConst[] — FILTER : (α→bool) → α list → α list. Keep elements satisfying the predicate.";
+filterDefThm::usage = "filterDefThm — ⊢ FILTER = (λp l. (ε g. …) l).";
+filterNilThm::usage = "filterNilThm — ⊢ ∀p. FILTER p NIL = NIL.";
+filterConsThm::usage = "filterConsThm — ⊢ ∀p x l. FILTER p (CONS x l) = COND (p x) (CONS x (FILTER p l)) (FILTER p l).";
+
+foldlConst::usage =
+  "foldlConst[] — FOLDL : (β→α→β) → β → α list → β. Left fold; FOLDL f e [x1,…,xn] = f (… (f e x1) …) xn. Defined via FOLDR at target type β→β.";
+foldlDefThm::usage = "foldlDefThm — ⊢ FOLDL = (λf e l. FOLDR (λx r a. r (f a x)) (λa. a) l e).";
+foldlNilThm::usage = "foldlNilThm — ⊢ ∀f e. FOLDL f e NIL = e.";
+foldlConsThm::usage = "foldlConsThm — ⊢ ∀f e x l. FOLDL f e (CONS x l) = FOLDL f (f e x) l.";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -2909,6 +2939,86 @@ listIterationThm =
     (* ⊢ ∃g. g NIL = e ∧ ∀x l. g (CONS x l) = f x (g l) *)
     genF = HOL`Bool`GEN[fV, existsG];
     genE = HOL`Bool`GEN[eV, genF]
+  ];
+
+(* ============================================================ *)
+(* M7-4-d : APPEND / MAP / FILTER / FOLDR / FOLDL                *)
+(* ============================================================ *)
+
+nilAt[ty_]  := mkConst["NIL", listTy[ty]];
+consAt[ty_] := mkConst["CONS", tyFun[ty, tyFun[listTy[ty], listTy[ty]]]];
+consApp[ty_, xTm_, lTm_] := mkComb[mkComb[consAt[ty], xTm], lTm];
+
+(* listRecExists[elemTy, eTm, fTm] — instantiate listIterationThm at  *)
+(* (A:=elemTy, B:=typeOf[eTm]), specialize e,f, then select a witness *)
+(* g. Returns {satThm, selTerm} where selTerm = ε g. P g (the chosen  *)
+(* function) and satThm ⊢ selTerm NIL = e ∧ ∀x l. selTerm (CONS x l)  *)
+(* = f x (selTerm l). NIL/CONS in the recursion are at elemTy.        *)
+listRecExists[elemTy_, eTm_, fTm_] :=
+  Module[{bTy, gTy, instThm, specEF, predLam, selTerm, satThm},
+    bTy = typeOf[eTm];
+    gTy = tyFun[listTy[elemTy], bTy];
+    instThm = INSTTYPE[{αTy -> elemTy, βTy -> bTy}, listIterationThm];
+    specEF = HOL`Bool`SPEC[fTm, HOL`Bool`SPEC[eTm, instThm]];
+    predLam = concl[specEF][[2]];
+    selTerm = mkComb[selectC[gTy], predLam];
+    satThm = HOL`Stdlib`Num`selectOfExists[predLam, specEF];
+    {satThm, selTerm}
+  ];
+
+(* ---- FOLDR ------------------------------------------------- *)
+
+foldrTy = tyFun[iterFnTy, tyFun[βTy, tyFun[listTy[αTy], βTy]]];
+
+Module[{fV, eV, selTerm, foldrBody},
+  fV = mkVar["f", iterFnTy]; eV = mkVar["e", βTy];
+  selTerm = listRecExists[αTy, eV, fV][[2]];
+  foldrBody = mkAbs[fV, mkAbs[eV, selTerm]];
+  foldrDefThm = newDefinition[mkEq[mkVar["FOLDR", foldrTy], foldrBody]];
+];
+
+foldrConst[] := mkConst["FOLDR", foldrTy];
+
+(* foldrAppEq[fTm, eTm] — ⊢ FOLDR f e = (ε g. …) (the witness g). *)
+foldrAppEq[fTm_, eTm_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[foldrDefThm, fTm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, eTm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+{foldrNilThm, foldrConsThm} =
+  Module[{fV, eV, xV, lV, satThm, selTerm, appEq, gNilEq,
+          foldrNilBase, consXL, gConsSpec, gLEq, lhsCons, fxGL,
+          foldrConsBase},
+    fV = mkVar["f", iterFnTy]; eV = mkVar["e", βTy];
+    xV = mkVar["x", αTy]; lV = mkVar["l", listTy[αTy]];
+    {satThm, selTerm} = listRecExists[αTy, eV, fV];
+    appEq = foldrAppEq[fV, eV];
+    (* ⊢ FOLDR f e = selTerm *)
+
+    gNilEq = HOL`Bool`CONJUNCT1[satThm];
+    (* ⊢ selTerm NIL = e *)
+    foldrNilBase = TRANS[HOL`Equal`APTHM[appEq, nilConst[]], gNilEq];
+    (* ⊢ FOLDR f e NIL = e *)
+
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+    gConsSpec = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[xV,
+      HOL`Bool`CONJUNCT2[satThm]]];
+    (* ⊢ selTerm (CONS x l) = f x (selTerm l) *)
+    lhsCons = TRANS[HOL`Equal`APTHM[appEq, consXL], gConsSpec];
+    (* ⊢ FOLDR f e (CONS x l) = f x (selTerm l) *)
+    gLEq = HOL`Equal`SYM[HOL`Equal`APTHM[appEq, lV]];
+    (* ⊢ selTerm l = FOLDR f e l *)
+    fxGL = HOL`Equal`APTERM[mkComb[fV, xV], gLEq];
+    (* ⊢ f x (selTerm l) = f x (FOLDR f e l) *)
+    foldrConsBase = TRANS[lhsCons, fxGL];
+    (* ⊢ FOLDR f e (CONS x l) = f x (FOLDR f e l) *)
+
+    {HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, foldrNilBase]],
+     HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, HOL`Bool`GEN[xV,
+       HOL`Bool`GEN[lV, foldrConsBase]]]]}
   ];
 
 End[];
