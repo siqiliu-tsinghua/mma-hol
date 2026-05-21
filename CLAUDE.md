@@ -68,7 +68,9 @@ M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeB
 
 **M7 stdlib** — Pair, Sum, Option, Set done. **Num done through M7-3** (Peano via `ind`+INFINITY_AX; iteration theorem; `+ × ^`; `≤ <`; strong induction; well-ordering; division `m = n*q+r`; `DIV`/`MOD`; `divides`; `gcd` + universal property; `prime`; Euclid's lemma — all no integer Bezout). FTA deferred to post-List (needs list/finite to express factorizations). **List done through M7-4-d** (α list as `num → α option` finite-support subtype: NIL/CONS, injectivity, NIL≠CONS disjointness, list induction; `LENGTH`/`HD`/`TL`; list iteration theorem; `FOLDR`/`FOLDL`/`APPEND`/`MAP`/`FILTER` + NIL/CONS clauses). **`COND` + COND_CLAUSES** added to Bool.wl (needed by FILTER).
 
-**Next**: `Finite.wl` (FINITE/CARD/Σ); then M7-δ ARITH, M7-5 Int, … per PLAN. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. can be added on demand.) **Audit issues parked in `TODO.md`.**
+**Finite.wl foundation done (M7-4-e)** — `INSERT`/`SING`/`DELETE` added to Set.wl; **inductive `FINITE`** (smallest predicate with ∅ + INSERT-closure) with `finiteEmptyThm`/`finiteInsertThm`/`finiteSingThm`, strong `finiteInductThm` (FINITE s in the step), and `finiteUnionThm`. Pending closure lemmas `finiteSubsetThm`/`finiteImageThm`/`finiteDeleteThm` need first-order (Leibniz / ∃) reasoning — deferred.
+
+**Next**: finish Finite closure lemmas (SUBSET/IMAGE/DELETE) then `CARD`/`∑` (needs order-independent set-fold); then M7-δ ARITH, M7-5 Int, … per PLAN. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
 
 Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 
@@ -91,6 +93,7 @@ Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 - `stdlib/Pair.wl`: `α×β`, constructor `,`, `FST`/`SND`, pair injectivity. (`mkPair` underlying.)
 - `stdlib/Sum.wl`: `α+β`, `INL`/`INR`, injectivity + disjointness.
 - `stdlib/Option.wl`: `α option`, `NONE`/`SOME`, injectivity + `noneNotEqSomeThm`; `isOptionPredicate` for case analysis.
-- `stdlib/Set.wl`: sets as `α→bool` — `IN`/`SUBSET`/`UNION`/`INTER`/`DIFF`/`EMPTY`/`UNIV`/`POW`/`IMAGE`/`PREIMAGE`/`BALL`/`BEX`/`COMPOSE`/`I`/`INJ`/`SURJ`/`BIJ` + membership/subset theorems. Parser supports `{x | P}` set-builder.
+- `stdlib/Set.wl`: sets as `α→bool` — `IN`/`SUBSET`/`UNION`/`INTER`/`DIFF`/`EMPTY`/`UNIV`/`INSERT`/`SING`/`DELETE`/`POW`/`IMAGE`/`PREIMAGE`/`BALL`/`BEX`/`COMPOSE`/`I`/`INJ`/`SURJ`/`BIJ` + membership/subset theorems. Parser supports `{x | P}` set-builder.
 - `stdlib/Num.wl`: ℕ from `ind`+INFINITY_AX. `0`/`SUC`/Peano/`numInductionThm`; `ITER`/`numIterationThm`; `+`/`*`/`^` (comm/assoc/distrib/cancel); `≤`/`<` (refl/trans/antisym/total); `strongInductionThm`; `wellOrderingThm`; `divisionThm`/`DIV`/`MOD`; `divides` arithmetic; `gcd` (+ `gcdSpecThm` universal property); `prime`; `euclidLemmaThm`.
 - `stdlib/List.wl`: `α list` = `num → α option` finite-support subtype (`isListP` carrier predicate). `NIL`/`CONS`, `repNil`/`repConsHead`/`repConsTail`, `consInjThm`, `nilNotEqConsThm`, `listInductionThm`; `LENGTH`/`HD`/`TL`; `LIST_ITER_GRAPH` + `listIterationThm`; `FOLDR`/`FOLDL`/`APPEND`/`MAP`/`FILTER` (all with NIL/CONS clauses, built via `listRecExists`); helpers `optionCasesThm`, tail/shift toolkit, `funcExtThm`.
+- `stdlib/Finite.wl`: inductive `FINITE` (`finiteConst`/`finiteDefThm`); `finiteEmptyThm`/`finiteInsertThm`/`finiteSingThm`; strong `finiteInductThm`; `finiteUnionThm`. (SUBSET/IMAGE/DELETE closure + CARD/∑ pending.)
