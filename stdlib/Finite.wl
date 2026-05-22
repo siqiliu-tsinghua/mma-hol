@@ -31,11 +31,15 @@ finiteInductThm::usage = "finiteInductThm — ⊢ ∀P. P EMPTY ∧ (∀x s. FIN
 finiteUnionThm::usage  = "finiteUnionThm — ⊢ ∀s t. FINITE s ⇒ FINITE t ⇒ FINITE (s ∪ t).";
 finiteSubsetThm::usage = "finiteSubsetThm — ⊢ ∀s. FINITE s ⇒ ∀t. t ⊆ s ⇒ FINITE t.";
 finiteDeleteThm::usage = "finiteDeleteThm — ⊢ ∀s x. FINITE s ⇒ FINITE (DELETE s x).";
+finiteImageThm::usage  = "finiteImageThm — ⊢ ∀f s. FINITE s ⇒ FINITE (IMAGE f s).";
 
 Begin["`Private`"];
 
 αTy   = mkVarType["A"];
+βTy   = mkVarType["B"];
 setTy = tyFun[αTy, boolTy];
+setBTy = tyFun[βTy, boolTy];
+fnTy  = tyFun[αTy, βTy];
 predTy = tyFun[setTy, boolTy];
 finiteTy = tyFun[setTy, boolTy];
 
@@ -51,6 +55,9 @@ insertTm[x_, s_]  := HOL`Stdlib`Set`insertTerm[x, s];
 xV = mkVar["x", αTy];
 tV = mkVar["t", setTy];
 sV = mkVar["s", setTy];
+fV = mkVar["f", fnTy];
+yImV = mkVar["yIm", βTy];
+zCh = mkVar["zCh", αTy];
 
 (* closedAt[fp] = fp EMPTY ∧ (∀x t. fp t ⇒ fp (x INSERT t)).         *)
 (* Used both as the def body and (with fp a λ-set) at the induction  *)
@@ -332,6 +339,22 @@ inInsertAt[y_, x_, S_] := INST[{mkVar["y", αTy] -> y, mkVar["x", αTy] -> x,
 inDeleteAt[y_, S_, x_] := INST[{mkVar["y", αTy] -> y, mkVar["S", setTy] -> S,
   mkVar["x", αTy] -> x}, HOL`Stdlib`Set`inDeleteThm];
 
+(* β-instances (image type) for the IMAGE closure lemma. *)
+emptyBTm[]   := mkConst["EMPTY", setBTy];
+imageTm[f_, S_] := HOL`Stdlib`Set`imageTerm[f, S];
+existsATm[bodyLam_] := mkComb[mkConst["∃", tyFun[tyFun[αTy, boolTy], boolTy]],
+  bodyLam];
+
+inEmptyAtA[y_] := INST[{mkVar["x", αTy] -> y}, HOL`Stdlib`Set`inEmptyThm];
+inEmptyAtB[y_] := INST[{mkVar["x", βTy] -> y},
+  INSTTYPE[{αTy -> βTy}, HOL`Stdlib`Set`inEmptyThm]];
+inInsertBAt[y_, x_, S_] := INST[
+  {mkVar["y", βTy] -> y, mkVar["x", βTy] -> x, mkVar["S", setBTy] -> S},
+  INSTTYPE[{αTy -> βTy}, HOL`Stdlib`Set`inInsertThm]];
+(* ⊢ IN y (IMAGE f S) = ∃x. IN x S ∧ y = f x *)
+inImageAt[y_, f_, S_] := INST[{mkVar["y", βTy] -> y, mkVar["f", fnTy] -> f,
+  mkVar["S", setTy] -> S}, HOL`Stdlib`Set`inImageThm];
+
 (* ⊢ SUBSET S T = (∀x. IN x S ⇒ IN x T) *)
 unfoldSubset[S_, T_] :=
   Module[{ap1, ap2},
@@ -548,6 +571,152 @@ finiteDeleteThm =
     (* (FINITE s) ⊢ FINITE (DELETE s x) *)
     HOL`Bool`GEN[sV, HOL`Bool`GEN[xV,
       HOL`Bool`DISCH[finiteAppTerm[sV], finDel]]]
+  ];
+
+(* ============================================================ *)
+(* IMAGE closure : finiteImageThm                               *)
+(*   ⊢ ∀f s. FINITE s ⇒ FINITE (IMAGE f s).                     *)
+(* Two-type-var (α-set → β-set). Needs the ∃-carrying image     *)
+(* identities, hand-rolled with CHOOSE/EXISTS/SUBS (MESON has   *)
+(* no congruence so can't do z = x ⇒ f z = f x).                *)
+(* ============================================================ *)
+
+finiteAppTermB[s_] := mkComb[mkConst["FINITE", tyFun[setBTy, boolTy]], s];
+insertBTm[x_, S_] := mkComb[mkComb[
+  mkConst["INSERT", tyFun[βTy, tyFun[setBTy, setBTy]]], x], S];
+finRewriteB[eqTh_, finU_] := EQMP[HOL`Equal`SYM[HOL`Equal`APTERM[
+  mkConst["FINITE", tyFun[setBTy, boolTy]], eqTh]], finU];
+
+(* imageEmptyEq : ⊢ IMAGE f EMPTY = EMPTY *)
+imageEmptyEq =
+  Module[{lhsSet, inImgE, th1, th2, bodyAtZ, deduct},
+    lhsSet = imageTm[fV, emptyTm[]];
+    inImgE = inImageAt[yImV, fV, emptyTm[]];
+    (* ⊢ IN y (IMAGE f EMPTY) = ∃x. IN x EMPTY ∧ y = f x *)
+    th1 = HOL`Bool`CONTR[inTm[yImV, lhsSet],
+      EQMP[inEmptyAtB[yImV], ASSUME[inTm[yImV, emptyBTm[]]]]];
+    (* (IN y β-EMPTY) ⊢ IN y (IMAGE f EMPTY) *)
+    th2 = Module[{exHyp, xInEmpty, yInBEmpty},
+      exHyp = EQMP[inImgE, ASSUME[inTm[yImV, lhsSet]]];
+      bodyAtZ = ASSUME[andTm[inTm[zCh, emptyTm[]], mkEq[yImV, mkComb[fV, zCh]]]];
+      xInEmpty = HOL`Bool`CONJUNCT1[bodyAtZ];
+      yInBEmpty = HOL`Bool`CONTR[inTm[yImV, emptyBTm[]],
+        EQMP[inEmptyAtA[zCh], xInEmpty]];
+      HOL`Bool`CHOOSE[zCh, exHyp, yInBEmpty]
+    ];
+    deduct = DEDUCTANTISYM[th1, th2];
+    setExtFromInEq[lhsSet, emptyBTm[], yImV, deduct]
+  ];
+
+(* imageInsertEq : ⊢ IMAGE f (x INSERT s) = (f x) INSERT (IMAGE f s) *)
+imageInsertEq =
+  Module[{insAlpha, lhsSet, fxTm, imgS, rhsSet, lhsMem, existsLHS,
+          rhsMem, imgSMem, existsImgS, th1, th2, deduct},
+    insAlpha = insertTm[xV, sV];
+    lhsSet = imageTm[fV, insAlpha];
+    fxTm = mkComb[fV, xV];
+    imgS = imageTm[fV, sV];
+    rhsSet = insertBTm[fxTm, imgS];
+    lhsMem = inImageAt[yImV, fV, insAlpha];
+    (* ⊢ IN y lhsSet = ∃z. IN z (x INSERT s) ∧ y = f z *)
+    existsLHS = concl[lhsMem][[2]];
+    rhsMem = inInsertBAt[yImV, fxTm, imgS];
+    (* ⊢ IN y rhsSet = (y = f x) ∨ IN y (IMAGE f s) *)
+    imgSMem = inImageAt[yImV, fV, sV];
+    existsImgS = concl[imgSMem][[2]];
+
+    (* th1 : (IN y rhsSet) ⊢ IN y lhsSet *)
+    th1 = Module[{rhsDisj, branch1, branch2},
+      rhsDisj = EQMP[rhsMem, ASSUME[inTm[yImV, rhsSet]]];
+      branch1 = Module[{yEqFx, inXIns, bodyWit, exLHS},
+        yEqFx = ASSUME[mkEq[yImV, fxTm]];
+        inXIns = EQMP[HOL`Equal`SYM[inInsertAt[xV, xV, sV]],
+          HOL`Bool`DISJ1[REFL[xV], inTm[xV, sV]]];
+        bodyWit = HOL`Bool`CONJ[inXIns, yEqFx];
+        exLHS = HOL`Bool`EXISTS[existsLHS, xV, bodyWit];
+        EQMP[HOL`Equal`SYM[lhsMem], exLHS]
+      ];
+      (* (y = f x) ⊢ IN y lhsSet *)
+      branch2 = Module[{exImgS, bodyImg, wInS, yEqFw, wInIns, bodyWit2, exLHS2},
+        exImgS = EQMP[imgSMem, ASSUME[inTm[yImV, imgS]]];
+        bodyImg = ASSUME[andTm[inTm[zCh, sV], mkEq[yImV, mkComb[fV, zCh]]]];
+        wInS = HOL`Bool`CONJUNCT1[bodyImg];
+        yEqFw = HOL`Bool`CONJUNCT2[bodyImg];
+        wInIns = EQMP[HOL`Equal`SYM[inInsertAt[zCh, xV, sV]],
+          HOL`Bool`DISJ2[wInS, mkEq[zCh, xV]]];
+        bodyWit2 = HOL`Bool`CONJ[wInIns, yEqFw];
+        exLHS2 = HOL`Bool`EXISTS[existsLHS, zCh, bodyWit2];
+        HOL`Bool`CHOOSE[zCh, exImgS, EQMP[HOL`Equal`SYM[lhsMem], exLHS2]]
+      ];
+      (* (IN y (IMAGE f s)) ⊢ IN y lhsSet *)
+      HOL`Bool`DISJCASES[rhsDisj, branch1, branch2]
+    ];
+
+    (* th2 : (IN y lhsSet) ⊢ IN y rhsSet *)
+    th2 = Module[{exLHSp, bodyP, wInIns, yEqFw, wDisj, branchA, branchB,
+                  innerCases},
+      exLHSp = EQMP[lhsMem, ASSUME[inTm[yImV, lhsSet]]];
+      bodyP = ASSUME[andTm[inTm[zCh, insAlpha], mkEq[yImV, mkComb[fV, zCh]]]];
+      wInIns = HOL`Bool`CONJUNCT1[bodyP];
+      yEqFw = HOL`Bool`CONJUNCT2[bodyP];
+      wDisj = EQMP[inInsertAt[zCh, xV, sV], wInIns];
+      (* (body) ⊢ (z = x) ∨ IN z s *)
+      branchA = Module[{zEqX, yEqFxThm, disj1},
+        zEqX = ASSUME[mkEq[zCh, xV]];
+        yEqFxThm = HOL`Drule`SUBS[{zEqX}, yEqFw];
+        (* (body, z = x) ⊢ y = f x *)
+        disj1 = HOL`Bool`DISJ1[yEqFxThm, inTm[yImV, imgS]];
+        EQMP[HOL`Equal`SYM[rhsMem], disj1]
+      ];
+      branchB = Module[{wInSHyp, bodyImgWit, exImgSWit, yInImgS, disj2},
+        wInSHyp = ASSUME[inTm[zCh, sV]];
+        bodyImgWit = HOL`Bool`CONJ[wInSHyp, yEqFw];
+        exImgSWit = HOL`Bool`EXISTS[existsImgS, zCh, bodyImgWit];
+        yInImgS = EQMP[HOL`Equal`SYM[imgSMem], exImgSWit];
+        disj2 = HOL`Bool`DISJ2[yInImgS, mkEq[yImV, fxTm]];
+        EQMP[HOL`Equal`SYM[rhsMem], disj2]
+      ];
+      innerCases = HOL`Bool`DISJCASES[wDisj, branchA, branchB];
+      HOL`Bool`CHOOSE[zCh, exLHSp, innerCases]
+    ];
+
+    deduct = DEDUCTANTISYM[th1, th2];
+    setExtFromInEq[lhsSet, rhsSet, yImV, deduct]
+  ];
+
+finiteImageThm =
+  Module[{pBodyImg, pLam, specInduct, specBeta, finiteEmptyB, finiteInsertB,
+          conj1, conj2, ante, mainConcl},
+    pBodyImg[sArg_] := finiteAppTermB[imageTm[fV, sArg]];
+    pLam = mkAbs[sV, pBodyImg[sV]];
+    specInduct = HOL`Bool`ISPEC[pLam, finiteInductThm];
+    specBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInduct];
+    finiteEmptyB = INSTTYPE[{αTy -> βTy}, finiteEmptyThm];
+    finiteInsertB = INSTTYPE[{αTy -> βTy}, finiteInsertThm];
+
+    conj1 = finRewriteB[imageEmptyEq, finiteEmptyB];
+    (* ⊢ FINITE (IMAGE f EMPTY) *)
+
+    conj2 = Module[{conjTm, conjHyp, finImgS, finImgIns, fxTm, imgS,
+                    pIns, dischConj},
+      conjTm = andTm[finiteAppTerm[sV], pBodyImg[sV]];
+      conjHyp = ASSUME[conjTm];
+      finImgS = HOL`Bool`CONJUNCT2[conjHyp];
+      fxTm = mkComb[fV, xV]; imgS = imageTm[fV, sV];
+      finImgIns = HOL`Bool`MP[
+        HOL`Bool`SPEC[imgS, HOL`Bool`SPEC[fxTm, finiteInsertB]], finImgS];
+      (* (conjHyp) ⊢ FINITE ((f x) INSERT IMAGE f s) *)
+      pIns = finRewriteB[imageInsertEq, finImgIns];
+      (* (conjHyp) ⊢ FINITE (IMAGE f (x INSERT s)) *)
+      dischConj = HOL`Bool`DISCH[conjTm, pIns];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[sV, dischConj]]
+    ];
+
+    ante = HOL`Bool`CONJ[conj1, conj2];
+    mainConcl = HOL`Bool`MP[specBeta, ante];
+    (* ⊢ ∀s. FINITE s ⇒ FINITE (IMAGE f s) *)
+    HOL`Bool`GEN[fV, mainConcl]
   ];
 
 End[];

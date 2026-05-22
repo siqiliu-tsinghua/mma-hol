@@ -178,3 +178,34 @@ HOLTest`runTests["finite: FINITE (DELETE (SING a) b) via finiteDeleteThm",
       "⊢ FINITE (DELETE (SING a) b)"];
     HOLTest`assertEq[hyp[finDel], {}, "no hyps"];
 ]];
+
+HOLTest`runTests["finite: finiteImageThm — ⊢ ∀f s. FINITE s ⇒ FINITE (IMAGE f s)",
+  Module[{dThm, bTy, fnTy, setBTy, f, s, impC, finA, finB, expected},
+    dThm = HOL`Stdlib`Finite`finiteImageThm;
+    bTy = mkVarType["B"]; fnTy = tyFun[αTy, bTy]; setBTy = tyFun[bTy, boolTy];
+    f = mkVar["f", fnTy]; s = mkVar["s", setTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    finA = HOL`Stdlib`Finite`finiteAppTerm;
+    finB[u_] := mkComb[mkConst["FINITE", tyFun[setBTy, boolTy]], u];
+    expected = mkComb[mkConst["∀", tyFun[tyFun[fnTy, boolTy], boolTy]],
+      mkAbs[f, mkComb[mkConst["∀", tyFun[tyFun[setTy, boolTy], boolTy]],
+        mkAbs[s, mkComb[mkComb[impC, finA[s]],
+          finB[HOL`Stdlib`Set`imageTerm[f, s]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[dThm], expected],
+      "⊢ ∀f s. FINITE s ⇒ FINITE (IMAGE f s)"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["finite: FINITE (IMAGE f (SING a)) via finiteImageThm",
+  Module[{bTy, fnTy, setBTy, f, a, sa, finImg},
+    bTy = mkVarType["B"]; fnTy = tyFun[αTy, bTy]; setBTy = tyFun[bTy, boolTy];
+    f = mkVar["f", fnTy]; a = mkVar["a", αTy];
+    sa = HOL`Stdlib`Set`singTerm[a];
+    finImg = MP[SPEC[sa, SPEC[f, HOL`Stdlib`Finite`finiteImageThm]],
+      SPEC[a, HOL`Stdlib`Finite`finiteSingThm]];
+    HOLTest`assertEq[concl[finImg],
+      mkComb[mkConst["FINITE", tyFun[setBTy, boolTy]],
+        HOL`Stdlib`Set`imageTerm[f, sa]],
+      "⊢ FINITE (IMAGE f (SING a))"];
+    HOLTest`assertEq[hyp[finImg], {}, "no hyps"];
+]];
