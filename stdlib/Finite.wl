@@ -33,6 +33,13 @@ finiteSubsetThm::usage = "finiteSubsetThm — ⊢ ∀s. FINITE s ⇒ ∀t. t ⊆
 finiteDeleteThm::usage = "finiteDeleteThm — ⊢ ∀s x. FINITE s ⇒ FINITE (DELETE s x).";
 finiteImageThm::usage  = "finiteImageThm — ⊢ ∀f s. FINITE s ⇒ FINITE (IMAGE f s).";
 
+finrecConst::usage = "finrecConst[] — FINREC : (α→β→β) → β → num → (α→bool) → β → bool. Count-indexed fold graph (HOL Light FINREC): FINREC f b n s a holds when a is a fold of f over the n-element set s starting from b (any removal order). Scaffolding for the order-independent set fold behind CARD / ∑.";
+finrecDefThm::usage = "finrecDefThm — ⊢ FINREC = (λf b. ITER (λs a. s = EMPTY ∧ a = b) (λr s a. ∃x c. x ∈ s ∧ r (DELETE s x) c ∧ a = f x c)).";
+finrecZeroThm::usage = "finrecZeroThm — ⊢ FINREC f b 0 = (λs a. s = EMPTY ∧ a = b).";
+finrecSucThm::usage  = "finrecSucThm — ⊢ FINREC f b (SUC n) = (λs a. ∃x c. x ∈ s ∧ FINREC f b n (DELETE s x) c ∧ a = f x c).";
+finrecZeroAppThm::usage = "finrecZeroAppThm — ⊢ FINREC f b 0 s a = (s = EMPTY ∧ a = b).";
+finrecSucAppThm::usage  = "finrecSucAppThm — ⊢ FINREC f b (SUC n) s a = (∃x c. x ∈ s ∧ FINREC f b n (DELETE s x) c ∧ a = f x c).";
+
 Begin["`Private`"];
 
 αTy   = mkVarType["A"];
@@ -43,9 +50,12 @@ fnTy  = tyFun[αTy, βTy];
 predTy = tyFun[setTy, boolTy];
 finiteTy = tyFun[setTy, boolTy];
 
+numTy = mkType["num", {}];
+
 andC[]       := mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
 impC[]       := mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
 forallC[ty_] := mkConst["∀", tyFun[tyFun[ty, boolTy], boolTy]];
+existsC[ty_] := mkConst["∃", tyFun[tyFun[ty, boolTy], boolTy]];
 andTm[a_, b_] := mkComb[mkComb[andC[], a], b];
 impTm[a_, b_] := mkComb[mkComb[impC[], a], b];
 
@@ -717,6 +727,117 @@ finiteImageThm =
     mainConcl = HOL`Bool`MP[specBeta, ante];
     (* ⊢ ∀s. FINITE s ⇒ FINITE (IMAGE f s) *)
     HOL`Bool`GEN[fV, mainConcl]
+  ];
+
+(* ============================================================ *)
+(* FINREC — count-indexed fold graph (HOL Light FINREC), the    *)
+(* scaffolding for the order-independent set fold (ITSET) that  *)
+(* CARD / ∑ rest on. Recursion on the count via Num`ITER:        *)
+(*   FINREC f b 0       s a = (s = ∅ ∧ a = b)                    *)
+(*   FINREC f b (SUC n) s a = ∃x c. x∈s ∧ FINREC f b n (s\x) c   *)
+(*                                  ∧ a = f x c                  *)
+(* ============================================================ *)
+
+foldFnTy = tyFun[αTy, tyFun[βTy, βTy]];
+recTy    = tyFun[setTy, tyFun[βTy, boolTy]];
+finrecTy = tyFun[foldFnTy, tyFun[βTy, tyFun[numTy, recTy]]];
+
+zeroTm[] := HOL`Stdlib`Num`zeroConst[];
+sucTm[n_] := mkComb[HOL`Stdlib`Num`sucConst[], n];
+iterRecConst[] := mkConst["ITER",
+  tyFun[recTy, tyFun[tyFun[recTy, recTy], tyFun[numTy, recTy]]]];
+
+finrec0Body[b_] :=
+  Module[{sR, aR},
+    sR = mkVar["sR", setTy]; aR = mkVar["aR", βTy];
+    mkAbs[sR, mkAbs[aR, andTm[mkEq[sR, emptyTm[]], mkEq[aR, b]]]]
+  ];
+
+finrecStepBody[f_] :=
+  Module[{recR, sR, aR, xR, cR, recApp, fxc, body, exC, exX},
+    recR = mkVar["recR", recTy]; sR = mkVar["sR", setTy];
+    aR = mkVar["aR", βTy]; xR = mkVar["xR", αTy]; cR = mkVar["cR", βTy];
+    recApp = mkComb[mkComb[recR, deleteTm[sR, xR]], cR];
+    fxc = mkComb[mkComb[f, xR], cR];
+    body = andTm[inTm[xR, sR], andTm[recApp, mkEq[aR, fxc]]];
+    exC = mkComb[existsC[βTy], mkAbs[cR, body]];
+    exX = mkComb[existsC[αTy], mkAbs[xR, exC]];
+    mkAbs[recR, mkAbs[sR, mkAbs[aR, exX]]]
+  ];
+
+Module[{fF, bF, body},
+  fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy];
+  body = mkAbs[fF, mkAbs[bF,
+    mkComb[mkComb[iterRecConst[], finrec0Body[bF]], finrecStepBody[fF]]]];
+  finrecDefThm = newDefinition[mkEq[mkVar["FINREC", finrecTy], body]];
+];
+
+finrecConst[] := mkConst["FINREC", finrecTy];
+finrecApp[f_, b_, n_] := mkComb[mkComb[mkComb[finrecConst[], f], b], n];
+
+(* ⊢ FINREC f b = ITER (finrec0Body b) (finrecStepBody f) *)
+unfoldFinrec[f_, b_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[finrecDefThm, f];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, b];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* Num`iterZeroEqThm / iterSucEqThm carry free e:A, f:A→A; aim them at  *)
+(* the predicate target type recTy with the FINREC kernel/step.         *)
+iterZeroAtRec[f_, b_] :=
+  INST[{mkVar["e", recTy] -> finrec0Body[b],
+        mkVar["f", tyFun[recTy, recTy]] -> finrecStepBody[f]},
+    INSTTYPE[{tyVar["A"] -> recTy}, HOL`Stdlib`Num`iterZeroEqThm]];
+iterSucAtRec[f_, b_] :=
+  INST[{mkVar["e", recTy] -> finrec0Body[b],
+        mkVar["f", tyFun[recTy, recTy]] -> finrecStepBody[f]},
+    INSTTYPE[{tyVar["A"] -> recTy}, HOL`Stdlib`Num`iterSucEqThm]];
+
+finrecZeroThm =
+  Module[{fF, bF, ufb, apZero},
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy];
+    ufb = unfoldFinrec[fF, bF];
+    apZero = HOL`Equal`APTHM[ufb, zeroTm[]];
+    (* ⊢ FINREC f b 0 = ITER e0 step 0 *)
+    TRANS[apZero, iterZeroAtRec[fF, bF]]
+  ];
+
+finrecSucThm =
+  Module[{fF, bF, nF, ufb, apSuc, sucAt, iterN, stepN},
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy]; nF = mkVar["n", numTy];
+    ufb = unfoldFinrec[fF, bF];
+    apSuc = HOL`Equal`APTHM[ufb, sucTm[nF]];
+    (* ⊢ FINREC f b (SUC n) = ITER e0 step (SUC n) *)
+    sucAt = HOL`Bool`SPEC[nF, iterSucAtRec[fF, bF]];
+    (* ⊢ ITER e0 step (SUC n) = step (ITER e0 step n) *)
+    iterN = HOL`Equal`SYM[HOL`Equal`APTHM[ufb, nF]];
+    (* ⊢ ITER e0 step n = FINREC f b n *)
+    stepN = HOL`Equal`APTERM[finrecStepBody[fF], iterN];
+    (* ⊢ step (ITER e0 step n) = step (FINREC f b n) *)
+    TRANS[TRANS[apSuc, sucAt], stepN]
+  ];
+
+(* Applied (β-reduced) forms used downstream. *)
+finrecZeroAppThm =
+  Module[{fF, bF, sR, aR, ap1},
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy];
+    sR = mkVar["sR", setTy]; aR = mkVar["aR", βTy];
+    ap1 = HOL`Equal`APTHM[finrecZeroThm, sR];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap1 = HOL`Equal`APTHM[ap1, aR];
+    TRANS[ap1, BETACONV[concl[ap1][[2]]]]
+  ];
+
+finrecSucAppThm =
+  Module[{fF, bF, nF, sR, aR, ap2},
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy]; nF = mkVar["n", numTy];
+    sR = mkVar["sR", setTy]; aR = mkVar["aR", βTy];
+    ap2 = HOL`Equal`APTHM[HOL`Equal`APTHM[finrecSucThm, sR], aR];
+    (* ⊢ FINREC f b (SUC n) s a = (step (FINREC f b n)) s a *)
+    HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], ap2]
   ];
 
 End[];

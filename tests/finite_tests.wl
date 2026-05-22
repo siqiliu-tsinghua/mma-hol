@@ -209,3 +209,43 @@ HOLTest`runTests["finite: FINITE (IMAGE f (SING a)) via finiteImageThm",
       "⊢ FINITE (IMAGE f (SING a))"];
     HOLTest`assertEq[hyp[finImg], {}, "no hyps"];
 ]];
+
+(* ===== M7-4-f.1: FINREC count-indexed fold graph ===== *)
+
+HOLTest`runTests["finite: FINREC has type (α→β→β) → β → num → (α→bool) → β → bool",
+  Module[{bTy, foldFnTy, numTy, recTy},
+    bTy = mkVarType["B"]; foldFnTy = tyFun[αTy, tyFun[bTy, bTy]];
+    numTy = mkType["num", {}]; recTy = tyFun[setTy, tyFun[bTy, boolTy]];
+    HOLTest`assertEq[HOL`Kernel`constType["FINREC"],
+      tyFun[foldFnTy, tyFun[bTy, tyFun[numTy, recTy]]],
+      "FINREC : (α→β→β) → β → num → (α→bool) → β → bool"];
+]];
+
+HOLTest`runTests["finite: FINREC clause theorems are hyp-free equations",
+  (Scan[Function[pair,
+     HOLTest`assertTrue[
+       MatchQ[concl[pair[[1]]], comb[comb[const["=", _], _], _]],
+       pair[[2]] <> " is an equation"];
+     HOLTest`assertEq[hyp[pair[[1]]], {}, pair[[2]] <> " no hyps"]],
+    {{HOL`Stdlib`Finite`finrecZeroThm, "finrecZero"},
+     {HOL`Stdlib`Finite`finrecSucThm, "finrecSuc"},
+     {HOL`Stdlib`Finite`finrecZeroAppThm, "finrecZeroApp"},
+     {HOL`Stdlib`Finite`finrecSucAppThm, "finrecSucApp"}}];)
+];
+
+HOLTest`runTests["finite: FINREC applied clauses have the right RHS shape",
+  Module[{z, s},
+    z = concl[HOL`Stdlib`Finite`finrecZeroAppThm];
+    s = concl[HOL`Stdlib`Finite`finrecSucAppThm];
+    (* FINREC f b 0 s a = (s = EMPTY ∧ a = b) *)
+    HOLTest`assertTrue[MatchQ[z[[2]], comb[comb[const["∧", _], _], _]],
+      "FINREC f b 0 s a = (… ∧ …)"];
+    (* FINREC f b (SUC n) s a = ∃x. … *)
+    HOLTest`assertTrue[MatchQ[s[[2]], comb[const["∃", _], _]],
+      "FINREC f b (SUC n) s a = ∃x. …"];
+    (* LHS heads are FINREC applications *)
+    HOLTest`assertTrue[
+      MatchQ[z[[1, 2]], comb[comb[comb[comb[comb[const["FINREC", _], _], _],
+        const["0", _]], _], _]],
+      "LHS = FINREC f b 0 s a"];
+]];
