@@ -136,3 +136,45 @@ HOLTest`runTests["finite: FINITE (SING a ∪ SING b) via finiteUnionThm",
       "⊢ FINITE (SING a ∪ SING b)"];
     HOLTest`assertEq[hyp[finUnion], {}, "no hyps"];
 ]];
+
+HOLTest`runTests["finite: finiteSubsetThm — ⊢ ∀s. FINITE s ⇒ ∀t. t ⊆ s ⇒ FINITE t",
+  Module[{dThm, s, t, impC, finC, faSet, expected},
+    dThm = HOL`Stdlib`Finite`finiteSubsetThm;
+    s = mkVar["s", setTy]; t = mkVar["t", setTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    finC = HOL`Stdlib`Finite`finiteAppTerm;
+    faSet = mkConst["∀", tyFun[tyFun[setTy, boolTy], boolTy]];
+    expected = mkComb[faSet, mkAbs[s, mkComb[mkComb[impC, finC[s]],
+      mkComb[faSet, mkAbs[t, mkComb[mkComb[impC,
+        HOL`Stdlib`Set`subsetTerm[t, s]], finC[t]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[dThm], expected],
+      "⊢ ∀s. FINITE s ⇒ ∀t. t ⊆ s ⇒ FINITE t"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["finite: finiteDeleteThm — ⊢ ∀s x. FINITE s ⇒ FINITE (DELETE s x)",
+  Module[{dThm, s, x, impC, finC, expected},
+    dThm = HOL`Stdlib`Finite`finiteDeleteThm;
+    s = mkVar["s", setTy]; x = mkVar["x", αTy];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    finC = HOL`Stdlib`Finite`finiteAppTerm;
+    expected = mkComb[mkConst["∀", tyFun[tyFun[setTy, boolTy], boolTy]],
+      mkAbs[s, mkComb[mkConst["∀", tyFun[tyFun[αTy, boolTy], boolTy]],
+        mkAbs[x, mkComb[mkComb[impC, finC[s]],
+          finC[HOL`Stdlib`Set`deleteTerm[s, x]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[dThm], expected],
+      "⊢ ∀s x. FINITE s ⇒ FINITE (DELETE s x)"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["finite: FINITE (DELETE (SING a) b) via finiteDeleteThm",
+  Module[{a, b, sa, finDel},
+    a = mkVar["a", αTy]; b = mkVar["b", αTy];
+    sa = HOL`Stdlib`Set`singTerm[a];
+    finDel = MP[SPEC[b, SPEC[sa, HOL`Stdlib`Finite`finiteDeleteThm]],
+      SPEC[a, HOL`Stdlib`Finite`finiteSingThm]];
+    HOLTest`assertEq[concl[finDel],
+      HOL`Stdlib`Finite`finiteAppTerm[HOL`Stdlib`Set`deleteTerm[sa, b]],
+      "⊢ FINITE (DELETE (SING a) b)"];
+    HOLTest`assertEq[hyp[finDel], {}, "no hyps"];
+]];

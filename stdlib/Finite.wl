@@ -29,6 +29,8 @@ finiteInsertThm::usage = "finiteInsertThm — ⊢ ∀x s. FINITE s ⇒ FINITE (x
 finiteSingThm::usage   = "finiteSingThm — ⊢ ∀x. FINITE (SING x).";
 finiteInductThm::usage = "finiteInductThm — ⊢ ∀P. P EMPTY ∧ (∀x s. FINITE s ∧ P s ⇒ P (x INSERT s)) ⇒ ∀s. FINITE s ⇒ P s.";
 finiteUnionThm::usage  = "finiteUnionThm — ⊢ ∀s t. FINITE s ⇒ FINITE t ⇒ FINITE (s ∪ t).";
+finiteSubsetThm::usage = "finiteSubsetThm — ⊢ ∀s. FINITE s ⇒ ∀t. t ⊆ s ⇒ FINITE t.";
+finiteDeleteThm::usage = "finiteDeleteThm — ⊢ ∀s x. FINITE s ⇒ FINITE (DELETE s x).";
 
 Begin["`Private`"];
 
@@ -305,6 +307,247 @@ finiteUnionThm =
     (* ⊢ ∀s. FINITE s ⇒ (FINITE t ⇒ FINITE (s ∪ t)) *)
     base = HOL`Bool`SPEC[sV, mainConcl];
     HOL`Bool`GEN[sV, HOL`Bool`GEN[tV, base]]
+  ];
+
+(* ============================================================ *)
+(* SUBSET machinery for finiteSubsetThm                         *)
+(* ============================================================ *)
+
+orC[]  := mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+notC[] := mkConst["¬", tyFun[boolTy, boolTy]];
+notTm[p_] := mkComb[notC[], p];
+
+inTm[y_, S_]      := HOL`Stdlib`Set`inTerm[y, S];
+deleteTm[S_, x_]  := HOL`Stdlib`Set`deleteTerm[S, x];
+subsetTm[S_, T_]  := HOL`Stdlib`Set`subsetTerm[S, T];
+
+(* ⊢ IN y S = S y *)
+inAppEq[y_, S_] :=
+  HOL`Auto`Simp`simpConv[{HOL`Stdlib`Set`inDefThm}][inTm[y, S]];
+
+(* INST-based membership equations, built deterministically (no simp     *)
+(* absorption): the Set.wl theorems carry free vars y/x/S.               *)
+inInsertAt[y_, x_, S_] := INST[{mkVar["y", αTy] -> y, mkVar["x", αTy] -> x,
+  mkVar["S", setTy] -> S}, HOL`Stdlib`Set`inInsertThm];
+inDeleteAt[y_, S_, x_] := INST[{mkVar["y", αTy] -> y, mkVar["S", setTy] -> S,
+  mkVar["x", αTy] -> x}, HOL`Stdlib`Set`inDeleteThm];
+
+(* ⊢ SUBSET S T = (∀x. IN x S ⇒ IN x T) *)
+unfoldSubset[S_, T_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[HOL`Stdlib`Set`subsetDefThm, S];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, T];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* from Γ ⊢ SUBSET S T, derive Γ ⊢ IN y S ⇒ IN y T *)
+subsetElim[S_, T_, subsetTh_, y_] :=
+  HOL`Bool`SPEC[y, EQMP[unfoldSubset[S, T], subsetTh]];
+
+(* from Γ ⊢ ∀x. IN x S ⇒ IN x T, derive Γ ⊢ SUBSET S T *)
+packSubset[S_, T_, genTh_] :=
+  EQMP[HOL`Equal`SYM[unfoldSubset[S, T]], genTh];
+
+(* from Γ ⊢ IN y S = IN y T (specific y), derive Γ ⊢ S = T *)
+setExtFromInEq[S_, T_, yV_, bodyInEqTh_] :=
+  Module[{bodyApp},
+    bodyApp = TRANS[TRANS[HOL`Equal`SYM[inAppEq[yV, S]], bodyInEqTh],
+      inAppEq[yV, T]];
+    funcExtLocal[yV, S, T, bodyApp]
+  ];
+
+(* from Γ ⊢ t = U and Δ ⊢ FINITE U, derive Γ∪Δ ⊢ FINITE t *)
+finRewrite[eqTh_, finU_] :=
+  EQMP[HOL`Equal`SYM[HOL`Equal`APTERM[finiteConst[], eqTh]], finU];
+
+(* deleteSubset: from Γ ⊢ SUBSET t (x INSERT s), derive            *)
+(*               Γ ⊢ SUBSET (DELETE t x) s.                         *)
+deleteSubset[xElem_, tSet_, sSet_, tSubTh_] :=
+  Module[{yV, dmTm, dmHyp, dmRed, yInT, yNeqX, yInXIns, redIns,
+          caseEq, caseS, yInS, dischDm, gen},
+    yV = mkVar["yDel", αTy];
+    dmTm = inTm[yV, deleteTm[tSet, xElem]];
+    dmHyp = ASSUME[dmTm];
+    dmRed = EQMP[inDeleteAt[yV, tSet, xElem], dmHyp];
+    (* (IN y (DELETE t x)) ⊢ IN y t ∧ ¬(y = x) *)
+    yInT = HOL`Bool`CONJUNCT1[dmRed];
+    yNeqX = HOL`Bool`CONJUNCT2[dmRed];
+    yInXIns = HOL`Bool`MP[
+      subsetElim[tSet, insertTm[xElem, sSet], tSubTh, yV], yInT];
+    (* (…) ⊢ IN y (x INSERT s) *)
+    redIns = EQMP[inInsertAt[yV, xElem, sSet], yInXIns];
+    (* (…) ⊢ (y = x) ∨ IN y s *)
+    caseEq = HOL`Bool`CONTR[inTm[yV, sSet],
+      HOL`Bool`MP[HOL`Bool`NOTELIM[yNeqX], ASSUME[mkEq[yV, xElem]]]];
+    (* (¬(y=x), y=x) ⊢ IN y s *)
+    caseS = ASSUME[inTm[yV, sSet]];
+    yInS = HOL`Bool`DISJCASES[redIns, caseEq, caseS];
+    (* (…) ⊢ IN y s *)
+    dischDm = HOL`Bool`DISCH[dmTm, yInS];
+    gen = HOL`Bool`GEN[yV, dischDm];
+    packSubset[deleteTm[tSet, xElem], sSet, gen]
+  ];
+
+(* condDeleteEqLeft: from Γ ⊢ IN x t, derive                       *)
+(*                   Γ ⊢ t = x INSERT (DELETE t x).                 *)
+condDeleteEqLeft[xElem_, tSet_, xInTHyp_] :=
+  Module[{yV, rhsSet, memRHS, yEqX, yInTfromEq, caseEqBranch,
+          caseConjBranch, th1, redFromIn, em, emEq, emNeq, th2, deduct},
+    yV = mkVar["yIns", αTy];
+    rhsSet = insertTm[xElem, deleteTm[tSet, xElem]];
+    memRHS = TRANS[inInsertAt[yV, xElem, deleteTm[tSet, xElem]],
+      HOL`Equal`APTERM[mkComb[orC[], mkEq[yV, xElem]],
+        inDeleteAt[yV, tSet, xElem]]];
+    (* ⊢ IN y rhsSet = (y = x) ∨ (IN y t ∧ ¬(y = x)) *)
+    (* th1 : (IN y rhsSet) ⊢ IN y t  (uses IN x t for the y=x branch) *)
+    th1 = Module[{mAssume, mRed, branchEq, branchConj},
+      mAssume = ASSUME[inTm[yV, rhsSet]];
+      mRed = EQMP[memRHS, mAssume];
+      branchEq = HOL`Drule`SUBS[{HOL`Equal`SYM[ASSUME[mkEq[yV, xElem]]]},
+        xInTHyp];
+      (* (IN x t, y = x) ⊢ IN y t *)
+      branchConj = HOL`Bool`CONJUNCT1[ASSUME[
+        andTm[inTm[yV, tSet], notTm[mkEq[yV, xElem]]]]];
+      HOL`Bool`DISJCASES[mRed, branchEq, branchConj]
+    ];
+    (* th2 : (IN y t) ⊢ IN y rhsSet *)
+    th2 = Module[{yInT, emThm, br1, br2, redTh},
+      yInT = ASSUME[inTm[yV, tSet]];
+      emThm = HOL`Bool`EXCLUDEDMIDDLE[mkEq[yV, xElem]];
+      br1 = HOL`Bool`DISJ1[ASSUME[mkEq[yV, xElem]],
+        andTm[inTm[yV, tSet], notTm[mkEq[yV, xElem]]]];
+      br2 = HOL`Bool`DISJ2[
+        HOL`Bool`CONJ[yInT, ASSUME[notTm[mkEq[yV, xElem]]]],
+        mkEq[yV, xElem]];
+      redTh = HOL`Bool`DISJCASES[emThm, br1, br2];
+      (* (IN y t) ⊢ (y = x) ∨ (IN y t ∧ ¬(y = x)) *)
+      EQMP[HOL`Equal`SYM[memRHS], redTh]
+    ];
+    deduct = DEDUCTANTISYM[th1, th2];
+    (* Γ ⊢ IN y t = IN y rhsSet *)
+    setExtFromInEq[tSet, rhsSet, yV, deduct]
+  ];
+
+(* condDeleteEqRight: from Γ ⊢ ¬(IN x t), derive Γ ⊢ t = DELETE t x. *)
+condDeleteEqRight[xElem_, tSet_, notXInTHyp_] :=
+  Module[{yV, delSet, memDel, th1, th2, deduct},
+    yV = mkVar["yIns", αTy];
+    delSet = deleteTm[tSet, xElem];
+    memDel = inDeleteAt[yV, tSet, xElem];
+    (* ⊢ IN y (DELETE t x) = IN y t ∧ ¬(y = x) *)
+    (* th1 : (IN y (DELETE t x)) ⊢ IN y t *)
+    th1 = HOL`Bool`CONJUNCT1[EQMP[memDel, ASSUME[inTm[yV, delSet]]]];
+    (* th2 : (IN y t) ⊢ IN y (DELETE t x), using ¬(IN x t) for y≠x *)
+    th2 = Module[{yInT, yNeqX, conj},
+      yInT = ASSUME[inTm[yV, tSet]];
+      yNeqX = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[yV, xElem],
+        HOL`Bool`MP[HOL`Bool`NOTELIM[notXInTHyp],
+          HOL`Drule`SUBS[{ASSUME[mkEq[yV, xElem]]}, yInT]]]];
+      (* (IN y t, ¬(IN x t)) ⊢ ¬(y = x) *)
+      conj = HOL`Bool`CONJ[yInT, yNeqX];
+      EQMP[HOL`Equal`SYM[memDel], conj]
+    ];
+    deduct = DEDUCTANTISYM[th1, th2];
+    setExtFromInEq[tSet, delSet, yV, deduct]
+  ];
+
+(* ============================================================ *)
+(* finiteSubsetThm : ⊢ ∀s. FINITE s ⇒ ∀t. t ⊆ s ⇒ FINITE t      *)
+(* Induct on s with P s = ∀t. t ⊆ s ⇒ FINITE t.                 *)
+(* ============================================================ *)
+
+subsetPBody[sArg_] := mkComb[forallC[setTy], mkAbs[tV,
+  impTm[subsetTm[tV, sArg], finiteAppTerm[tV]]]];
+
+subsetBaseConj =
+  Module[{tSub, subUnf, yV, impAtY, inEmptyAtY, th1, th2, deduct,
+          tEqEmpty, finT},
+    tSub = ASSUME[subsetTm[tV, emptyTm[]]];
+    subUnf = EQMP[unfoldSubset[tV, emptyTm[]], tSub];
+    (* (t ⊆ EMPTY) ⊢ ∀x. IN x t ⇒ IN x EMPTY *)
+    yV = mkVar["yEmp", αTy];
+    impAtY = HOL`Bool`SPEC[yV, subUnf];
+    inEmptyAtY = INSTTYPE[{}, HOL`Bool`SPEC[yV,
+      HOL`Bool`GEN[mkVar["x", αTy], HOL`Stdlib`Set`inEmptyThm]]];
+    (* ⊢ IN y EMPTY = F  (re-aimed at yV) *)
+    th1 = HOL`Bool`CONTR[inTm[yV, tV],
+      EQMP[inEmptyAtY, ASSUME[inTm[yV, emptyTm[]]]]];
+    (* (IN y EMPTY) ⊢ IN y t *)
+    th2 = HOL`Bool`MP[impAtY, ASSUME[inTm[yV, tV]]];
+    (* (t ⊆ EMPTY, IN y t) ⊢ IN y EMPTY *)
+    deduct = DEDUCTANTISYM[th1, th2];
+    (* (t ⊆ EMPTY) ⊢ IN y t = IN y EMPTY *)
+    tEqEmpty = setExtFromInEq[tV, emptyTm[], yV, deduct];
+    (* (t ⊆ EMPTY) ⊢ t = EMPTY *)
+    finT = finRewrite[tEqEmpty, finiteEmptyThm];
+    HOL`Bool`GEN[tV, HOL`Bool`DISCH[subsetTm[tV, emptyTm[]], finT]]
+  ];
+
+subsetStepConj =
+  Module[{conjTm, conjHyp, ih, tSub, delSub, finDel, finInsDel, em,
+          caseIn, caseNotIn, finT, dischTSub, genT, dischConj},
+    conjTm = andTm[finiteAppTerm[sV], subsetPBody[sV]];
+    conjHyp = ASSUME[conjTm];
+    ih = HOL`Bool`CONJUNCT2[conjHyp];
+    (* (conjHyp) ⊢ ∀t. t ⊆ s ⇒ FINITE t *)
+    tSub = ASSUME[subsetTm[tV, insertTm[xV, sV]]];
+    delSub = deleteSubset[xV, tV, sV, tSub];
+    (* (tSub) ⊢ SUBSET (DELETE t x) s *)
+    finDel = HOL`Bool`MP[HOL`Bool`SPEC[deleteTm[tV, xV], ih], delSub];
+    (* (conjHyp, tSub) ⊢ FINITE (DELETE t x) *)
+    finInsDel = HOL`Bool`MP[
+      HOL`Bool`SPEC[deleteTm[tV, xV], HOL`Bool`SPEC[xV, finiteInsertThm]],
+      finDel];
+    (* (…) ⊢ FINITE (x INSERT (DELETE t x)) *)
+    em = HOL`Bool`EXCLUDEDMIDDLE[inTm[xV, tV]];
+    caseIn = finRewrite[condDeleteEqLeft[xV, tV, ASSUME[inTm[xV, tV]]],
+      finInsDel];
+    (* (IN x t, …) ⊢ FINITE t *)
+    caseNotIn = finRewrite[
+      condDeleteEqRight[xV, tV, ASSUME[notTm[inTm[xV, tV]]]], finDel];
+    (* (¬(IN x t), …) ⊢ FINITE t *)
+    finT = HOL`Bool`DISJCASES[em, caseIn, caseNotIn];
+    (* (conjHyp, tSub) ⊢ FINITE t *)
+    dischTSub = HOL`Bool`DISCH[subsetTm[tV, insertTm[xV, sV]], finT];
+    genT = HOL`Bool`GEN[tV, dischTSub];
+    dischConj = HOL`Bool`DISCH[conjTm, genT];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[sV, dischConj]]
+  ];
+
+finiteSubsetThm =
+  Module[{pLam, specInduct, specBeta, ante},
+    pLam = mkAbs[sV, subsetPBody[sV]];
+    specInduct = HOL`Bool`ISPEC[pLam, finiteInductThm];
+    specBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInduct];
+    ante = HOL`Bool`CONJ[subsetBaseConj, subsetStepConj];
+    HOL`Bool`MP[specBeta, ante]
+  ];
+
+(* ============================================================ *)
+(* finiteDeleteThm : ⊢ ∀s x. FINITE s ⇒ FINITE (DELETE s x)     *)
+(* DELETE s x ⊆ s, then finiteSubsetThm.                        *)
+(* ============================================================ *)
+
+finiteDeleteThm =
+  Module[{finSHyp, delSubS, subsetAt, finDel},
+    finSHyp = ASSUME[finiteAppTerm[sV]];
+    delSubS = Module[{yV, dmTm, dmRed, yInS, gen},
+      yV = mkVar["yDS", αTy];
+      dmTm = inTm[yV, deleteTm[sV, xV]];
+      dmRed = EQMP[inDeleteAt[yV, sV, xV], ASSUME[dmTm]];
+      yInS = HOL`Bool`CONJUNCT1[dmRed];
+      gen = HOL`Bool`GEN[yV, HOL`Bool`DISCH[dmTm, yInS]];
+      packSubset[deleteTm[sV, xV], sV, gen]
+    ];
+    (* ⊢ SUBSET (DELETE s x) s *)
+    subsetAt = HOL`Bool`MP[HOL`Bool`SPEC[sV, finiteSubsetThm], finSHyp];
+    (* (FINITE s) ⊢ ∀t. t ⊆ s ⇒ FINITE t *)
+    finDel = HOL`Bool`MP[HOL`Bool`SPEC[deleteTm[sV, xV], subsetAt], delSubS];
+    (* (FINITE s) ⊢ FINITE (DELETE s x) *)
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[xV,
+      HOL`Bool`DISCH[finiteAppTerm[sV], finDel]]]
   ];
 
 End[];
