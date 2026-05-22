@@ -70,7 +70,9 @@ M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeB
 
 **Finite.wl done through closure lemmas (M7-4-e)** — `INSERT`/`SING`/`DELETE` added to Set.wl; **inductive `FINITE`** (smallest predicate with ∅ + INSERT-closure) with `finiteEmptyThm`/`finiteInsertThm`/`finiteSingThm`, strong `finiteInductThm` (FINITE s in the step), and all four closure lemmas `finiteUnionThm`/`finiteSubsetThm`/`finiteDeleteThm`/`finiteImageThm`. `finiteSubset`/`finiteImage` do `x∈t` case-split / ∃-distribution with membership Leibniz via kernel `SUBS` (no MESON — its equality has no congruence). Membership eqs built by INST-ing Set.wl theorems (not simpConv, whose basicSimpset absorbs `a∨(b∧¬a)`). β-instances of EMPTY/INSERT/FINITE built directly/INSTTYPE'd. Pending: `CARD`/`∑`.
 
-**Next**: `CARD`/`∑` (needs order-independent set-fold / ITSET well-definedness — big, own session); then M7-δ ARITH, M7-5 Int, … per PLAN. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
+**CARD/∑ started (M7-4-f)** — `FINREC` count-indexed fold graph (f.1) defined via Num`ITER at predicate target type; clauses `finrecZero/SucThm` + applied forms. Remaining (own commits): f.2 FINREC_SUC exchange lemma (hard commutativity induction), f.3 uniqueness/existence, f.4 ITSET + FINITE_RECURSION, f.5 CARD, f.6 ∑. See memory `m7_finite_and_number_tower_plan` for the detailed route.
+
+**Next**: continue M7-4-f (f.2 exchange lemma → … → CARD/∑); then M7-δ ARITH, M7-5 Int, … per PLAN. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
 
 Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 
