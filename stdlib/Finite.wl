@@ -55,6 +55,11 @@ itsetDefThm::usage = "itsetDefThm — ⊢ ITSET = (λf s b. @z. ∃n. FINREC f b
 itsetEmptyThm::usage = "itsetEmptyThm — ⊢ ITSET f ∅ b = b. (Unconditional — no commutativity needed.)";
 itsetInsertThm::usage = "itsetInsertThm — ⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀x s. FINITE s ⇒ ITSET f (x INSERT s) b = COND (x ∈ s) (ITSET f s b) (f x (ITSET f s b)). The FINITE_RECURSION clause for ITSET.";
 
+cardConst::usage   = "cardConst[] — CARD : (α → bool) → num. Cardinality of a finite set; CARD s = ITSET (λx n. SUC n) s 0.";
+cardDefThm::usage  = "cardDefThm — ⊢ CARD = (λs. ITSET (λx n. SUC n) s 0).";
+cardEmptyThm::usage  = "cardEmptyThm — ⊢ CARD EMPTY = 0.";
+cardInsertThm::usage = "cardInsertThm — ⊢ ∀x s. FINITE s ⇒ CARD (x INSERT s) = COND (x ∈ s) (CARD s) (SUC (CARD s)).";
+
 Begin["`Private`"];
 
 αTy   = mkVarType["A"];
@@ -2019,6 +2024,97 @@ itsetInsertThm =
     gens = HOL`Bool`GEN[xV2, HOL`Bool`GEN[sV2, dischFin]];
     dischCom = HOL`Bool`DISCH[commHypTm, gens];
     dischCom
+  ];
+
+(* ============================================================ *)
+(* M7-4-f.5 — CARD = ITSET (λx n. SUC n) s 0                    *)
+(*                                                              *)
+(* The step (λx n. SUC n) trivially satisfies full comm (both    *)
+(* sides reduce to SUC (SUC a) regardless of element x or y),   *)
+(* so itsetInsertThm's commHyp discharges to REFL.              *)
+(* ============================================================ *)
+
+cardStepTy = tyFun[αTy, tyFun[numTy, numTy]];
+itsetNumInstTy = tyFun[cardStepTy, tyFun[setTy, tyFun[numTy, numTy]]];
+
+cardStep[] :=
+  Module[{xL, nL},
+    xL = mkVar["x", αTy]; nL = mkVar["n", numTy];
+    mkAbs[xL, mkAbs[nL, sucTm[nL]]]
+  ];
+
+cardTy = tyFun[setTy, numTy];
+
+Module[{sL, body},
+  sL = mkVar["s", setTy];
+  body = mkAbs[sL,
+    mkComb[mkComb[mkComb[mkConst["ITSET", itsetNumInstTy], cardStep[]], sL],
+      zeroTm[]]];
+  cardDefThm = newDefinition[mkEq[mkVar["CARD", cardTy], body]];
+];
+
+cardConst[] := mkConst["CARD", cardTy];
+cardApp[sArg_] := mkComb[cardConst[], sArg];
+
+(* ⊢ CARD s = ITSET (cardStep[]) s 0 *)
+unfoldCard[sArg_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[cardDefThm, sArg];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* cardStepCommThm : ⊢ ∀xC yC aC.                                *)
+(*   cardStep xC (cardStep yC aC) = cardStep yC (cardStep xC aC) *)
+(* Both sides β-reduce to SUC (SUC aC).                          *)
+cardStepCommThm =
+  Module[{stepL, xC, yC, aC, lhsTm, rhsTm, lhsRed, rhsRed, eqTm},
+    stepL = cardStep[];
+    xC = mkVar["xC", αTy]; yC = mkVar["yC", αTy]; aC = mkVar["aC", numTy];
+    lhsTm = mkComb[mkComb[stepL, xC], mkComb[mkComb[stepL, yC], aC]];
+    rhsTm = mkComb[mkComb[stepL, yC], mkComb[mkComb[stepL, xC], aC]];
+    lhsRed = HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]][lhsTm];
+    rhsRed = HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]][rhsTm];
+    eqTm = TRANS[lhsRed, HOL`Equal`SYM[rhsRed]];
+    HOL`Bool`GEN[xC, HOL`Bool`GEN[yC, HOL`Bool`GEN[aC, eqTm]]]
+  ];
+
+(* cardEmptyThm : ⊢ CARD ∅ = 0 *)
+cardEmptyThm =
+  Module[{unf, itsetEmpAtNum, itsetAtEmpStep},
+    unf = unfoldCard[emptyTm[]];
+    itsetEmpAtNum = INSTTYPE[{βTy -> numTy}, itsetEmptyThm];
+    itsetAtEmpStep = INST[
+      {mkVar["f", cardStepTy] -> cardStep[],
+       mkVar["b", numTy] -> zeroTm[]}, itsetEmpAtNum];
+    TRANS[unf, itsetAtEmpStep]
+  ];
+
+(* cardInsertThm : ⊢ ∀x s. FINITE s ⇒                            *)
+(*   CARD (x INSERT s) = COND (x∈s) (CARD s) (SUC (CARD s))      *)
+cardInsertThm =
+  Module[{itsetInsNum, itsetInsAtStep, itsetInsMP, xC2, sC2, spec, finS,
+          mp, unfXIns, unfS, eq1, eq2, dischFin, gens},
+    itsetInsNum = INSTTYPE[{βTy -> numTy}, itsetInsertThm];
+    itsetInsAtStep = INST[
+      {mkVar["f", cardStepTy] -> cardStep[],
+       mkVar["b", numTy] -> zeroTm[]}, itsetInsNum];
+    itsetInsMP = HOL`Bool`MP[itsetInsAtStep, cardStepCommThm];
+    xC2 = mkVar["x", αTy]; sC2 = mkVar["s", setTy];
+    spec = HOL`Bool`SPEC[sC2, HOL`Bool`SPEC[xC2, itsetInsMP]];
+    finS = ASSUME[finiteAppTerm[sC2]];
+    mp = HOL`Bool`MP[spec, finS];
+    (* (FINITE s) ⊢ ITSET stepLam (x INSERT s) 0
+                  = COND (x∈s) (ITSET stepLam s 0) (stepLam x (ITSET stepLam s 0)) *)
+    unfXIns = unfoldCard[insertTm[xC2, sC2]];
+    unfS = unfoldCard[sC2];
+    eq1 = HOL`Drule`SUBS[{HOL`Equal`SYM[unfXIns], HOL`Equal`SYM[unfS]}, mp];
+    (* (FINITE s) ⊢ CARD (x INSERT s) = COND (x∈s) (CARD s) (stepLam x (CARD s)) *)
+    eq2 = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], eq1];
+    (* (FINITE s) ⊢ CARD (x INSERT s) = COND (x∈s) (CARD s) (SUC (CARD s)) *)
+    dischFin = HOL`Bool`DISCH[finiteAppTerm[sC2], eq2];
+    gens = HOL`Bool`GEN[xC2, HOL`Bool`GEN[sC2, dischFin]];
+    gens
   ];
 
 End[];
