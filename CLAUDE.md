@@ -72,7 +72,9 @@ M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeB
 
 **M7-4 done (Finite.wl complete through CARD/∑)** — FINREC machinery (f.1–f.4.a) + ITSET + FINITE_RECURSION (f.4.b) + **CARD** (`= λs. ITSET (λx n. SUC n) s 0`) and **NSUM** (`= λg s. ITSET (λx a. g x + a) s 0`). CARD/NSUM clauses derived by INSTTYPE [β→num] + INST itsetEmpty/itsetInsert at the step + SUBS-rewrite back to CARD/NSUM + CONVRULE beta. CARD step's comm is trivial (REFL after beta); NSUM step's comm uses addAssoc + addComm chain.
 
-**Next**: M7-δ `auto/Arith.wl` (Presburger linear arithmetic on ℕ, oracle via WL `LinearProgramming`/`Resolve[…,Integers]` + verifier via `+`/`≤` lemmas) — multi-session; then M7-5 `stdlib/Int.wl`, M7-6 Rat, M7-7 Real, … per PLAN. FTA backfill from M7-3 is also available. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
+**M7-3 FTA stage 1 done (stdlib/FTA.wl)** — `dividesPosThm`/`dividesTransThm`/`notOneNorZeroLtThm` helpers + `primeOrCompositeThm` (n>1 ⇒ prime or has a proper divisor) + **`primeDivExistsThm`** (every n>1 has a prime divisor). Strong induction + EM. Stage 2 (factorization existence as list — needs MEM/ALL + APPEND-FOLDR / APPEND-ALL distributions in List.wl) and stage 3 (uniqueness modulo permutation) are queued for follow-on.
+
+**Next**: M7-3 FTA stage 2 (list factorization existence) or M7-δ `auto/Arith.wl` (Presburger linear arithmetic, multi-session) → M7-5 `stdlib/Int.wl` → M7-6 Rat → M7-7 Real → … per PLAN. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
 
 Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 
