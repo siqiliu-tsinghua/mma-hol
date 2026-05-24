@@ -16,6 +16,8 @@ BeginPackage["HOL`Stdlib`FTA`", {
 dividesPosThm::usage = "dividesPosThm — ⊢ ∀d n. ¬ (n = 0) ⇒ divides d n ⇒ ¬ (d = 0). If n is non-zero and d divides n, then d is non-zero.";
 dividesTransThm::usage = "dividesTransThm — ⊢ ∀a b c. divides a b ⇒ divides b c ⇒ divides a c. Transitivity of divisibility.";
 notOneNorZeroLtThm::usage = "notOneNorZeroLtThm — ⊢ ∀d. ¬ (d = 0) ⇒ ¬ (d = SUC 0) ⇒ SUC 0 < d. A num that is neither 0 nor 1 must be > 1.";
+primeOrCompositeThm::usage = "primeOrCompositeThm — ⊢ ∀n. SUC 0 < n ⇒ prime n ∨ (∃d. SUC 0 < d ∧ d < n ∧ divides d n). Dichotomy: every n > 1 is prime or has a proper divisor.";
+primeDivExistsThm::usage = "primeDivExistsThm — ⊢ ∀n. SUC 0 < n ⇒ ∃p. prime p ∧ divides p n. Every n > 1 has a prime divisor (FTA stage-1 capstone).";
 
 Begin["`Private`"];
 
@@ -27,6 +29,12 @@ timesN[m_, n_] := mkComb[mkComb[HOL`Stdlib`Num`timesConst[], m], n];
 ltN[m_, n_] := mkComb[mkComb[HOL`Stdlib`Num`ltConst[], m], n];
 dividesN[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`dividesConst[], a], b];
 notTm[p_] := mkComb[mkConst["¬", tyFun[boolTy, boolTy]], p];
+orTm[a_, b_] := mkComb[mkComb[mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+existsNum[v_, body_] := mkComb[mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]],
+  mkAbs[v, body]];
+andTm[a_, b_] := mkComb[mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+impTm[a_, b_] := mkComb[mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+primeN[p_] := mkComb[HOL`Stdlib`Num`primeConst[], p];
 
 (* ⊢ divides a b = ∃c. b = a * c *)
 unfoldDivides[a_, b_] :=
@@ -156,6 +164,202 @@ notOneNorZeroLtThm =
     dischNotDz = HOL`Bool`DISCH[notTm[mkEq[dV, zeroN[]]], dischNotD1];
     gen = HOL`Bool`GEN[dV, dischNotDz];
     gen
+  ];
+
+(* ============================================================ *)
+(* primeOrCompositeThm                                           *)
+(* EM[∃d. 1<d ∧ d<n ∧ d|n]. Yes-branch: DISJ2 directly.          *)
+(* No-branch: prove prime n via primeDefThm — for any d|n,       *)
+(* EM[d=1]; d≠1 case uses dividesPosThm + notOneNorZeroLtThm to  *)
+(* get 1<d, dividesLeqThm to get d≤n, leqCaseEqLtThm to split    *)
+(* d=n vs d<n; d<n gives a witness contradicting the no-branch.  *)
+(* ============================================================ *)
+
+primeOrCompositeThm =
+  Module[{nV, oneLtNHyp, nNotZero, dV, exBody, exTm, em, conclTm,
+          yesCase, noCase, primeUnf, allDivClause, primeFmt, primeAtN,
+          conclBody, dischOneLtN, gen},
+    nV = mkVar["n", numTy];
+    oneLtNHyp = ASSUME[ltN[oneN[], nV]];
+
+    nNotZero = Module[{nEq0Hyp, oneLtZero, fThm},
+      nEq0Hyp = ASSUME[mkEq[nV, zeroN[]]];
+      oneLtZero = HOL`Drule`SUBS[{nEq0Hyp}, oneLtNHyp];
+      fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[HOL`Bool`SPEC[oneN[],
+        HOL`Stdlib`Num`notLtZeroThm]], oneLtZero];
+      HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[nV, zeroN[]], fThm]]
+    ];
+    (* (1 < n) ⊢ ¬(n = 0) *)
+
+    dV = mkVar["dV", numTy];
+    exBody = andTm[ltN[oneN[], dV], andTm[ltN[dV, nV], dividesN[dV, nV]]];
+    exTm = existsNum[dV, exBody];
+    em = HOL`Bool`EXCLUDEDMIDDLE[exTm];
+
+    conclTm = orTm[primeN[nV], exTm];
+
+    yesCase = HOL`Bool`DISJ2[ASSUME[exTm], primeN[nV]];
+
+    noCase = Module[{notExHyp, ap, allDivBody, dV2, divDNHyp, em2, caseEq,
+                     caseNeq, body, disch, gen2, allDivThm, primeAtNLocal,
+                     primeFmtLocal, primeUnfLocal},
+      notExHyp = ASSUME[notTm[exTm]];
+
+      primeUnfLocal = Module[{apP},
+        apP = HOL`Equal`APTHM[HOL`Stdlib`Num`primeDefThm, nV];
+        TRANS[apP, BETACONV[concl[apP][[2]]]]
+      ];
+      (* ⊢ prime n = (SUC 0 < n) ∧ (∀d. divides d n ⇒ d = SUC 0 ∨ d = n) *)
+
+      dV2 = mkVar["dD", numTy];
+      divDNHyp = ASSUME[dividesN[dV2, nV]];
+      em2 = HOL`Bool`EXCLUDEDMIDDLE[mkEq[dV2, oneN[]]];
+
+      caseEq = HOL`Bool`DISJ1[ASSUME[mkEq[dV2, oneN[]]], mkEq[dV2, nV]];
+
+      caseNeq = Module[{notDeq1, dNotZero, oneLtD, dLeqN, leqCase,
+                        dEqNCase, dLtNCase, body2},
+        notDeq1 = ASSUME[notTm[mkEq[dV2, oneN[]]]];
+        dNotZero = HOL`Bool`MP[HOL`Bool`MP[
+          HOL`Bool`SPEC[nV, HOL`Bool`SPEC[dV2, dividesPosThm]],
+          nNotZero], divDNHyp];
+        oneLtD = HOL`Bool`MP[HOL`Bool`MP[
+          HOL`Bool`SPEC[dV2, notOneNorZeroLtThm], dNotZero], notDeq1];
+        dLeqN = HOL`Bool`MP[HOL`Bool`MP[
+          HOL`Bool`SPEC[nV, HOL`Bool`SPEC[dV2, HOL`Stdlib`Num`dividesLeqThm]],
+          nNotZero], divDNHyp];
+        leqCase = HOL`Bool`MP[HOL`Bool`SPEC[nV, HOL`Bool`SPEC[dV2,
+          HOL`Stdlib`Num`leqCaseEqLtThm]], dLeqN];
+        (* ⊢ d = n ∨ d < n *)
+        dEqNCase = HOL`Bool`DISJ2[ASSUME[mkEq[dV2, nV]], mkEq[dV2, oneN[]]];
+        dLtNCase = Module[{dLtN, conjPart, exAtD, fThm3},
+          dLtN = ASSUME[ltN[dV2, nV]];
+          conjPart = HOL`Bool`CONJ[oneLtD, HOL`Bool`CONJ[dLtN, divDNHyp]];
+          exAtD = HOL`Bool`EXISTS[exTm, dV2, conjPart];
+          fThm3 = HOL`Bool`MP[HOL`Bool`NOTELIM[notExHyp], exAtD];
+          HOL`Bool`CONTR[orTm[mkEq[dV2, oneN[]], mkEq[dV2, nV]], fThm3]
+        ];
+        body2 = HOL`Bool`DISJCASES[leqCase, dEqNCase, dLtNCase];
+        body2
+      ];
+
+      body = HOL`Bool`DISJCASES[em2, caseEq, caseNeq];
+      disch = HOL`Bool`DISCH[dividesN[dV2, nV], body];
+      gen2 = HOL`Bool`GEN[dV2, disch];
+      allDivThm = gen2;
+
+      primeFmtLocal = HOL`Bool`CONJ[oneLtNHyp, allDivThm];
+      primeAtNLocal = EQMP[HOL`Equal`SYM[primeUnfLocal], primeFmtLocal];
+      HOL`Bool`DISJ1[primeAtNLocal, exTm]
+    ];
+
+    conclBody = HOL`Bool`DISJCASES[em, yesCase, noCase];
+    dischOneLtN = HOL`Bool`DISCH[ltN[oneN[], nV], conclBody];
+    gen = HOL`Bool`GEN[nV, dischOneLtN];
+    gen
+  ];
+
+(* ============================================================ *)
+(* primeDivExistsThm                                             *)
+(* Strong induction on n: pLam n = 1<n ⇒ ∃p. prime p ∧ p|n.      *)
+(* Apply primeOrCompositeThm. Prime case: p = n (dividesReflThm).*)
+(* Composite case: CHOOSE d with 1<d ∧ d<n ∧ d|n; IH gives p|d;  *)
+(* dividesTransThm gives p|n.                                    *)
+(* ============================================================ *)
+
+primeDivExistsThm =
+  Module[{nV, kV, pV, ihBodyAtN, pLam, specInd, specBeta, stepAnte,
+          stepLam, mainConcl},
+    nV = mkVar["n", numTy]; kV = mkVar["kS", numTy]; pV = mkVar["pP", numTy];
+
+    pLam = mkAbs[nV, impTm[ltN[oneN[], nV],
+      existsNum[pV, andTm[primeN[pV], dividesN[pV, nV]]]]];
+
+    specInd = HOL`Bool`ISPEC[pLam, HOL`Stdlib`Num`strongInductionThm];
+    specBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInd];
+    (* ⊢ (∀n. (∀k. k<n ⇒ (1<k ⇒ ∃p. prime p ∧ p|k))
+              ⇒ (1<n ⇒ ∃p. prime p ∧ p|n))
+       ⇒ ∀n. 1<n ⇒ ∃p. prime p ∧ p|n *)
+
+    stepAnte = Module[{nLocal, ihHyp, oneLtN, primeOrCompAt, mp, pocConcl,
+                       primeCase, compositeCase, dV3, exTmLoc, exHyp,
+                       conjBody, conjHyp, oneLtD, dLtN, dDivN, ihAtD, mpFromIH,
+                       expConcl, pVLoc, exP, exPHyp, primePbody, primePbodyHyp,
+                       primeP, pDivD, pDivN, conjOut, exAtP, chosenP, chosenDV,
+                       finalEx, dischOneLtN, dischIH, gens},
+      nLocal = mkVar["n", numTy];
+
+      ihHyp = ASSUME[Module[{innerBody},
+        innerBody = impTm[ltN[oneN[], kV],
+          existsNum[pV, andTm[primeN[pV], dividesN[pV, kV]]]];
+        mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[kV, impTm[ltN[kV, nLocal], innerBody]]]]];
+      (* ihHyp: ∀k. k<n ⇒ (1<k ⇒ ∃p. prime p ∧ p|k) *)
+
+      oneLtN = ASSUME[ltN[oneN[], nLocal]];
+
+      primeOrCompAt = HOL`Bool`MP[
+        HOL`Bool`SPEC[nLocal, primeOrCompositeThm], oneLtN];
+      (* ⊢ prime n ∨ ∃d. 1<d ∧ d<n ∧ d|n *)
+
+      primeCase = Module[{primeNHyp, divNN, conjP, exNoutTm, exOut},
+        primeNHyp = ASSUME[primeN[nLocal]];
+        divNN = HOL`Bool`SPEC[nLocal, HOL`Stdlib`Num`dividesReflThm];
+        conjP = HOL`Bool`CONJ[primeNHyp, divNN];
+        exNoutTm = existsNum[pV, andTm[primeN[pV], dividesN[pV, nLocal]]];
+        HOL`Bool`EXISTS[exNoutTm, nLocal, conjP]
+      ];
+
+      compositeCase = Module[{dV3Loc, exTmLoc2, exHyp2, conjT, conjHyp2,
+                              oneLtD2, restCJ, dLtN2, dDivN2, ihAtDLoc,
+                              implFromIH, exPbody, exP2, exPbodyHyp2,
+                              primeP2, pDivD2, pDivN2, conjOut2, exTmOut, exAtPout,
+                              chosenPLoc, chosenDVLoc},
+        dV3Loc = mkVar["dV", numTy];
+        exTmLoc2 = existsNum[dV3Loc, andTm[ltN[oneN[], dV3Loc],
+          andTm[ltN[dV3Loc, nLocal], dividesN[dV3Loc, nLocal]]]];
+        exHyp2 = ASSUME[exTmLoc2];
+        conjT = andTm[ltN[oneN[], dV3Loc],
+          andTm[ltN[dV3Loc, nLocal], dividesN[dV3Loc, nLocal]]];
+        conjHyp2 = ASSUME[conjT];
+        oneLtD2 = HOL`Bool`CONJUNCT1[conjHyp2];
+        restCJ = HOL`Bool`CONJUNCT2[conjHyp2];
+        dLtN2 = HOL`Bool`CONJUNCT1[restCJ];
+        dDivN2 = HOL`Bool`CONJUNCT2[restCJ];
+
+        ihAtDLoc = HOL`Bool`SPEC[dV3Loc, ihHyp];
+        (* ⊢ dV<n ⇒ (1<dV ⇒ ∃p. prime p ∧ p|dV) *)
+        implFromIH = HOL`Bool`MP[HOL`Bool`MP[ihAtDLoc, dLtN2], oneLtD2];
+        (* (…) ⊢ ∃p. prime p ∧ p|dV *)
+
+        exPbody = andTm[primeN[pV], dividesN[pV, dV3Loc]];
+        exP2 = existsNum[pV, exPbody];
+        exPbodyHyp2 = ASSUME[exPbody];
+        primeP2 = HOL`Bool`CONJUNCT1[exPbodyHyp2];
+        pDivD2 = HOL`Bool`CONJUNCT2[exPbodyHyp2];
+        pDivN2 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[nLocal,
+          HOL`Bool`SPEC[dV3Loc, HOL`Bool`SPEC[pV, dividesTransThm]]],
+          pDivD2], dDivN2];
+        (* (…) ⊢ divides p n *)
+        conjOut2 = HOL`Bool`CONJ[primeP2, pDivN2];
+        exTmOut = existsNum[pV, andTm[primeN[pV], dividesN[pV, nLocal]]];
+        exAtPout = HOL`Bool`EXISTS[exTmOut, pV, conjOut2];
+        chosenPLoc = HOL`Bool`CHOOSE[pV, implFromIH, exAtPout];
+        chosenDVLoc = HOL`Bool`CHOOSE[dV3Loc, exHyp2, chosenPLoc];
+        chosenDVLoc
+      ];
+
+      finalEx = HOL`Bool`DISJCASES[primeOrCompAt, primeCase, compositeCase];
+
+      dischOneLtN = HOL`Bool`DISCH[ltN[oneN[], nLocal], finalEx];
+      dischIH = HOL`Bool`DISCH[concl[ihHyp], dischOneLtN];
+      gens = HOL`Bool`GEN[nLocal, dischIH];
+      gens
+    ];
+
+    mainConcl = HOL`Bool`MP[specBeta, stepAnte];
+    mainConcl
   ];
 
 End[];
