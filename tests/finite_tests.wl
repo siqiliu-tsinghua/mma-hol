@@ -301,3 +301,24 @@ HOLTest`runTests["finite: finrecUniqueThm — comm ⇒ FINREC functional",
         comb[const["∀", _], abs[bvar[0, _], _, _]]]],
       "shape: comm ⇒ ∀n. …"];
 ]];
+
+(* ===== M7-4-f.3.b: FINREC existence + set identities ===== *)
+
+HOLTest`runTests["finite: inMemAbsorbThm + notInMemDelInsertThm hyp-free",
+  (HOLTest`assertEq[hyp[HOL`Stdlib`Finite`inMemAbsorbThm], {},
+     "inMemAbsorbThm no hyps"];
+   HOLTest`assertEq[hyp[HOL`Stdlib`Finite`notInMemDelInsertThm], {},
+     "notInMemDelInsertThm no hyps"];)
+];
+
+HOLTest`runTests["finite: finrecExistsThm — FINITE s ⇒ ∃n a. FINREC f b n s a",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`finrecExistsThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["⇒", _], comb[const["FINITE", _], _]],
+          comb[const["∃", _], _]], _]]],
+      "shape: ∀s. FINITE s ⇒ ∃n a. …"];
+]];

@@ -45,6 +45,9 @@ sDelEmptyImpEqThm::usage = "sDelEmptyImpEqThm — ⊢ ∀s x y. (s DELETE x = EM
 finrecExchangeBaseThm::usage = "finrecExchangeBaseThm — ⊢ ∀s a x. x ∈ s ∧ FINREC f b (SUC 0) s a ⇒ ∃c. FINREC f b 0 (s DELETE x) c ∧ a = f x c. (Base case n=1 of the FINREC exchange induction.)";
 finrecExchangeThm::usage = "finrecExchangeThm — ⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀n s a x. x ∈ s ∧ FINREC f b (SUC n) s a ⇒ ∃c. FINREC f b n (s DELETE x) c ∧ a = f x c. The FINREC exchange / inversion lemma under full commutativity of the step function.";
 finrecUniqueThm::usage = "finrecUniqueThm — ⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀n s a1 a2. FINREC f b n s a1 ∧ FINREC f b n s a2 ⇒ a1 = a2. FINREC is functional (in the result slot) under full commutativity.";
+inMemAbsorbThm::usage = "inMemAbsorbThm — ⊢ ∀x s. x ∈ s ⇒ (x INSERT s) = s.";
+notInMemDelInsertThm::usage = "notInMemDelInsertThm — ⊢ ∀x s. ¬(x ∈ s) ⇒ (x INSERT s) DELETE x = s.";
+finrecExistsThm::usage = "finrecExistsThm — ⊢ ∀s. FINITE s ⇒ ∃n a. FINREC f b n s a. (No commutativity needed — pure constructive existence.)";
 
 Begin["`Private`"];
 
@@ -1312,6 +1315,183 @@ finrecUniqueThm =
     ante = HOL`Bool`CONJ[base, step];
     mainConcl = HOL`Bool`MP[specBeta, ante];
     HOL`Bool`DISCH[commHypTm, mainConcl]
+  ];
+
+(* ============================================================ *)
+(* M7-4-f.3.b — FINREC existence + supporting set identities    *)
+(*                                                              *)
+(*   inMemAbsorbThm: x∈s ⇒ x INSERT s = s                       *)
+(*   notInMemDelInsertThm: ¬(x∈s) ⇒ (x INSERT s) DELETE x = s   *)
+(*   finrecExistsThm: FINITE s ⇒ ∃n a. FINREC f b n s a         *)
+(*                                                              *)
+(* finiteInduct on s for existence. INSERT step case-splits on  *)
+(* x∈s: absorbed → witness same n, a; new → SUC n, f x a via    *)
+(* the SUC clause + DEL-INSERT identity.                        *)
+(* ============================================================ *)
+
+inMemAbsorbThm =
+  Module[{xV2, sV2, yV2, xInS, thLHS, thRHS, deduct, setEq, disch},
+    xV2 = mkVar["x", αTy]; sV2 = mkVar["s", setTy]; yV2 = mkVar["yI", αTy];
+    xInS = ASSUME[inTm[xV2, sV2]];
+    thLHS = Module[{yInSh, disj},
+      yInSh = ASSUME[inTm[yV2, sV2]];
+      disj = HOL`Bool`DISJ2[yInSh, mkEq[yV2, xV2]];
+      EQMP[HOL`Equal`SYM[inInsertAt[yV2, xV2, sV2]], disj]
+    ];
+    thRHS = Module[{yInIns, disjUnf, caseEq, caseIn},
+      yInIns = ASSUME[inTm[yV2, insertTm[xV2, sV2]]];
+      disjUnf = EQMP[inInsertAt[yV2, xV2, sV2], yInIns];
+      caseEq = HOL`Drule`SUBS[{HOL`Equal`SYM[ASSUME[mkEq[yV2, xV2]]]}, xInS];
+      caseIn = ASSUME[inTm[yV2, sV2]];
+      HOL`Bool`DISJCASES[disjUnf, caseEq, caseIn]
+    ];
+    deduct = DEDUCTANTISYM[thLHS, thRHS];
+    setEq = setExtFromInEq[insertTm[xV2, sV2], sV2, yV2, deduct];
+    disch = HOL`Bool`DISCH[inTm[xV2, sV2], setEq];
+    HOL`Bool`GEN[xV2, HOL`Bool`GEN[sV2, disch]]
+  ];
+
+notInMemDelInsertThm =
+  Module[{xV2, sV2, yV2, notXInS, thLHS, thRHS, deduct, setEq, disch},
+    xV2 = mkVar["x", αTy]; sV2 = mkVar["s", setTy]; yV2 = mkVar["yD", αTy];
+    notXInS = ASSUME[notTm[inTm[xV2, sV2]]];
+    thLHS = Module[{yInSh, yNeqX, yInIns, conj},
+      yInSh = ASSUME[inTm[yV2, sV2]];
+      yNeqX = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[yV2, xV2],
+        HOL`Bool`MP[HOL`Bool`NOTELIM[notXInS],
+          HOL`Drule`SUBS[{ASSUME[mkEq[yV2, xV2]]}, yInSh]]]];
+      yInIns = EQMP[HOL`Equal`SYM[inInsertAt[yV2, xV2, sV2]],
+        HOL`Bool`DISJ2[yInSh, mkEq[yV2, xV2]]];
+      conj = HOL`Bool`CONJ[yInIns, yNeqX];
+      EQMP[HOL`Equal`SYM[inDeleteAt[yV2, insertTm[xV2, sV2], xV2]], conj]
+    ];
+    thRHS = Module[{yInDelIns, delUnf, yInIns, yNeqX, insUnf, caseEq, caseIn},
+      yInDelIns = ASSUME[inTm[yV2, deleteTm[insertTm[xV2, sV2], xV2]]];
+      delUnf = EQMP[inDeleteAt[yV2, insertTm[xV2, sV2], xV2], yInDelIns];
+      yInIns = HOL`Bool`CONJUNCT1[delUnf];
+      yNeqX = HOL`Bool`CONJUNCT2[delUnf];
+      insUnf = EQMP[inInsertAt[yV2, xV2, sV2], yInIns];
+      caseEq = HOL`Bool`CONTR[inTm[yV2, sV2],
+        HOL`Bool`MP[HOL`Bool`NOTELIM[yNeqX], ASSUME[mkEq[yV2, xV2]]]];
+      caseIn = ASSUME[inTm[yV2, sV2]];
+      HOL`Bool`DISJCASES[insUnf, caseEq, caseIn]
+    ];
+    deduct = DEDUCTANTISYM[thLHS, thRHS];
+    setEq = setExtFromInEq[deleteTm[insertTm[xV2, sV2], xV2], sV2, yV2, deduct];
+    disch = HOL`Bool`DISCH[notTm[inTm[xV2, sV2]], setEq];
+    HOL`Bool`GEN[xV2, HOL`Bool`GEN[sV2, disch]]
+  ];
+
+finrecExistsThm =
+  Module[{fF, bF, nU, aU, nC, aC, pExistsBody, pExistsLam, specInd, specBeta,
+          base, step, ante, mainConcl},
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy];
+    nU = mkVar["nE", numTy]; aU = mkVar["aE", βTy];
+    nC = mkVar["nC", numTy]; aC = mkVar["aC", βTy];
+
+    pExistsBody[sArg_] := mkComb[existsC[numTy], mkAbs[nU,
+      mkComb[existsC[βTy], mkAbs[aU,
+        mkComb[mkComb[finrecApp[fF, bF, nU], sArg], aU]]]]];
+
+    pExistsLam = mkAbs[sV, pExistsBody[sV]];
+    specInd = HOL`Bool`ISPEC[pExistsLam, finiteInductThm];
+    specBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInd];
+
+    base =
+      Module[{frEmpB, exInnerTm, exInner},
+        frEmpB = EQMP[HOL`Equal`SYM[INST[
+          {mkVar["sR", setTy] -> emptyTm[], mkVar["aR", βTy] -> bF},
+          finrecZeroAppThm]],
+          HOL`Bool`CONJ[REFL[emptyTm[]], REFL[bF]]];
+        exInnerTm = mkComb[existsC[βTy], mkAbs[aU,
+          mkComb[mkComb[finrecApp[fF, bF, zeroTm[]], emptyTm[]], aU]]];
+        exInner = HOL`Bool`EXISTS[exInnerTm, bF, frEmpB];
+        HOL`Bool`EXISTS[pExistsBody[emptyTm[]], zeroTm[], exInner]
+      ];
+
+    step =
+      Module[{conjT, conjHyp, ih, ihConcl, outerLamN, innerExAtNC,
+              exInnerHyp, innerLamA, bodyAtNCAC, exBodyHyp, em, goalExistsTm,
+              caseIn, caseNotIn, resultUnion, chosenA, chosenN,
+              dischConj, gens},
+        conjT = andTm[finiteAppTerm[sV], pExistsBody[sV]];
+        conjHyp = ASSUME[conjT];
+        ih = HOL`Bool`CONJUNCT2[conjHyp];
+        ihConcl = concl[ih];
+        outerLamN = ihConcl[[2]];
+        innerExAtNC = concl[BETACONV[mkComb[outerLamN, nC]]][[2]];
+        exInnerHyp = ASSUME[innerExAtNC];
+        innerLamA = innerExAtNC[[2]];
+        bodyAtNCAC = concl[BETACONV[mkComb[innerLamA, aC]]][[2]];
+        exBodyHyp = ASSUME[bodyAtNCAC];
+        (* exBodyHyp : FINREC f b nC sV aC *)
+
+        em = HOL`Bool`EXCLUDEDMIDDLE[inTm[xV, sV]];
+        goalExistsTm = pExistsBody[insertTm[xV, sV]];
+
+        caseIn =
+          Module[{xInS, xInsEqS, sEqXIns, frAtXIns, exInnerNewTm, exInnerNew},
+            xInS = ASSUME[inTm[xV, sV]];
+            xInsEqS = HOL`Bool`MP[
+              HOL`Bool`SPEC[sV, HOL`Bool`SPEC[xV, inMemAbsorbThm]], xInS];
+            sEqXIns = HOL`Equal`SYM[xInsEqS];
+            frAtXIns = HOL`Drule`SUBS[{sEqXIns}, exBodyHyp];
+            exInnerNewTm = mkComb[existsC[βTy], mkAbs[aU,
+              mkComb[mkComb[finrecApp[fF, bF, nC], insertTm[xV, sV]], aU]]];
+            exInnerNew = HOL`Bool`EXISTS[exInnerNewTm, aC, frAtXIns];
+            HOL`Bool`EXISTS[goalExistsTm, nC, exInnerNew]
+          ];
+
+        caseNotIn =
+          Module[{notXInS, delEq, frAtXInsDelX, xInIns, refl, fxa,
+                  sucInst, sucInstRHS, outerLamY, innerExAtX, innerLamC,
+                  bodyAtXAC, witnessC, innerExisted, outerExisted, frSuc,
+                  exInnerNewTm, exInnerNew},
+            notXInS = ASSUME[notTm[inTm[xV, sV]]];
+            delEq = HOL`Bool`MP[
+              HOL`Bool`SPEC[sV, HOL`Bool`SPEC[xV, notInMemDelInsertThm]],
+              notXInS];
+            frAtXInsDelX = HOL`Drule`SUBS[{HOL`Equal`SYM[delEq]}, exBodyHyp];
+            xInIns = EQMP[HOL`Equal`SYM[inInsertAt[xV, xV, sV]],
+              HOL`Bool`DISJ1[REFL[xV], inTm[xV, sV]]];
+            fxa = mkComb[mkComb[fF, xV], aC];
+            refl = REFL[fxa];
+
+            sucInst = INST[
+              {mkVar["n", numTy] -> nC,
+               mkVar["sR", setTy] -> insertTm[xV, sV],
+               mkVar["aR", βTy] -> fxa},
+              finrecSucAppThm];
+            sucInstRHS = concl[sucInst][[2]];
+            outerLamY = sucInstRHS[[2]];
+            innerExAtX = concl[BETACONV[mkComb[outerLamY, xV]]][[2]];
+            innerLamC = innerExAtX[[2]];
+            bodyAtXAC = concl[BETACONV[mkComb[innerLamC, aC]]][[2]];
+
+            witnessC = HOL`Bool`CONJ[xInIns,
+              HOL`Bool`CONJ[frAtXInsDelX, refl]];
+            innerExisted = HOL`Bool`EXISTS[innerExAtX, aC, witnessC];
+            outerExisted = HOL`Bool`EXISTS[sucInstRHS, xV, innerExisted];
+            frSuc = EQMP[HOL`Equal`SYM[sucInst], outerExisted];
+
+            exInnerNewTm = mkComb[existsC[βTy], mkAbs[aU,
+              mkComb[mkComb[finrecApp[fF, bF, sucTm[nC]], insertTm[xV, sV]], aU]]];
+            exInnerNew = HOL`Bool`EXISTS[exInnerNewTm, fxa, frSuc];
+            HOL`Bool`EXISTS[goalExistsTm, sucTm[nC], exInnerNew]
+          ];
+
+        resultUnion = HOL`Bool`DISJCASES[em, caseIn, caseNotIn];
+        chosenA = HOL`Bool`CHOOSE[aC, exInnerHyp, resultUnion];
+        chosenN = HOL`Bool`CHOOSE[nC, ih, chosenA];
+        dischConj = HOL`Bool`DISCH[conjT, chosenN];
+        gens = HOL`Bool`GEN[xV, HOL`Bool`GEN[sV, dischConj]];
+        gens
+      ];
+
+    ante = HOL`Bool`CONJ[base, step];
+    mainConcl = HOL`Bool`MP[specBeta, ante];
+    mainConcl
   ];
 
 End[];
