@@ -288,3 +288,16 @@ HOLTest`runTests["finite: finrecExchangeThm — comm ⇒ exchange",
         comb[const["∀", _], abs[bvar[0, _], _, _]]]],
       "shape: comm ⇒ ∀n. …"];
 ]];
+
+(* ===== M7-4-f.3.a: FINREC uniqueness ===== *)
+
+HOLTest`runTests["finite: finrecUniqueThm — comm ⇒ FINREC functional",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`finrecUniqueThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps (comm discharged)"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["⇒", _], _],
+        comb[const["∀", _], abs[bvar[0, _], _, _]]]],
+      "shape: comm ⇒ ∀n. …"];
+]];

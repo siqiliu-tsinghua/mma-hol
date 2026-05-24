@@ -44,6 +44,7 @@ deleteCommThm::usage = "deleteCommThm — ⊢ ∀s x y. (s DELETE x) DELETE y = 
 sDelEmptyImpEqThm::usage = "sDelEmptyImpEqThm — ⊢ ∀s x y. (s DELETE x = EMPTY) ∧ (y ∈ s) ⇒ y = x.";
 finrecExchangeBaseThm::usage = "finrecExchangeBaseThm — ⊢ ∀s a x. x ∈ s ∧ FINREC f b (SUC 0) s a ⇒ ∃c. FINREC f b 0 (s DELETE x) c ∧ a = f x c. (Base case n=1 of the FINREC exchange induction.)";
 finrecExchangeThm::usage = "finrecExchangeThm — ⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀n s a x. x ∈ s ∧ FINREC f b (SUC n) s a ⇒ ∃c. FINREC f b n (s DELETE x) c ∧ a = f x c. The FINREC exchange / inversion lemma under full commutativity of the step function.";
+finrecUniqueThm::usage = "finrecUniqueThm — ⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀n s a1 a2. FINREC f b n s a1 ∧ FINREC f b n s a2 ⇒ a1 = a2. FINREC is functional (in the result slot) under full commutativity.";
 
 Begin["`Private`"];
 
@@ -1178,6 +1179,139 @@ finrecExchangeThm =
     (* (commHyp) ⊢ ∀n. pIndBody[n] *)
     HOL`Bool`DISCH[commHypTm, mainConcl]
     (* ⊢ commHypTm ⇒ ∀n. pIndBody[n] *)
+  ];
+
+(* ============================================================ *)
+(* M7-4-f.3.a — FINREC uniqueness                                *)
+(*   (comm) ⊢ ∀n s a1 a2. FINREC f b n s a1 ∧ FINREC f b n s a2  *)
+(*               ⇒ a1 = a2.                                      *)
+(* numInductionThm on n. Base n=0: both sides force a1=b=a2.    *)
+(* Step n=SUC m: unfold FINREC at SUC m for a1 → ∃x1 c1. CHOOSE. *)
+(* Apply finrecExchangeThm to FINREC f b (SUC m) s a2 at x1     *)
+(* (using x1∈s from the first decomp) → ∃cAux. FINREC f b m     *)
+(* (s\x1) cAux ∧ a2 = f x1 cAux. CHOOSE cAux. IH on (s\x1, c1,   *)
+(* cAux) gives c1 = cAux; chain a1 = f x1 c1 = f x1 cAux = a2.   *)
+(* No x1=x2 case-split — exchange handles both uniformly.        *)
+(* ============================================================ *)
+
+finrecUniqueThm =
+  Module[{fF, bF, nFv, sU, a1U, a2U, c1U, cAuxU, x1U, commHypTm, commHyp,
+          exchangeAt, pUniqBody, pUniqLam, specInd, specBeta, base, step,
+          ante, mainConcl},
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy];
+    nFv = mkVar["n", numTy];
+    sU = mkVar["sU", setTy]; a1U = mkVar["a1U", βTy]; a2U = mkVar["a2U", βTy];
+    c1U = mkVar["c1U", βTy]; cAuxU = mkVar["cAuxU", βTy];
+    x1U = mkVar["x1U", αTy];
+
+    commHypTm = commTm[fF];
+    commHyp = ASSUME[commHypTm];
+    exchangeAt = HOL`Bool`MP[finrecExchangeThm, commHyp];
+    (* (commHyp) ⊢ ∀n s a x. x∈s ∧ FINREC f b (SUC n) s a ⇒ ∃c. … *)
+
+    pUniqBody[nArg_] := mkComb[forallC[setTy], mkAbs[sU,
+      mkComb[forallC[βTy], mkAbs[a1U,
+        mkComb[forallC[βTy], mkAbs[a2U,
+          impTm[andTm[
+              mkComb[mkComb[finrecApp[fF, bF, nArg], sU], a1U],
+              mkComb[mkComb[finrecApp[fF, bF, nArg], sU], a2U]],
+            mkEq[a1U, a2U]]]]]]]];
+
+    pUniqLam = mkAbs[nFv, pUniqBody[nFv]];
+    specInd = HOL`Bool`ISPEC[pUniqLam, HOL`Stdlib`Num`numInductionThm];
+    specBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInd];
+
+    base =
+      Module[{conjT, conjHyp, fr1, fr2, fr1Unf, fr2Unf, a1EqB, a2EqB,
+              a1EqA2, dischConj},
+        conjT = andTm[
+          mkComb[mkComb[finrecApp[fF, bF, zeroTm[]], sU], a1U],
+          mkComb[mkComb[finrecApp[fF, bF, zeroTm[]], sU], a2U]];
+        conjHyp = ASSUME[conjT];
+        fr1 = HOL`Bool`CONJUNCT1[conjHyp];
+        fr2 = HOL`Bool`CONJUNCT2[conjHyp];
+        fr1Unf = EQMP[INST[
+          {mkVar["sR", setTy] -> sU, mkVar["aR", βTy] -> a1U},
+          finrecZeroAppThm], fr1];
+        fr2Unf = EQMP[INST[
+          {mkVar["sR", setTy] -> sU, mkVar["aR", βTy] -> a2U},
+          finrecZeroAppThm], fr2];
+        a1EqB = HOL`Bool`CONJUNCT2[fr1Unf];
+        a2EqB = HOL`Bool`CONJUNCT2[fr2Unf];
+        a1EqA2 = TRANS[a1EqB, HOL`Equal`SYM[a2EqB]];
+        dischConj = HOL`Bool`DISCH[conjT, a1EqA2];
+        HOL`Bool`GEN[sU, HOL`Bool`GEN[a1U, HOL`Bool`GEN[a2U, dischConj]]]
+      ];
+
+    step =
+      Module[{nL, ihHyp, conjT, conjHyp, fr1, fr2, fr1Unf, fr1UnfConcl,
+              outerLamX1, innerExAtX1, innerExHyp, innerLamC1, bodyAtX1C1,
+              bodyHyp, x1InS, frmAtSDelX1c1, a1EqFx1c1, exchAt, exchMP,
+              cAuxBodyT, cAuxBodyHyp, frmAtSDelX1cAux, a2EqFx1cAux,
+              ihAt, c1EqcAux, fxc1Eq, a1EqFxcAux, a1EqA2,
+              chosenCAux, chosenC1, chosenX1, dischConj, gens, dischIH},
+        nL = mkVar["n", numTy];
+        ihHyp = ASSUME[pUniqBody[nL]];
+
+        conjT = andTm[
+          mkComb[mkComb[finrecApp[fF, bF, sucTm[nL]], sU], a1U],
+          mkComb[mkComb[finrecApp[fF, bF, sucTm[nL]], sU], a2U]];
+        conjHyp = ASSUME[conjT];
+        fr1 = HOL`Bool`CONJUNCT1[conjHyp];
+        fr2 = HOL`Bool`CONJUNCT2[conjHyp];
+
+        fr1Unf = EQMP[INST[
+          {mkVar["sR", setTy] -> sU, mkVar["aR", βTy] -> a1U},
+          finrecSucAppThm], fr1];
+        (* (conjHyp) ⊢ ∃xR cR. xR∈sU ∧ FINREC f b nL (sU\xR) cR ∧ a1U = f xR cR *)
+        fr1UnfConcl = concl[fr1Unf];
+        outerLamX1 = fr1UnfConcl[[2]];
+        innerExAtX1 = concl[BETACONV[mkComb[outerLamX1, x1U]]][[2]];
+        innerExHyp = ASSUME[innerExAtX1];
+        innerLamC1 = innerExAtX1[[2]];
+        bodyAtX1C1 = concl[BETACONV[mkComb[innerLamC1, c1U]]][[2]];
+        bodyHyp = ASSUME[bodyAtX1C1];
+
+        x1InS = HOL`Bool`CONJUNCT1[bodyHyp];
+        frmAtSDelX1c1 = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[bodyHyp]];
+        a1EqFx1c1 = HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[bodyHyp]];
+
+        exchAt = HOL`Bool`SPEC[x1U, HOL`Bool`SPEC[a2U,
+          HOL`Bool`SPEC[sU, HOL`Bool`SPEC[nL, exchangeAt]]]];
+        exchMP = HOL`Bool`MP[exchAt, HOL`Bool`CONJ[x1InS, fr2]];
+        (* (commHyp, conjHyp, body) ⊢ ∃c. FINREC f b nL (sU\x1U) c ∧ a2U = f x1U c *)
+
+        cAuxBodyT = andTm[
+          mkComb[mkComb[finrecApp[fF, bF, nL], deleteTm[sU, x1U]], cAuxU],
+          mkEq[a2U, mkComb[mkComb[fF, x1U], cAuxU]]];
+        cAuxBodyHyp = ASSUME[cAuxBodyT];
+        frmAtSDelX1cAux = HOL`Bool`CONJUNCT1[cAuxBodyHyp];
+        a2EqFx1cAux = HOL`Bool`CONJUNCT2[cAuxBodyHyp];
+
+        ihAt = HOL`Bool`SPEC[cAuxU, HOL`Bool`SPEC[c1U,
+          HOL`Bool`SPEC[deleteTm[sU, x1U], ihHyp]]];
+        c1EqcAux = HOL`Bool`MP[ihAt,
+          HOL`Bool`CONJ[frmAtSDelX1c1, frmAtSDelX1cAux]];
+
+        fxc1Eq = HOL`Equal`APTERM[mkComb[fF, x1U], c1EqcAux];
+        a1EqFxcAux = TRANS[a1EqFx1c1, fxc1Eq];
+        a1EqA2 = TRANS[a1EqFxcAux, HOL`Equal`SYM[a2EqFx1cAux]];
+
+        chosenCAux = HOL`Bool`CHOOSE[cAuxU, exchMP, a1EqA2];
+        chosenC1 = HOL`Bool`CHOOSE[c1U, innerExHyp, chosenCAux];
+        chosenX1 = HOL`Bool`CHOOSE[x1U, fr1Unf, chosenC1];
+
+        dischConj = HOL`Bool`DISCH[conjT, chosenX1];
+        gens = HOL`Bool`GEN[sU, HOL`Bool`GEN[a1U,
+          HOL`Bool`GEN[a2U, dischConj]]];
+        dischIH = HOL`Bool`DISCH[pUniqBody[nL], gens];
+        HOL`Bool`GEN[nL, dischIH]
+      ];
+
+    ante = HOL`Bool`CONJ[base, step];
+    mainConcl = HOL`Bool`MP[specBeta, ante];
+    HOL`Bool`DISCH[commHypTm, mainConcl]
   ];
 
 End[];
