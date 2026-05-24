@@ -335,3 +335,37 @@ HOLTest`runTests["finite: finrecAcrossNUniqueThm — comm ⇒ across-n functiona
         comb[const["∀", _], abs[bvar[0, _], _, _]]]],
       "shape: comm ⇒ ∀n. …"];
 ]];
+
+(* ===== M7-4-f.4.b: ITSET + FINITE_RECURSION ===== *)
+
+HOLTest`runTests["finite: ITSET has type (α→β→β) → set → β → β",
+  Module[{bTy, foldFnTy},
+    bTy = mkVarType["B"]; foldFnTy = tyFun[αTy, tyFun[bTy, bTy]];
+    HOLTest`assertEq[HOL`Kernel`constType["ITSET"],
+      tyFun[foldFnTy, tyFun[setTy, tyFun[bTy, bTy]]],
+      "ITSET : (α→β→β) → set → β → β"];
+]];
+
+HOLTest`runTests["finite: itsetEmptyThm — ⊢ ITSET f ∅ b = b, no hyps",
+  Module[{dThm, bTy, foldFnTy, fF, bF, itsetC, lhs, expected},
+    dThm = HOL`Stdlib`Finite`itsetEmptyThm;
+    bTy = mkVarType["B"]; foldFnTy = tyFun[αTy, tyFun[bTy, bTy]];
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", bTy];
+    itsetC = HOL`Stdlib`Finite`itsetConst[];
+    lhs = mkComb[mkComb[mkComb[itsetC, fF], HOL`Stdlib`Set`emptyConst[]], bF];
+    expected = mkEq[lhs, bF];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[dThm], expected],
+      "⊢ ITSET f ∅ b = b"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["finite: itsetInsertThm — comm ⇒ FINITE_RECURSION clause",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`itsetInsertThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps (comm discharged)"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["⇒", _], _],
+        comb[const["∀", _], abs[bvar[0, _], _, _]]]],
+      "shape: comm ⇒ ∀x. …"];
+]];

@@ -50,6 +50,11 @@ notInMemDelInsertThm::usage = "notInMemDelInsertThm — ⊢ ∀x s. ¬(x ∈ s) 
 finrecExistsThm::usage = "finrecExistsThm — ⊢ ∀s. FINITE s ⇒ ∃n a. FINREC f b n s a. (No commutativity needed — pure constructive existence.)";
 finrecAcrossNUniqueThm::usage = "finrecAcrossNUniqueThm — ⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀n s a1 m a2. FINREC f b n s a1 ∧ FINREC f b m s a2 ⇒ a1 = a2. Uniqueness of FINREC's result slot across both the count and the derivation order (needed to define ITSET via `@z. ∃n. FINREC f b n s z`).";
 
+itsetConst::usage = "itsetConst[] — ITSET : (α→β→β) → (α→bool) → β → β. Order-independent fold over a finite set: ITSET f s b folds f over s starting from b. Well-defined for FINITE s under full commutativity of f.";
+itsetDefThm::usage = "itsetDefThm — ⊢ ITSET = (λf s b. @z. ∃n. FINREC f b n s z).";
+itsetEmptyThm::usage = "itsetEmptyThm — ⊢ ITSET f ∅ b = b. (Unconditional — no commutativity needed.)";
+itsetInsertThm::usage = "itsetInsertThm — ⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀x s. FINITE s ⇒ ITSET f (x INSERT s) b = COND (x ∈ s) (ITSET f s b) (f x (ITSET f s b)). The FINITE_RECURSION clause for ITSET.";
+
 Begin["`Private`"];
 
 αTy   = mkVarType["A"];
@@ -1709,6 +1714,311 @@ finrecAcrossNUniqueThm =
     ante = HOL`Bool`CONJ[base, step];
     mainConcl = HOL`Bool`MP[specBeta, ante];
     HOL`Bool`DISCH[commHypTm, mainConcl]
+  ];
+
+(* ============================================================ *)
+(* M7-4-f.4.b — ITSET definition + FINITE_RECURSION clauses     *)
+(*                                                              *)
+(*   ITSET f s b = @z. ∃n. FINREC f b n s z                     *)
+(*                                                              *)
+(* itsetEmptyThm:  ⊢ ITSET f ∅ b = b      (unconditional)       *)
+(* itsetInsertThm: ⊢ comm ⇒ ∀x s. FINITE s ⇒                    *)
+(*                   ITSET f (x INSERT s) b =                   *)
+(*                   COND (x∈s) (ITSET f s b)                   *)
+(*                              (f x (ITSET f s b))             *)
+(* ============================================================ *)
+
+itsetTy = tyFun[foldFnTy, tyFun[setTy, tyFun[βTy, βTy]]];
+
+Module[{fFi, sFi, bFi, zEt, nEt, innerExLam, selBody, itsetBody},
+  fFi = mkVar["f", foldFnTy]; sFi = mkVar["s", setTy]; bFi = mkVar["b", βTy];
+  zEt = mkVar["zI", βTy]; nEt = mkVar["nI", numTy];
+  innerExLam = mkComb[existsC[numTy], mkAbs[nEt,
+    mkComb[mkComb[finrecApp[fFi, bFi, nEt], sFi], zEt]]];
+  selBody = mkComb[
+    mkConst["@", tyFun[tyFun[βTy, boolTy], βTy]],
+    mkAbs[zEt, innerExLam]];
+  itsetBody = mkAbs[fFi, mkAbs[sFi, mkAbs[bFi, selBody]]];
+  itsetDefThm = newDefinition[mkEq[mkVar["ITSET", itsetTy], itsetBody]];
+];
+
+itsetConst[] := mkConst["ITSET", itsetTy];
+itsetApp[fArg_, sArg_, bArg_] :=
+  mkComb[mkComb[mkComb[itsetConst[], fArg], sArg], bArg];
+
+(* ⊢ ITSET f s b = @z. ∃n. FINREC f b n s z *)
+unfoldItset[fArg_, sArg_, bArg_] :=
+  Module[{ap1, e1, ap2, e2, ap3},
+    ap1 = HOL`Equal`APTHM[itsetDefThm, fArg];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, sArg];
+    e2 = TRANS[ap2, BETACONV[concl[ap2][[2]]]];
+    ap3 = HOL`Equal`APTHM[e2, bArg];
+    TRANS[ap3, BETACONV[concl[ap3][[2]]]]
+  ];
+
+(* eqfIntro: from Γ ⊢ ¬p, derive Γ ⊢ p = F. *)
+eqfIntro[notTh_] :=
+  Module[{p, th1, th2},
+    p = concl[notTh][[2]];
+    th1 = HOL`Bool`CONTR[p, ASSUME[mkConst["F", boolTy]]];
+    th2 = HOL`Bool`MP[HOL`Bool`NOTELIM[notTh], ASSUME[p]];
+    DEDUCTANTISYM[th1, th2]
+  ];
+
+(* extractItset: given existsAtW = Γ ⊢ ∃n. FINREC f b n sArg wArg, and *)
+(* acrossNAtComm = (commHyp) ⊢ ∀n s a1 m a2. FINREC f b n s a1 ∧       *)
+(* FINREC f b m s a2 ⇒ a1 = a2, derive Γ ⊢ ITSET f sArg bArg = wArg.   *)
+extractItset[fArg_, sArg_, bArg_, wArg_, existsAtW_, acrossNAtComm_] :=
+  Module[{unfArg, selTmArg, predLamArg, betaPredAtW, predAtW,
+          selectInstArg, selectAtW, predAtSelArg, betaPredAtSelArg, exAtSelArg,
+          nW, mW, bodyAtNW, bodyAtNWHyp, bodyAtMSel, bodyAtMSelHyp,
+          acrossInst, wEqSel, chosenM, chosenN, selEqW},
+    unfArg = unfoldItset[fArg, sArg, bArg];
+    selTmArg = concl[unfArg][[2]];
+    predLamArg = selTmArg[[2]];
+
+    betaPredAtW = BETACONV[mkComb[predLamArg, wArg]];
+    predAtW = EQMP[HOL`Equal`SYM[betaPredAtW], existsAtW];
+    selectInstArg = HOL`Bool`ISPEC[predLamArg, HOL`Bootstrap`selectAx];
+    selectAtW = HOL`Bool`SPEC[wArg, selectInstArg];
+    predAtSelArg = HOL`Bool`MP[selectAtW, predAtW];
+    betaPredAtSelArg = BETACONV[mkComb[predLamArg, selTmArg]];
+    exAtSelArg = EQMP[betaPredAtSelArg, predAtSelArg];
+    (* exAtSelArg : Γ ⊢ ∃n. FINREC f b n sArg (selTmArg) *)
+
+    nW = mkVar["nW", numTy]; mW = mkVar["mW", numTy];
+    bodyAtNW = mkComb[mkComb[finrecApp[fArg, bArg, nW], sArg], wArg];
+    bodyAtNWHyp = ASSUME[bodyAtNW];
+    bodyAtMSel = mkComb[mkComb[finrecApp[fArg, bArg, mW], sArg], selTmArg];
+    bodyAtMSelHyp = ASSUME[bodyAtMSel];
+
+    acrossInst = HOL`Bool`SPEC[selTmArg, HOL`Bool`SPEC[mW,
+      HOL`Bool`SPEC[wArg, HOL`Bool`SPEC[sArg,
+        HOL`Bool`SPEC[nW, acrossNAtComm]]]]];
+    wEqSel = HOL`Bool`MP[acrossInst,
+      HOL`Bool`CONJ[bodyAtNWHyp, bodyAtMSelHyp]];
+
+    chosenM = HOL`Bool`CHOOSE[mW, exAtSelArg, wEqSel];
+    chosenN = HOL`Bool`CHOOSE[nW, existsAtW, chosenM];
+    (* (commHyp + existsAtW's hyps) ⊢ wArg = selTmArg *)
+
+    selEqW = HOL`Equal`SYM[chosenN];
+    TRANS[unfArg, selEqW]
+  ];
+
+(* ---- itsetEmptyThm : ⊢ ITSET f ∅ b = b (unconditional) ---- *)
+
+itsetEmptyThm =
+  Module[{fFi, bFi, unf, selTm, predLam, nEt, zEt, kV,
+          emptyUniqLemma, exTmAtB, fr0AtEmpB, exAtB, betaPredAtB,
+          predAtB, selectInst, selectAtB, predAtSel, betaPredAtSel,
+          exAtSel, uniqAtSel, selEqB},
+    fFi = mkVar["f", foldFnTy]; bFi = mkVar["b", βTy];
+    unf = unfoldItset[fFi, emptyTm[], bFi];
+    selTm = concl[unf][[2]];
+    predLam = selTm[[2]];
+    nEt = mkVar["nI", numTy]; zEt = mkVar["zI", βTy]; kV = mkVar["kI", numTy];
+
+    emptyUniqLemma =
+      Module[{exTmAtZ, exHyp, frBody, frHyp, casesAtN, caseZero, caseSuc,
+              body, chosenN, disch},
+        exTmAtZ = mkComb[existsC[numTy], mkAbs[nEt,
+          mkComb[mkComb[finrecApp[fFi, bFi, nEt], emptyTm[]], zEt]]];
+        exHyp = ASSUME[exTmAtZ];
+        frBody = mkComb[mkComb[finrecApp[fFi, bFi, nEt], emptyTm[]], zEt];
+        frHyp = ASSUME[frBody];
+        casesAtN = HOL`Bool`SPEC[nEt, HOL`Stdlib`Num`numCasesThm];
+
+        caseZero = Module[{nEq0, frSub, frUnf},
+          nEq0 = ASSUME[mkEq[nEt, zeroTm[]]];
+          frSub = HOL`Drule`SUBS[{nEq0}, frHyp];
+          frUnf = EQMP[INST[
+            {mkVar["sR", setTy] -> emptyTm[],
+             mkVar["aR", βTy] -> zEt}, finrecZeroAppThm], frSub];
+          HOL`Bool`CONJUNCT2[frUnf]
+        ];
+
+        caseSuc = Module[{exTmSuc, exHypSuc, nEqSucK, frSub, frUnf, frUnfRHS,
+                          outerLamX, xN, cN, innerExAtX, innerExHyp, innerLamC,
+                          bodyAtXC, bodyHyp, xInEmp, fThm, zEqB, chosenC,
+                          chosenX, dischNEq, chosenK},
+          exTmSuc = mkComb[existsC[numTy], mkAbs[kV, mkEq[nEt, sucTm[kV]]]];
+          exHypSuc = ASSUME[exTmSuc];
+          nEqSucK = ASSUME[mkEq[nEt, sucTm[kV]]];
+          frSub = HOL`Drule`SUBS[{nEqSucK}, frHyp];
+          frUnf = EQMP[INST[
+            {mkVar["n", numTy] -> kV,
+             mkVar["sR", setTy] -> emptyTm[],
+             mkVar["aR", βTy] -> zEt}, finrecSucAppThm], frSub];
+          frUnfRHS = concl[frUnf];
+          outerLamX = frUnfRHS[[2]];
+          xN = mkVar["xN", αTy]; cN = mkVar["cN", βTy];
+          innerExAtX = concl[BETACONV[mkComb[outerLamX, xN]]][[2]];
+          innerExHyp = ASSUME[innerExAtX];
+          innerLamC = innerExAtX[[2]];
+          bodyAtXC = concl[BETACONV[mkComb[innerLamC, cN]]][[2]];
+          bodyHyp = ASSUME[bodyAtXC];
+          xInEmp = HOL`Bool`CONJUNCT1[bodyHyp];
+          fThm = EQMP[inEmptyAtA[xN], xInEmp];
+          zEqB = HOL`Bool`CONTR[mkEq[zEt, bFi], fThm];
+          chosenC = HOL`Bool`CHOOSE[cN, innerExHyp, zEqB];
+          chosenX = HOL`Bool`CHOOSE[xN, frUnf, chosenC];
+          dischNEq = HOL`Bool`DISCH[mkEq[nEt, sucTm[kV]], chosenX];
+          chosenK = HOL`Bool`CHOOSE[kV, exHypSuc, HOL`Bool`UNDISCH[dischNEq]];
+          chosenK
+        ];
+
+        body = HOL`Bool`DISJCASES[casesAtN, caseZero, caseSuc];
+        chosenN = HOL`Bool`CHOOSE[nEt, exHyp, body];
+        disch = HOL`Bool`DISCH[exTmAtZ, chosenN];
+        HOL`Bool`GEN[zEt, disch]
+      ];
+    (* emptyUniqLemma : ⊢ ∀z. (∃n. FINREC f b n ∅ z) ⇒ z = b *)
+
+    exTmAtB = mkComb[existsC[numTy], mkAbs[nEt,
+      mkComb[mkComb[finrecApp[fFi, bFi, nEt], emptyTm[]], bFi]]];
+    fr0AtEmpB = EQMP[HOL`Equal`SYM[INST[
+      {mkVar["sR", setTy] -> emptyTm[],
+       mkVar["aR", βTy] -> bFi}, finrecZeroAppThm]],
+      HOL`Bool`CONJ[REFL[emptyTm[]], REFL[bFi]]];
+    exAtB = HOL`Bool`EXISTS[exTmAtB, zeroTm[], fr0AtEmpB];
+
+    betaPredAtB = BETACONV[mkComb[predLam, bFi]];
+    predAtB = EQMP[HOL`Equal`SYM[betaPredAtB], exAtB];
+    selectInst = HOL`Bool`ISPEC[predLam, HOL`Bootstrap`selectAx];
+    selectAtB = HOL`Bool`SPEC[bFi, selectInst];
+    predAtSel = HOL`Bool`MP[selectAtB, predAtB];
+    betaPredAtSel = BETACONV[mkComb[predLam, selTm]];
+    exAtSel = EQMP[betaPredAtSel, predAtSel];
+
+    uniqAtSel = HOL`Bool`SPEC[selTm, emptyUniqLemma];
+    selEqB = HOL`Bool`MP[uniqAtSel, exAtSel];
+
+    TRANS[unf, selEqB]
+  ];
+
+(* ---- itsetInsertThm (COND form, under comm + FINITE s) ---- *)
+
+itsetInsertThm =
+  Module[{fFi, bFi, sV2, xV2, commHypTm, commHyp, acrossNAtComm, finS,
+          existsAtS, nS, aS, existsAtSConcl, outerLamN, innerExAtNS,
+          innerExHypNS, innerLamA, bodyAtNSAS, finRecAtSHyp,
+          exTmAtAS, exAtSWit, itsetSEqAs, asEqItsetS, em, caseIn, caseNotIn,
+          body, chosenAS, chosenNS, dischFin, gens, dischCom},
+    fFi = mkVar["f", foldFnTy]; bFi = mkVar["b", βTy];
+    sV2 = mkVar["sI", setTy]; xV2 = mkVar["xI", αTy];
+    commHypTm = commTm[fFi];
+    commHyp = ASSUME[commHypTm];
+    acrossNAtComm = HOL`Bool`MP[finrecAcrossNUniqueThm, commHyp];
+
+    finS = ASSUME[finiteAppTerm[sV2]];
+    existsAtS = HOL`Bool`MP[HOL`Bool`SPEC[sV2, finrecExistsThm], finS];
+
+    nS = mkVar["nS", numTy]; aS = mkVar["aS", βTy];
+
+    existsAtSConcl = concl[existsAtS];
+    outerLamN = existsAtSConcl[[2]];
+    innerExAtNS = concl[BETACONV[mkComb[outerLamN, nS]]][[2]];
+    innerExHypNS = ASSUME[innerExAtNS];
+    innerLamA = innerExAtNS[[2]];
+    bodyAtNSAS = concl[BETACONV[mkComb[innerLamA, aS]]][[2]];
+    finRecAtSHyp = ASSUME[bodyAtNSAS];
+    (* (finRecAtSHyp) : FINREC f b nS sV2 aS *)
+
+    exTmAtAS = mkComb[existsC[numTy], mkAbs[mkVar["nI", numTy],
+      mkComb[mkComb[finrecApp[fFi, bFi, mkVar["nI", numTy]], sV2], aS]]];
+    exAtSWit = HOL`Bool`EXISTS[exTmAtAS, nS, finRecAtSHyp];
+    itsetSEqAs = extractItset[fFi, sV2, bFi, aS, exAtSWit, acrossNAtComm];
+    asEqItsetS = HOL`Equal`SYM[itsetSEqAs];
+
+    em = HOL`Bool`EXCLUDEDMIDDLE[inTm[xV2, sV2]];
+
+    caseIn = Module[{xInS, xInsEqS, itsetEq1, itsetEq2, xInsEqT,
+                     condRewrite, condTAt, condRHSeqLHS},
+      xInS = ASSUME[inTm[xV2, sV2]];
+      xInsEqS = HOL`Bool`MP[HOL`Bool`SPEC[sV2,
+        HOL`Bool`SPEC[xV2, inMemAbsorbThm]], xInS];
+      itsetEq1 = HOL`Equal`APTERM[mkComb[itsetConst[], fFi], xInsEqS];
+      itsetEq2 = HOL`Equal`APTHM[itsetEq1, bFi];
+      (* (x∈s) ⊢ ITSET f (x INSERT s) b = ITSET f s b *)
+
+      xInsEqT = HOL`Bool`EQTINTRO[xInS];
+      condRewrite = HOL`Equal`APTHM[HOL`Equal`APTHM[
+        HOL`Equal`APTERM[HOL`Bool`condConst[βTy], xInsEqT],
+        itsetApp[fFi, sV2, bFi]],
+        mkComb[mkComb[fFi, xV2], itsetApp[fFi, sV2, bFi]]];
+      (* COND (x∈s) (ITSET f s b) (f x ITSET f s b) = COND T (...) (...) *)
+      condTAt = HOL`Bool`SPEC[mkComb[mkComb[fFi, xV2], itsetApp[fFi, sV2, bFi]],
+        HOL`Bool`SPEC[itsetApp[fFi, sV2, bFi],
+          INSTTYPE[{mkVarType["A"] -> βTy}, HOL`Bool`condTThm]]];
+      (* COND T (ITSET f s b) (f x ITSET f s b) = ITSET f s b *)
+      condRHSeqLHS = TRANS[condRewrite, condTAt];
+      (* COND (x∈s) (...) (...) = ITSET f s b *)
+      TRANS[itsetEq2, HOL`Equal`SYM[condRHSeqLHS]]
+      (* ITSET f (x INSERT s) b = COND (x∈s) (...) (...) *)
+    ];
+
+    caseNotIn = Module[{notXInS, delEq, frAtXInsDelX, xInIns, fxa, refl,
+                        sucInst, sucInstRHS, outerLamY, innerExAtX2,
+                        innerLamC2, bodyAtXAS, witnessC, innerExisted,
+                        outerExisted, frSuc, exTmXIns, exAtXInsFxa,
+                        itsetXInsEqFxAs, fxAsEqFxItset, itsetXInsEqFxItsetS,
+                        xInsEqF, condRewrite, condFAt, condRHSeq},
+      notXInS = ASSUME[notTm[inTm[xV2, sV2]]];
+      delEq = HOL`Bool`MP[HOL`Bool`SPEC[sV2,
+        HOL`Bool`SPEC[xV2, notInMemDelInsertThm]], notXInS];
+      frAtXInsDelX = HOL`Drule`SUBS[{HOL`Equal`SYM[delEq]}, finRecAtSHyp];
+
+      xInIns = EQMP[HOL`Equal`SYM[inInsertAt[xV2, xV2, sV2]],
+        HOL`Bool`DISJ1[REFL[xV2], inTm[xV2, sV2]]];
+      fxa = mkComb[mkComb[fFi, xV2], aS];
+      refl = REFL[fxa];
+
+      sucInst = INST[
+        {mkVar["n", numTy] -> nS,
+         mkVar["sR", setTy] -> insertTm[xV2, sV2],
+         mkVar["aR", βTy] -> fxa},
+        finrecSucAppThm];
+      sucInstRHS = concl[sucInst][[2]];
+      outerLamY = sucInstRHS[[2]];
+      innerExAtX2 = concl[BETACONV[mkComb[outerLamY, xV2]]][[2]];
+      innerLamC2 = innerExAtX2[[2]];
+      bodyAtXAS = concl[BETACONV[mkComb[innerLamC2, aS]]][[2]];
+
+      witnessC = HOL`Bool`CONJ[xInIns, HOL`Bool`CONJ[frAtXInsDelX, refl]];
+      innerExisted = HOL`Bool`EXISTS[innerExAtX2, aS, witnessC];
+      outerExisted = HOL`Bool`EXISTS[sucInstRHS, xV2, innerExisted];
+      frSuc = EQMP[HOL`Equal`SYM[sucInst], outerExisted];
+
+      exTmXIns = mkComb[existsC[numTy], mkAbs[mkVar["nI", numTy],
+        mkComb[mkComb[finrecApp[fFi, bFi, mkVar["nI", numTy]],
+          insertTm[xV2, sV2]], fxa]]];
+      exAtXInsFxa = HOL`Bool`EXISTS[exTmXIns, sucTm[nS], frSuc];
+      itsetXInsEqFxAs = extractItset[fFi, insertTm[xV2, sV2], bFi, fxa,
+        exAtXInsFxa, acrossNAtComm];
+      fxAsEqFxItset = HOL`Equal`APTERM[mkComb[fFi, xV2], asEqItsetS];
+      itsetXInsEqFxItsetS = TRANS[itsetXInsEqFxAs, fxAsEqFxItset];
+
+      xInsEqF = eqfIntro[notXInS];
+      condRewrite = HOL`Equal`APTHM[HOL`Equal`APTHM[
+        HOL`Equal`APTERM[HOL`Bool`condConst[βTy], xInsEqF],
+        itsetApp[fFi, sV2, bFi]],
+        mkComb[mkComb[fFi, xV2], itsetApp[fFi, sV2, bFi]]];
+      condFAt = HOL`Bool`SPEC[mkComb[mkComb[fFi, xV2], itsetApp[fFi, sV2, bFi]],
+        HOL`Bool`SPEC[itsetApp[fFi, sV2, bFi],
+          INSTTYPE[{mkVarType["A"] -> βTy}, HOL`Bool`condFThm]]];
+      condRHSeq = TRANS[condRewrite, condFAt];
+      TRANS[itsetXInsEqFxItsetS, HOL`Equal`SYM[condRHSeq]]
+    ];
+
+    body = HOL`Bool`DISJCASES[em, caseIn, caseNotIn];
+    chosenAS = HOL`Bool`CHOOSE[aS, innerExHypNS, body];
+    chosenNS = HOL`Bool`CHOOSE[nS, existsAtS, chosenAS];
+    dischFin = HOL`Bool`DISCH[finiteAppTerm[sV2], chosenNS];
+    gens = HOL`Bool`GEN[xV2, HOL`Bool`GEN[sV2, dischFin]];
+    dischCom = HOL`Bool`DISCH[commHypTm, gens];
+    dischCom
   ];
 
 End[];
