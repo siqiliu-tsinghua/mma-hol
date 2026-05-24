@@ -417,3 +417,36 @@ HOLTest`runTests["finite: CARD (SING a) = SUC 0 via the rules",
     HOLTest`assertTrue[typeOf[mkComb[cardC, sa]] === numTy,
       "CARD (SING a) is num-typed"];
 ]];
+
+(* ===== M7-4-f.6: NSUM ===== *)
+
+HOLTest`runTests["finite: NSUM has type (α→num) → set → num",
+  Module[{numTy, gFnTy},
+    numTy = mkType["num", {}];
+    gFnTy = tyFun[αTy, numTy];
+    HOLTest`assertEq[HOL`Kernel`constType["NSUM"],
+      tyFun[gFnTy, tyFun[setTy, numTy]],
+      "NSUM : (α→num) → set → num"]];
+];
+
+HOLTest`runTests["finite: nsumEmptyThm — ⊢ ∀g. NSUM g ∅ = 0",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`nsumEmptyThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _], _, _]]],
+      "shape: ∀g. NSUM g ∅ = 0"];
+]];
+
+HOLTest`runTests["finite: nsumInsertThm — ⊢ ∀g x s. FINITE s ⇒ NSUM g (x INSERT s) = COND …",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`nsumInsertThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _], _, _]], _]], _]]],
+      "shape: ∀g x s. …"];
+]];

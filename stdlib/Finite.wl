@@ -60,6 +60,11 @@ cardDefThm::usage  = "cardDefThm — ⊢ CARD = (λs. ITSET (λx n. SUC n) s 0).
 cardEmptyThm::usage  = "cardEmptyThm — ⊢ CARD EMPTY = 0.";
 cardInsertThm::usage = "cardInsertThm — ⊢ ∀x s. FINITE s ⇒ CARD (x INSERT s) = COND (x ∈ s) (CARD s) (SUC (CARD s)).";
 
+nsumConst::usage = "nsumConst[] — NSUM : (α → num) → (α → bool) → num. Finite num-sum: NSUM g s = ∑_{x∈s} g x = ITSET (λx a. g x + a) s 0.";
+nsumDefThm::usage = "nsumDefThm — ⊢ NSUM = (λg s. ITSET (λx a. g x + a) s 0).";
+nsumEmptyThm::usage  = "nsumEmptyThm — ⊢ ∀g. NSUM g EMPTY = 0.";
+nsumInsertThm::usage = "nsumInsertThm — ⊢ ∀g x s. FINITE s ⇒ NSUM g (x INSERT s) = COND (x ∈ s) (NSUM g s) (g x + NSUM g s).";
+
 Begin["`Private`"];
 
 αTy   = mkVarType["A"];
@@ -2114,6 +2119,121 @@ cardInsertThm =
     (* (FINITE s) ⊢ CARD (x INSERT s) = COND (x∈s) (CARD s) (SUC (CARD s)) *)
     dischFin = HOL`Bool`DISCH[finiteAppTerm[sC2], eq2];
     gens = HOL`Bool`GEN[xC2, HOL`Bool`GEN[sC2, dischFin]];
+    gens
+  ];
+
+(* ============================================================ *)
+(* M7-4-f.6 — NSUM g s = ITSET (λx a. g x + a) s 0              *)
+(*                                                              *)
+(* Step λx a. g x + a satisfies full commutativity via          *)
+(*   g x + (g y + a) = (g x + g y) + a       [SYM addAssoc]     *)
+(*                   = (g y + g x) + a       [addComm]          *)
+(*                   = g y + (g x + a)       [addAssoc]         *)
+(* ============================================================ *)
+
+gFnTy = tyFun[αTy, numTy];
+nsumTy = tyFun[gFnTy, tyFun[setTy, numTy]];
+
+nsumStepBuilder[gV_] :=
+  Module[{xL, aL},
+    xL = mkVar["x", αTy]; aL = mkVar["a", numTy];
+    mkAbs[xL, mkAbs[aL,
+      mkComb[mkComb[HOL`Stdlib`Num`plusConst[], mkComb[gV, xL]], aL]]]
+  ];
+
+Module[{gV, sL, body},
+  gV = mkVar["g", gFnTy]; sL = mkVar["s", setTy];
+  body = mkAbs[gV, mkAbs[sL,
+    mkComb[mkComb[mkComb[mkConst["ITSET", itsetNumInstTy], nsumStepBuilder[gV]],
+      sL], zeroTm[]]]];
+  nsumDefThm = newDefinition[mkEq[mkVar["NSUM", nsumTy], body]];
+];
+
+nsumConst[] := mkConst["NSUM", nsumTy];
+
+(* ⊢ NSUM g s = ITSET (λx a. g x + a) s 0 *)
+unfoldNsum[gArg_, sArg_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[nsumDefThm, gArg];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, sArg];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* Comm for nsumStepBuilder[gV]: ⊢ ∀xC yC aC.                    *)
+(*   step xC (step yC aC) = step yC (step xC aC),                *)
+(* via addAssoc + addComm.                                       *)
+nsumStepCommBuilder[gV_] :=
+  Module[{stepL, xC, yC, aC, lhsTm, rhsTm, lhsRed, rhsRed,
+          gxc, gyc, addAssocSym, commGxGy, step1, step2, addAssoc2,
+          coreEq, eqTm},
+    stepL = nsumStepBuilder[gV];
+    xC = mkVar["xC", αTy]; yC = mkVar["yC", αTy]; aC = mkVar["aC", numTy];
+    lhsTm = mkComb[mkComb[stepL, xC], mkComb[mkComb[stepL, yC], aC]];
+    rhsTm = mkComb[mkComb[stepL, yC], mkComb[mkComb[stepL, xC], aC]];
+    lhsRed = HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]][lhsTm];
+    rhsRed = HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]][rhsTm];
+    (* lhsRed: lhsTm = g xC + (g yC + aC)
+       rhsRed: rhsTm = g yC + (g xC + aC) *)
+
+    gxc = mkComb[gV, xC]; gyc = mkComb[gV, yC];
+    addAssocSym = HOL`Equal`SYM[HOL`Bool`SPEC[aC,
+      HOL`Bool`SPEC[gyc, HOL`Bool`SPEC[gxc, HOL`Stdlib`Num`addAssocThm]]]];
+    (* ⊢ gxc + (gyc + aC) = (gxc + gyc) + aC *)
+    commGxGy = HOL`Bool`SPEC[gyc, HOL`Bool`SPEC[gxc, HOL`Stdlib`Num`addCommThm]];
+    (* ⊢ gxc + gyc = gyc + gxc *)
+    step1 = HOL`Equal`APTERM[HOL`Stdlib`Num`plusConst[], commGxGy];
+    step2 = HOL`Equal`APTHM[step1, aC];
+    (* ⊢ (gxc + gyc) + aC = (gyc + gxc) + aC *)
+    addAssoc2 = HOL`Bool`SPEC[aC,
+      HOL`Bool`SPEC[gxc, HOL`Bool`SPEC[gyc, HOL`Stdlib`Num`addAssocThm]]];
+    (* ⊢ (gyc + gxc) + aC = gyc + (gxc + aC) *)
+    coreEq = TRANS[TRANS[addAssocSym, step2], addAssoc2];
+    (* ⊢ gxc + (gyc + aC) = gyc + (gxc + aC) *)
+
+    eqTm = TRANS[TRANS[lhsRed, coreEq], HOL`Equal`SYM[rhsRed]];
+    HOL`Bool`GEN[xC, HOL`Bool`GEN[yC, HOL`Bool`GEN[aC, eqTm]]]
+  ];
+
+(* nsumEmptyThm : ⊢ ∀g. NSUM g ∅ = 0 *)
+nsumEmptyThm =
+  Module[{gV, unf, itsetEmpAtNum, itsetAtEmpStep, eqAtG},
+    gV = mkVar["g", gFnTy];
+    unf = unfoldNsum[gV, emptyTm[]];
+    itsetEmpAtNum = INSTTYPE[{βTy -> numTy}, itsetEmptyThm];
+    itsetAtEmpStep = INST[
+      {mkVar["f", cardStepTy] -> nsumStepBuilder[gV],
+       mkVar["b", numTy] -> zeroTm[]}, itsetEmpAtNum];
+    eqAtG = TRANS[unf, itsetAtEmpStep];
+    HOL`Bool`GEN[gV, eqAtG]
+  ];
+
+(* nsumInsertThm : ⊢ ∀g x s. FINITE s ⇒                          *)
+(*   NSUM g (x INSERT s) = COND (x∈s) (NSUM g s) (g x + NSUM g s) *)
+nsumInsertThm =
+  Module[{gV, xC2, sC2, commForG, itsetInsNum, itsetInsAtStep, itsetInsMP,
+          spec, finS, mp, unfXIns, unfS, eq1, eq2, dischFin, gens},
+    gV = mkVar["g", gFnTy];
+    xC2 = mkVar["x", αTy]; sC2 = mkVar["s", setTy];
+    commForG = nsumStepCommBuilder[gV];
+
+    itsetInsNum = INSTTYPE[{βTy -> numTy}, itsetInsertThm];
+    itsetInsAtStep = INST[
+      {mkVar["f", cardStepTy] -> nsumStepBuilder[gV],
+       mkVar["b", numTy] -> zeroTm[]}, itsetInsNum];
+    itsetInsMP = HOL`Bool`MP[itsetInsAtStep, commForG];
+
+    spec = HOL`Bool`SPEC[sC2, HOL`Bool`SPEC[xC2, itsetInsMP]];
+    finS = ASSUME[finiteAppTerm[sC2]];
+    mp = HOL`Bool`MP[spec, finS];
+
+    unfXIns = unfoldNsum[gV, insertTm[xC2, sC2]];
+    unfS = unfoldNsum[gV, sC2];
+    eq1 = HOL`Drule`SUBS[{HOL`Equal`SYM[unfXIns], HOL`Equal`SYM[unfS]}, mp];
+    eq2 = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], eq1];
+    dischFin = HOL`Bool`DISCH[finiteAppTerm[sC2], eq2];
+    gens = HOL`Bool`GEN[gV, HOL`Bool`GEN[xC2, HOL`Bool`GEN[sC2, dischFin]]];
     gens
   ];
 
