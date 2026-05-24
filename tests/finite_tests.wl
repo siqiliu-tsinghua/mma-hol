@@ -274,3 +274,17 @@ HOLTest`runTests["finite: finrecExchangeBaseThm — base of FINREC exchange",
               comb[const["∃", _], _]], _]], _]], _]]],
       "shape: ∀s a x. (…) ⇒ ∃c. (…)"];
 ]];
+
+(* ===== M7-4-f.2.b: full exchange theorem ===== *)
+
+HOLTest`runTests["finite: finrecExchangeThm — comm ⇒ exchange",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`finrecExchangeThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps (comm discharged)"];
+    (* ⊢ comm ⇒ ∀n. (...) *)
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["⇒", _], _],
+        comb[const["∀", _], abs[bvar[0, _], _, _]]]],
+      "shape: comm ⇒ ∀n. …"];
+]];
