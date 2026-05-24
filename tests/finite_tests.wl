@@ -322,3 +322,16 @@ HOLTest`runTests["finite: finrecExistsThm — FINITE s ⇒ ∃n a. FINREC f b n 
           comb[const["∃", _], _]], _]]],
       "shape: ∀s. FINITE s ⇒ ∃n a. …"];
 ]];
+
+(* ===== M7-4-f.4.a: FINREC across-n uniqueness ===== *)
+
+HOLTest`runTests["finite: finrecAcrossNUniqueThm — comm ⇒ across-n functional",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`finrecAcrossNUniqueThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps (comm discharged)"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["⇒", _], _],
+        comb[const["∀", _], abs[bvar[0, _], _, _]]]],
+      "shape: comm ⇒ ∀n. …"];
+]];
