@@ -40,6 +40,10 @@ finrecSucThm::usage  = "finrecSucThm — ⊢ FINREC f b (SUC n) = (λs a. ∃x c
 finrecZeroAppThm::usage = "finrecZeroAppThm — ⊢ FINREC f b 0 s a = (s = EMPTY ∧ a = b).";
 finrecSucAppThm::usage  = "finrecSucAppThm — ⊢ FINREC f b (SUC n) s a = (∃x c. x ∈ s ∧ FINREC f b n (DELETE s x) c ∧ a = f x c).";
 
+deleteCommThm::usage = "deleteCommThm — ⊢ ∀s x y. (s DELETE x) DELETE y = (s DELETE y) DELETE x.";
+sDelEmptyImpEqThm::usage = "sDelEmptyImpEqThm — ⊢ ∀s x y. (s DELETE x = EMPTY) ∧ (y ∈ s) ⇒ y = x.";
+finrecExchangeBaseThm::usage = "finrecExchangeBaseThm — ⊢ ∀s a x. x ∈ s ∧ FINREC f b (SUC 0) s a ⇒ ∃c. FINREC f b 0 (s DELETE x) c ∧ a = f x c. (Base case n=1 of the FINREC exchange induction.)";
+
 Begin["`Private`"];
 
 αTy   = mkVarType["A"];
@@ -838,6 +842,143 @@ finrecSucAppThm =
     (* ⊢ FINREC f b (SUC n) s a = (step (FINREC f b n)) s a *)
     HOL`Drule`CONVRULE[
       HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], ap2]
+  ];
+
+(* ============================================================ *)
+(* M7-4-f.2.a — helpers + base case (n=1) of the FINREC exchange. *)
+(* The full exchange theorem (induction step) is M7-4-f.2.b.    *)
+(* ============================================================ *)
+
+(* deleteCommThm : ⊢ ∀s x y. (s\x)\y = (s\y)\x — propositional       *)
+(* set identity, dispatched by propSetEq with deleteDefThm in scope. *)
+deleteCommThm =
+  Module[{sV2, xV2, yV2, eq},
+    sV2 = mkVar["s", setTy]; xV2 = mkVar["x", αTy]; yV2 = mkVar["y", αTy];
+    eq = propSetEq[deleteTm[deleteTm[sV2, xV2], yV2],
+      deleteTm[deleteTm[sV2, yV2], xV2],
+      {HOL`Stdlib`Set`deleteDefThm}];
+    HOL`Bool`GEN[sV2, HOL`Bool`GEN[xV2, HOL`Bool`GEN[yV2, eq]]]
+  ];
+
+(* sDelEmptyImpEqThm : ⊢ ∀s x y. (s\x = ∅) ∧ (y∈s) ⇒ y = x.            *)
+(* From y∈s ∧ ¬(y=x): inDeleteAt gives y∈s\x. SUBS with s\x=∅ rewrites *)
+(* to y∈∅, which is F (inEmptyAt). CONTR. EM[y=x] closes y=x branch.   *)
+sDelEmptyImpEqThm =
+  Module[{sV2, xV2, yV2, conjTm, hyp, hSDel, hYInS, em, branchEq,
+          branchNeq, body, disch},
+    sV2 = mkVar["s", setTy]; xV2 = mkVar["x", αTy]; yV2 = mkVar["y", αTy];
+    conjTm = andTm[mkEq[deleteTm[sV2, xV2], emptyTm[]], inTm[yV2, sV2]];
+    hyp = ASSUME[conjTm];
+    hSDel = HOL`Bool`CONJUNCT1[hyp];
+    hYInS = HOL`Bool`CONJUNCT2[hyp];
+    em = HOL`Bool`EXCLUDEDMIDDLE[mkEq[yV2, xV2]];
+    branchEq = ASSUME[mkEq[yV2, xV2]];
+    branchNeq = Module[{neq, yInDel, yInEmpty, fProof},
+      neq = ASSUME[notTm[mkEq[yV2, xV2]]];
+      yInDel = EQMP[HOL`Equal`SYM[inDeleteAt[yV2, sV2, xV2]],
+        HOL`Bool`CONJ[hYInS, neq]];
+      (* (y∈s, ¬(y=x)) ⊢ y ∈ s\x *)
+      yInEmpty = HOL`Drule`SUBS[{hSDel}, yInDel];
+      (* (y∈s, ¬(y=x), s\x=∅) ⊢ y ∈ EMPTY *)
+      fProof = EQMP[inEmptyAtA[yV2], yInEmpty];
+      (* (…) ⊢ F *)
+      HOL`Bool`CONTR[mkEq[yV2, xV2], fProof]
+      (* (¬(y=x), y∈s, s\x=∅) ⊢ y = x *)
+    ];
+    body = HOL`Bool`DISJCASES[em, branchEq, branchNeq];
+    disch = HOL`Bool`DISCH[conjTm, body];
+    HOL`Bool`GEN[sV2, HOL`Bool`GEN[xV2, HOL`Bool`GEN[yV2, disch]]]
+  ];
+
+(* finrecExchangeBaseThm : ⊢ ∀s a x. x∈s ∧ FINREC f b (SUC 0) s a    *)
+(*                          ⇒ ∃c. FINREC f b 0 (s\x) c ∧ a = f x c.  *)
+(* Unfold FINREC at SUC 0 to ∃x' c'. (...). CHOOSE x', c'. Inside,    *)
+(* FINREC f b 0 (s\x') c' gives s\x' = ∅ ∧ c' = b. From x∈s + s\x'=∅, *)
+(* sDelEmptyImpEqThm forces x = x'. Witness c = b; transport          *)
+(* x'→x via SUBS and conclude.                                         *)
+finrecExchangeBaseThm =
+  Module[{fF, bF, sV2, aV2, xV2, xP, cP, conjTm, conjHyp, xInS, finRec1,
+          finRec1Unf, innerExTm, bodyAtXP, bodyTm, bodyHyp, xPInS,
+          finrec0AtSxP, aEqFxPcP, finrec0Unf, sMinusXPEqEmpty, cPEqB,
+          xEqXP, sucXEqXP, sMinusXEqEmpty, aEqFxB, witnessC, fxBeqA,
+          finrec0AtSx, existsBody, existsC2, chosenC, chosenXC, dischConj},
+    fF = mkVar["f", foldFnTy]; bF = mkVar["b", βTy];
+    sV2 = mkVar["sEx", setTy]; aV2 = mkVar["aEx", βTy]; xV2 = mkVar["xEx", αTy];
+    xP = mkVar["xP", αTy]; cP = mkVar["cP", βTy];
+
+    conjTm = andTm[inTm[xV2, sV2],
+      mkComb[mkComb[finrecApp[fF, bF, sucTm[zeroTm[]]], sV2], aV2]];
+    conjHyp = ASSUME[conjTm];
+    xInS = HOL`Bool`CONJUNCT1[conjHyp];
+    finRec1 = HOL`Bool`CONJUNCT2[conjHyp];
+
+    (* Unfold FINREC f b (SUC 0) s a — INST finrecSucAppThm at n=0,s=sV2,a=aV2 *)
+    finRec1Unf = EQMP[INST[{mkVar["n", numTy] -> zeroTm[],
+      mkVar["sR", setTy] -> sV2, mkVar["aR", βTy] -> aV2}, finrecSucAppThm],
+      finRec1];
+    (* (conjHyp) ⊢ ∃x' c'. x'∈s ∧ FINREC f b 0 (s\x') c' ∧ a = f x' c' *)
+
+    (* Inner ∃: ∃c'. body[xP, c'] *)
+    innerExTm = mkComb[existsC[βTy], mkAbs[cP,
+      andTm[inTm[xP, sV2],
+        andTm[mkComb[mkComb[finrecApp[fF, bF, zeroTm[]], deleteTm[sV2, xP]], cP],
+          mkEq[aV2, mkComb[mkComb[fF, xP], cP]]]]]];
+    bodyAtXP = ASSUME[innerExTm];
+    bodyTm = andTm[inTm[xP, sV2],
+      andTm[mkComb[mkComb[finrecApp[fF, bF, zeroTm[]], deleteTm[sV2, xP]], cP],
+        mkEq[aV2, mkComb[mkComb[fF, xP], cP]]]];
+    bodyHyp = ASSUME[bodyTm];
+
+    xPInS = HOL`Bool`CONJUNCT1[bodyHyp];
+    finrec0AtSxP = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[bodyHyp]];
+    aEqFxPcP = HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[bodyHyp]];
+
+    (* From FINREC f b 0 (s\xP) cP : INST finrecZeroAppThm *)
+    finrec0Unf = EQMP[INST[{mkVar["sR", setTy] -> deleteTm[sV2, xP],
+      mkVar["aR", βTy] -> cP}, finrecZeroAppThm], finrec0AtSxP];
+    (* (body) ⊢ (s\xP = ∅) ∧ (cP = b) *)
+    sMinusXPEqEmpty = HOL`Bool`CONJUNCT1[finrec0Unf];
+    cPEqB = HOL`Bool`CONJUNCT2[finrec0Unf];
+
+    (* x = xP via sDelEmptyImpEqThm with hyps (s\xP = ∅) ∧ (x ∈ s) *)
+    xEqXP = HOL`Bool`MP[
+      HOL`Bool`SPEC[xV2, HOL`Bool`SPEC[xP, HOL`Bool`SPEC[sV2, sDelEmptyImpEqThm]]],
+      HOL`Bool`CONJ[sMinusXPEqEmpty, xInS]];
+    (* (body, conjHyp) ⊢ x = xP *)
+
+    (* s\x = ∅: rewrite s\xP = ∅ using SYM[xEqXP] (xP → x) *)
+    sMinusXEqEmpty = HOL`Drule`SUBS[{HOL`Equal`SYM[xEqXP]}, sMinusXPEqEmpty];
+    (* (body, conjHyp) ⊢ s\x = ∅ *)
+
+    (* a = f x b: from aEqFxPcP (a = f xP cP), substitute cP→b then xP→x. *)
+    aEqFxB = HOL`Drule`SUBS[{HOL`Equal`SYM[xEqXP], cPEqB}, aEqFxPcP];
+    (* (body, conjHyp) ⊢ a = f x b *)
+
+    (* Build FINREC f b 0 (s\x) b *)
+    finrec0AtSx = EQMP[HOL`Equal`SYM[INST[
+      {mkVar["sR", setTy] -> deleteTm[sV2, xV2],
+       mkVar["aR", βTy] -> bF}, finrecZeroAppThm]],
+      HOL`Bool`CONJ[sMinusXEqEmpty, REFL[bF]]];
+    (* (body, conjHyp) ⊢ FINREC f b 0 (s\x) b *)
+
+    (* Combine: FINREC f b 0 (s\x) b ∧ a = f x b *)
+    witnessC = HOL`Bool`CONJ[finrec0AtSx, aEqFxB];
+
+    (* ∃c. FINREC f b 0 (s\x) c ∧ a = f x c, witness c = b *)
+    existsBody = mkComb[existsC[βTy], mkAbs[cP,
+      andTm[mkComb[mkComb[finrecApp[fF, bF, zeroTm[]], deleteTm[sV2, xV2]], cP],
+        mkEq[aV2, mkComb[mkComb[fF, xV2], cP]]]]];
+    existsC2 = HOL`Bool`EXISTS[existsBody, bF, witnessC];
+    (* (body, conjHyp) ⊢ ∃c. … *)
+
+    (* CHOOSE cP from the inner ∃, then CHOOSE xP from the outer ∃. *)
+    chosenC = HOL`Bool`CHOOSE[cP, bodyAtXP, existsC2];
+    (* (innerExTm[xP], conjHyp) ⊢ ∃c. … *)
+    chosenXC = HOL`Bool`CHOOSE[xP, finRec1Unf, chosenC];
+    (* (conjHyp) ⊢ ∃c. … *)
+
+    dischConj = HOL`Bool`DISCH[conjTm, chosenXC];
+    HOL`Bool`GEN[sV2, HOL`Bool`GEN[aV2, HOL`Bool`GEN[xV2, dischConj]]]
   ];
 
 End[];

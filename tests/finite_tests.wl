@@ -249,3 +249,28 @@ HOLTest`runTests["finite: FINREC applied clauses have the right RHS shape",
         const["0", _]], _], _]],
       "LHS = FINREC f b 0 s a"];
 ]];
+
+(* ===== M7-4-f.2.a: exchange-lemma helpers + base case ===== *)
+
+HOLTest`runTests["finite: deleteCommThm — ⊢ ∀s x y. (s\\x)\\y = (s\\y)\\x",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Finite`deleteCommThm], {},
+    "deleteCommThm no hyps"]];
+
+HOLTest`runTests["finite: sDelEmptyImpEqThm — ⊢ ∀s x y. s\\x=∅ ∧ y∈s ⇒ y=x",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Finite`sDelEmptyImpEqThm], {},
+    "sDelEmptyImpEqThm no hyps"]];
+
+HOLTest`runTests["finite: finrecExchangeBaseThm — base of FINREC exchange",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`Finite`finrecExchangeBaseThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    (* ∀s a x. (...) ⇒ ∃c. (...) *)
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _],
+            comb[comb[const["⇒", _], _],
+              comb[const["∃", _], _]], _]], _]], _]]],
+      "shape: ∀s a x. (…) ⇒ ∃c. (…)"];
+]];
