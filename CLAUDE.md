@@ -70,9 +70,9 @@ M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeB
 
 **Finite.wl done through closure lemmas (M7-4-e)** — `INSERT`/`SING`/`DELETE` added to Set.wl; **inductive `FINITE`** (smallest predicate with ∅ + INSERT-closure) with `finiteEmptyThm`/`finiteInsertThm`/`finiteSingThm`, strong `finiteInductThm` (FINITE s in the step), and all four closure lemmas `finiteUnionThm`/`finiteSubsetThm`/`finiteDeleteThm`/`finiteImageThm`. `finiteSubset`/`finiteImage` do `x∈t` case-split / ∃-distribution with membership Leibniz via kernel `SUBS` (no MESON — its equality has no congruence). Membership eqs built by INST-ing Set.wl theorems (not simpConv, whose basicSimpset absorbs `a∨(b∧¬a)`). β-instances of EMPTY/INSERT/FINITE built directly/INSTTYPE'd. Pending: `CARD`/`∑`.
 
-**CARD/∑ started (M7-4-f)** — `FINREC` count-indexed fold graph (f.1) + **full exchange lemma** (f.2): `finrecZero/Suc(App)Thm`, `deleteCommThm`, `sDelEmptyImpEqThm`, `finrecExchangeBaseThm`, **`finrecExchangeThm`** `⊢ (∀x y a. f x (f y a) = f y (f x a)) ⇒ ∀n s a x. x∈s ∧ FINREC f b (SUC n) s a ⇒ ∃c. FINREC f b n (s\x) c ∧ a = f x c`. Numeric induction; x≠y branch uses IH on s\y + deleteCommThm + comm-swap. Remaining: f.3 uniqueness/existence, f.4 ITSET + FINITE_RECURSION, f.5 CARD, f.6 ∑.
+**CARD/∑ started (M7-4-f)** — FINREC machinery through uniqueness + existence: f.1 `FINREC` count-indexed fold graph + clauses, f.2 `finrecExchangeThm` (exchange under full commutativity), f.3 `finrecUniqueThm` (functional) + `finrecExistsThm` (FINITE s ⇒ ∃n a. FINREC f b n s a, no comm needed). Supporting set identities: `deleteCommThm`, `sDelEmptyImpEqThm`, `inMemAbsorbThm` (x∈s ⇒ x INSERT s = s), `notInMemDelInsertThm` (¬(x∈s) ⇒ (x INSERT s)\x = s). Remaining: f.4 ITSET + FINITE_RECURSION, f.5 CARD, f.6 ∑.
 
-**Next**: M7-4-f.3 (FINREC uniqueness + existence) → f.4 ITSET → f.5/f.6 CARD/∑; then M7-δ ARITH, M7-5 Int, … per PLAN. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
+**Next**: M7-4-f.4 (`ITSET = λf s b. @z. ITSET_REL …` via finrec uniqueness+existence + Hilbert ε; then `FINITE_RECURSION`) → f.5/f.6 CARD/∑; then M7-δ ARITH, M7-5 Int, … per PLAN. (List `MEM`/`EL`/`REVERSE`/`ALL`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
 
 Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 
