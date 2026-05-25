@@ -27,6 +27,18 @@ notLeqSucSelfThm::usage = "notLeqSucSelfThm — ⊢ ∀n. ¬ (SUC n ≤ n). (Sta
 primeNotDivOneThm::usage = "primeNotDivOneThm — ⊢ ∀p. prime p ⇒ ¬ (divides p (SUC 0)). A prime cannot divide 1. (Stage 3.a helper.)";
 primeDivFoldrTimesThm::usage = "primeDivFoldrTimesThm — ⊢ ∀p l. prime p ⇒ divides p (FOLDR * (SUC 0) l) ⇒ ∃y. MEM y l ∧ divides p y. Euclid's lemma on lists: a prime dividing a product of primes divides one of them. (FTA stage 3.a.)";
 
+permConst::usage = "permConst[] — PERM : α list → α list → bool. Smallest binary relation containing PERM NIL NIL and closed under (i) CONS congruence (PERM l1 l2 ⇒ PERM (CONS x l1) (CONS x l2)), (ii) adjacent swap (PERM (CONS x (CONS y l)) (CONS y (CONS x l))), (iii) transitivity.";
+permDefThm::usage = "permDefThm — ⊢ PERM = (λl1 l2. ∀R. (R NIL NIL ∧ (∀x l1 l2. R l1 l2 ⇒ R (CONS x l1) (CONS x l2)) ∧ (∀x y l. R (CONS x (CONS y l)) (CONS y (CONS x l))) ∧ (∀l1 l2 l3. R l1 l2 ⇒ R l2 l3 ⇒ R l1 l3)) ⇒ R l1 l2).";
+permNilThm::usage = "permNilThm — ⊢ PERM NIL NIL.";
+permConsThm::usage = "permConsThm — ⊢ ∀x l1 l2. PERM l1 l2 ⇒ PERM (CONS x l1) (CONS x l2). CONS congruence.";
+permSwapThm::usage = "permSwapThm — ⊢ ∀x y l. PERM (CONS x (CONS y l)) (CONS y (CONS x l)). Adjacent transposition.";
+permTransThm::usage = "permTransThm — ⊢ ∀l1 l2 l3. PERM l1 l2 ⇒ PERM l2 l3 ⇒ PERM l1 l3. Transitivity.";
+permInductThm::usage = "permInductThm — ⊢ ∀P. (P NIL NIL ∧ (∀x l1 l2. P l1 l2 ⇒ P (CONS x l1) (CONS x l2)) ∧ (∀x y l. P (CONS x (CONS y l)) (CONS y (CONS x l))) ∧ (∀l1 l2 l3. P l1 l2 ⇒ P l2 l3 ⇒ P l1 l3)) ⇒ ∀l1 l2. PERM l1 l2 ⇒ P l1 l2. The PERM induction principle (just permDefThm folded forward).";
+permReflThm::usage = "permReflThm — ⊢ ∀l. PERM l l. List induction; NIL via permNil, CONS via permCons.";
+permSymThm::usage = "permSymThm — ⊢ ∀l1 l2. PERM l1 l2 ⇒ PERM l2 l1. PERM induction with Q l1 l2 = PERM l2 l1.";
+permFoldrTimesThm::usage = "permFoldrTimesThm — ⊢ ∀l1 l2. PERM l1 l2 ⇒ FOLDR * (SUC 0) l1 = FOLDR * (SUC 0) l2. Permutation preserves the * fold (stage 3.d prerequisite); swap case uses timesAssoc + timesComm + timesAssoc.";
+permAllThm::usage = "permAllThm — ⊢ ∀p l1 l2. PERM l1 l2 ⇒ ALL p l1 = ALL p l2. Permutation preserves universal-quantifier-over-list.";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -1048,6 +1060,660 @@ primeDivFoldrTimesThm =
 
     dischPrime = HOL`Bool`DISCH[primeN[pV], finalGen];
     gen = HOL`Bool`GEN[pV, dischPrime];
+    gen
+  ];
+
+(* ============================================================ *)
+(* PERM — polymorphic permutation relation                       *)
+(*   PERM = (λl1 l2. ∀R. closedRel R ⇒ R l1 l2)                  *)
+(*   where closedRel R asserts the four closure properties.      *)
+(*                                                              *)
+(* The four properties are: R NIL NIL, CONS-congruence,          *)
+(* adjacent CONS-swap, and transitivity. PERM is the smallest    *)
+(* binary relation on α list closed under these four.            *)
+(* ============================================================ *)
+
+αPerm = mkVarType["A"];
+listAP[] := HOL`Stdlib`List`listTy[αPerm];
+permFunTyP[] := tyFun[listAP[], tyFun[listAP[], boolTy]];
+nilAP[] := mkConst["NIL", listAP[]];
+consAP[] := mkConst["CONS",
+  tyFun[αPerm, tyFun[listAP[], listAP[]]]];
+consAPApp[xTm_, lTm_] := mkComb[mkComb[consAP[], xTm], lTm];
+rAP[xTm_, yTm_, lTm_] := mkComb[mkComb[lTm, xTm], yTm];
+
+forallAP[v_, body_] := mkComb[
+  mkConst["∀", tyFun[tyFun[αPerm, boolTy], boolTy]],
+  mkAbs[v, body]];
+forallLP[v_, body_] := mkComb[
+  mkConst["∀", tyFun[tyFun[listAP[], boolTy], boolTy]],
+  mkAbs[v, body]];
+forallRP[v_, body_] := mkComb[
+  mkConst["∀", tyFun[tyFun[permFunTyP[], boolTy], boolTy]],
+  mkAbs[v, body]];
+
+(* closedRelTm[rTm] : R-instantiated closure conjunction.        *)
+(* Bound vars used internally: x, y, l, l1, l2, l3. rTm must     *)
+(* not have any of these as free variables.                      *)
+closedRelTm[rTm_] :=
+  Module[{xV, yV, lV, l1V, l2V, l3V, clauseNil, clauseCong,
+          clauseSwap, clauseTrans},
+    xV  = mkVar["xCR", αPerm];
+    yV  = mkVar["yCR", αPerm];
+    lV  = mkVar["lCR", listAP[]];
+    l1V = mkVar["l1CR", listAP[]];
+    l2V = mkVar["l2CR", listAP[]];
+    l3V = mkVar["l3CR", listAP[]];
+
+    clauseNil = rAP[nilAP[], nilAP[], rTm];
+
+    clauseCong = forallAP[xV, forallLP[l1V, forallLP[l2V,
+      impTm[rAP[l1V, l2V, rTm],
+            rAP[consAPApp[xV, l1V], consAPApp[xV, l2V], rTm]]]]];
+
+    clauseSwap = forallAP[xV, forallAP[yV, forallLP[lV,
+      rAP[consAPApp[xV, consAPApp[yV, lV]],
+          consAPApp[yV, consAPApp[xV, lV]], rTm]]]];
+
+    clauseTrans = forallLP[l1V, forallLP[l2V, forallLP[l3V,
+      impTm[rAP[l1V, l2V, rTm],
+        impTm[rAP[l2V, l3V, rTm], rAP[l1V, l3V, rTm]]]]]];
+
+    andTm[clauseNil, andTm[clauseCong, andTm[clauseSwap, clauseTrans]]]
+  ];
+
+(* PERM definition. *)
+Module[{aV, bV, rV, permBody},
+  aV = mkVar["aPm", listAP[]];
+  bV = mkVar["bPm", listAP[]];
+  rV = mkVar["RPm", permFunTyP[]];
+  permBody = mkAbs[aV, mkAbs[bV,
+    forallRP[rV,
+      impTm[closedRelTm[rV], rAP[aV, bV, rV]]]]];
+  permDefThm = newDefinition[mkEq[
+    mkVar["PERM", permFunTyP[]], permBody]];
+];
+
+permConst[] := mkConst["PERM", permFunTyP[]];
+
+(* ⊢ PERM l1 l2 = ∀R. closedRelTm[R] ⇒ R l1 l2  *)
+unfoldPerm[l1Tm_, l2Tm_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[permDefThm, l1Tm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, l2Tm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+permTm[l1Tm_, l2Tm_] := mkComb[mkComb[permConst[], l1Tm], l2Tm];
+
+(* ============================================================ *)
+(* permNilThm : ⊢ PERM NIL NIL                                  *)
+(* Unfold; the closure hypothesis directly gives R NIL NIL.     *)
+(* ============================================================ *)
+
+permNilThm =
+  Module[{rV, unf, closed, rNilNil, disch, gen},
+    rV = mkVar["RPm", permFunTyP[]];
+    unf = unfoldPerm[nilAP[], nilAP[]];
+    closed = ASSUME[closedRelTm[rV]];
+    rNilNil = HOL`Bool`CONJUNCT1[closed];
+    disch = HOL`Bool`DISCH[closedRelTm[rV], rNilNil];
+    gen = HOL`Bool`GEN[rV, disch];
+    EQMP[HOL`Equal`SYM[unf], gen]
+  ];
+
+(* ============================================================ *)
+(* permConsThm : ⊢ ∀x l1 l2. PERM l1 l2 ⇒                       *)
+(*                   PERM (CONS x l1) (CONS x l2)                *)
+(* Unfold PERM (CONS x l1) (CONS x l2); use closure congruence   *)
+(* clause + unfolded PERM l1 l2.                                 *)
+(* ============================================================ *)
+
+permConsThm =
+  Module[{xV, l1V, l2V, rV, permHyp, permUnf, unfCons, closedTm,
+          closedHyp, rL1L2, congrClause, stepAt, rConsConsApp,
+          dischClosed, genR, permConsConcl, dischPerm, gens},
+    xV = mkVar["xPC", αPerm];
+    l1V = mkVar["l1PC", listAP[]];
+    l2V = mkVar["l2PC", listAP[]];
+    rV = mkVar["RPm", permFunTyP[]];
+
+    permHyp = ASSUME[permTm[l1V, l2V]];
+    permUnf = EQMP[unfoldPerm[l1V, l2V], permHyp];
+    (* (PERM l1 l2) ⊢ ∀R. closedRel R ⇒ R l1 l2 *)
+    unfCons = unfoldPerm[consAPApp[xV, l1V], consAPApp[xV, l2V]];
+    closedTm = closedRelTm[rV];
+    closedHyp = ASSUME[closedTm];
+    rL1L2 = HOL`Bool`MP[HOL`Bool`SPEC[rV, permUnf], closedHyp];
+    (* (PERM l1 l2, closed R) ⊢ R l1 l2 *)
+
+    (* Cong clause: ∀x l1 l2. R l1 l2 ⇒ R (CONS x l1) (CONS x l2) *)
+    congrClause = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[closedHyp]];
+    stepAt = HOL`Bool`SPEC[l2V, HOL`Bool`SPEC[l1V,
+      HOL`Bool`SPEC[xV, congrClause]]];
+    (* (closed R) ⊢ R l1 l2 ⇒ R (CONS x l1) (CONS x l2) *)
+    rConsConsApp = HOL`Bool`MP[stepAt, rL1L2];
+    (* (PERM l1 l2, closed R) ⊢ R (CONS x l1) (CONS x l2) *)
+
+    dischClosed = HOL`Bool`DISCH[closedTm, rConsConsApp];
+    genR = HOL`Bool`GEN[rV, dischClosed];
+    permConsConcl = EQMP[HOL`Equal`SYM[unfCons], genR];
+    (* (PERM l1 l2) ⊢ PERM (CONS x l1) (CONS x l2) *)
+
+    dischPerm = HOL`Bool`DISCH[permTm[l1V, l2V], permConsConcl];
+    gens = HOL`Bool`GEN[xV, HOL`Bool`GEN[l1V, HOL`Bool`GEN[l2V, dischPerm]]];
+    gens
+  ];
+
+(* ============================================================ *)
+(* permSwapThm : ⊢ ∀x y l. PERM (CONS x (CONS y l))             *)
+(*                              (CONS y (CONS x l))              *)
+(* Unfold; specialize the swap clause directly.                  *)
+(* ============================================================ *)
+
+permSwapThm =
+  Module[{xV, yV, lV, rV, lhsTm, rhsTm, unf, closedTm, closedHyp,
+          swapClause, swapAt, dischClosed, genR, permConcl, gens},
+    xV = mkVar["xPS", αPerm];
+    yV = mkVar["yPS", αPerm];
+    lV = mkVar["lPS", listAP[]];
+    rV = mkVar["RPm", permFunTyP[]];
+    lhsTm = consAPApp[xV, consAPApp[yV, lV]];
+    rhsTm = consAPApp[yV, consAPApp[xV, lV]];
+
+    unf = unfoldPerm[lhsTm, rhsTm];
+    closedTm = closedRelTm[rV];
+    closedHyp = ASSUME[closedTm];
+    swapClause = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[
+      HOL`Bool`CONJUNCT2[closedHyp]]];
+    swapAt = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[yV,
+      HOL`Bool`SPEC[xV, swapClause]]];
+    (* (closed R) ⊢ R (CONS x (CONS y l)) (CONS y (CONS x l)) *)
+
+    dischClosed = HOL`Bool`DISCH[closedTm, swapAt];
+    genR = HOL`Bool`GEN[rV, dischClosed];
+    permConcl = EQMP[HOL`Equal`SYM[unf], genR];
+
+    gens = HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[lV, permConcl]]];
+    gens
+  ];
+
+(* ============================================================ *)
+(* permTransThm : ⊢ ∀l1 l2 l3. PERM l1 l2 ⇒ PERM l2 l3 ⇒        *)
+(*                              PERM l1 l3                        *)
+(* Standard pattern: each PERM gives closed R ⇒ R l_i l_{i+1};   *)
+(* combine via the trans clause.                                  *)
+(* ============================================================ *)
+
+permTransThm =
+  Module[{l1V, l2V, l3V, rV, permH12, permH23, unf12, unf23,
+          unfFinal, closedTm, closedHyp, rL12, rL23, transClause,
+          transAt1, transAt2, rL13, dischClosed, genR, finalThm,
+          dischP23, dischP12, gens},
+    l1V = mkVar["l1PT", listAP[]];
+    l2V = mkVar["l2PT", listAP[]];
+    l3V = mkVar["l3PT", listAP[]];
+    rV = mkVar["RPm", permFunTyP[]];
+
+    permH12 = ASSUME[permTm[l1V, l2V]];
+    permH23 = ASSUME[permTm[l2V, l3V]];
+    unf12 = EQMP[unfoldPerm[l1V, l2V], permH12];
+    unf23 = EQMP[unfoldPerm[l2V, l3V], permH23];
+
+    unfFinal = unfoldPerm[l1V, l3V];
+    closedTm = closedRelTm[rV];
+    closedHyp = ASSUME[closedTm];
+
+    rL12 = HOL`Bool`MP[HOL`Bool`SPEC[rV, unf12], closedHyp];
+    rL23 = HOL`Bool`MP[HOL`Bool`SPEC[rV, unf23], closedHyp];
+
+    transClause = HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[
+      HOL`Bool`CONJUNCT2[closedHyp]]];
+    transAt1 = HOL`Bool`SPEC[l3V, HOL`Bool`SPEC[l2V,
+      HOL`Bool`SPEC[l1V, transClause]]];
+    (* (closed R) ⊢ R l1 l2 ⇒ R l2 l3 ⇒ R l1 l3 *)
+    transAt2 = HOL`Bool`MP[HOL`Bool`MP[transAt1, rL12], rL23];
+    rL13 = transAt2;
+
+    dischClosed = HOL`Bool`DISCH[closedTm, rL13];
+    genR = HOL`Bool`GEN[rV, dischClosed];
+    finalThm = EQMP[HOL`Equal`SYM[unfFinal], genR];
+
+    dischP23 = HOL`Bool`DISCH[permTm[l2V, l3V], finalThm];
+    dischP12 = HOL`Bool`DISCH[permTm[l1V, l2V], dischP23];
+    gens = HOL`Bool`GEN[l1V, HOL`Bool`GEN[l2V,
+      HOL`Bool`GEN[l3V, dischP12]]];
+    gens
+  ];
+
+(* ============================================================ *)
+(* permInductThm : ⊢ ∀P. closedRel P ⇒ ∀l1 l2. PERM l1 l2 ⇒     *)
+(*                       P l1 l2.                                 *)
+(* Just permDefThm restated: unfold PERM and SPEC the ∀R at P.   *)
+(* ============================================================ *)
+
+permInductThm =
+  Module[{pV, l1V, l2V, hypTm, hHyp, permH, permUnf, specP, pL1L2,
+          dischPerm, genL2, genL1, dischH, genP},
+    pV = mkVar["PPI", permFunTyP[]];
+    l1V = mkVar["l1PI", listAP[]];
+    l2V = mkVar["l2PI", listAP[]];
+
+    hypTm = closedRelTm[pV];
+    hHyp = ASSUME[hypTm];
+    permH = ASSUME[permTm[l1V, l2V]];
+    permUnf = EQMP[unfoldPerm[l1V, l2V], permH];
+    specP = HOL`Bool`SPEC[pV, permUnf];
+    pL1L2 = HOL`Bool`MP[specP, hHyp];
+
+    dischPerm = HOL`Bool`DISCH[permTm[l1V, l2V], pL1L2];
+    genL2 = HOL`Bool`GEN[l2V, dischPerm];
+    genL1 = HOL`Bool`GEN[l1V, genL2];
+    dischH = HOL`Bool`DISCH[hypTm, genL1];
+    genP = HOL`Bool`GEN[pV, dischH];
+    genP
+  ];
+
+(* ============================================================ *)
+(* permReflThm : ⊢ ∀l. PERM l l                                 *)
+(* List induction; NIL via permNilThm, CONS via permConsThm.    *)
+(* ============================================================ *)
+
+permReflThm =
+  Module[{lV, xV, predLam, inductSpec, inductBeta, baseCase, indStep,
+          conjForall, finalGen},
+    lV = mkVar["lPR", listAP[]];
+    xV = mkVar["xPR", αPerm];
+
+    predLam = mkAbs[lV, permTm[lV, lV]];
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{αPerm -> αPerm}, HOL`Stdlib`List`listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+    (* ⊢ (PERM NIL NIL ∧ (∀x l. PERM l l ⇒ PERM (CONS x l) (CONS x l)))
+       ⇒ ∀l. PERM l l *)
+
+    baseCase = permNilThm;
+
+    indStep = Module[{ihHyp, consAt, mp, dischIH},
+      ihHyp = ASSUME[permTm[lV, lV]];
+      consAt = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[lV,
+        HOL`Bool`SPEC[xV, permConsThm]]];
+      (* ⊢ PERM l l ⇒ PERM (CONS x l) (CONS x l) *)
+      mp = HOL`Bool`MP[consAt, ihHyp];
+      dischIH = HOL`Bool`DISCH[permTm[lV, lV], mp];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[lV, dischIH]]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalGen = HOL`Bool`MP[inductBeta, conjForall];
+    finalGen
+  ];
+
+(* ============================================================ *)
+(* permSymThm : ⊢ ∀l1 l2. PERM l1 l2 ⇒ PERM l2 l1               *)
+(* PERM induction with predicate λa b. PERM b a.                 *)
+(*                                                              *)
+(* Closure (post-β):                                            *)
+(*  1. PERM NIL NIL                              — permNilThm     *)
+(*  2. ∀x l1 l2. PERM l2 l1 ⇒ PERM (CONS x l2) (CONS x l1)        *)
+(*                                                — permConsThm    *)
+(*  3. ∀x y l. PERM (CONS y (CONS x l)) (CONS x (CONS y l))      *)
+(*                                                — permSwapThm    *)
+(*  4. ∀l1 l2 l3. PERM l2 l1 ⇒ PERM l3 l2 ⇒ PERM l3 l1            *)
+(*                                                — permTransThm   *)
+(* ============================================================ *)
+
+permSymThm =
+  Module[{aPV, bPV, predLam, indAt, indBeta, conj1, conj2, conj3,
+          conj4, closureProof, applyAll, l1V, l2V, postBeta,
+          finalCorrected},
+    aPV = mkVar["aPSym", listAP[]];
+    bPV = mkVar["bPSym", listAP[]];
+    l1V = mkVar["l1PSym", listAP[]];
+    l2V = mkVar["l2PSym", listAP[]];
+
+    predLam = mkAbs[aPV, mkAbs[bPV, permTm[bPV, aPV]]];
+    indAt = HOL`Bool`SPEC[predLam, permInductThm];
+    indBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], indAt];
+    (* ⊢ (PERM NIL NIL
+         ∧ (∀x l1 l2. PERM l2 l1 ⇒ PERM (CONS x l2) (CONS x l1))
+         ∧ (∀x y l. PERM (CONS y (CONS x l)) (CONS x (CONS y l)))
+         ∧ (∀l1 l2 l3. PERM l2 l1 ⇒ PERM l3 l2 ⇒ PERM l3 l1))
+       ⇒ ∀l1 l2. PERM l1 l2 ⇒ PERM l2 l1 *)
+
+    conj1 = permNilThm;
+
+    conj2 = Module[{xV, l1L, l2L, hypH, consAt, mp, dischH},
+      xV  = mkVar["xC2", αPerm];
+      l1L = mkVar["l1C2", listAP[]];
+      l2L = mkVar["l2C2", listAP[]];
+      hypH = ASSUME[permTm[l2L, l1L]];
+      consAt = HOL`Bool`SPEC[l1L, HOL`Bool`SPEC[l2L,
+        HOL`Bool`SPEC[xV, permConsThm]]];
+      (* ⊢ PERM l2 l1 ⇒ PERM (CONS x l2) (CONS x l1) *)
+      mp = HOL`Bool`MP[consAt, hypH];
+      dischH = HOL`Bool`DISCH[permTm[l2L, l1L], mp];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[l1L, HOL`Bool`GEN[l2L, dischH]]]
+    ];
+
+    conj3 = Module[{xV, yV, lV, swapAt},
+      xV = mkVar["xC3", αPerm]; yV = mkVar["yC3", αPerm];
+      lV = mkVar["lC3", listAP[]];
+      swapAt = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[xV,
+        HOL`Bool`SPEC[yV, permSwapThm]]];
+      (* ⊢ PERM (CONS y (CONS x l)) (CONS x (CONS y l)) *)
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[lV, swapAt]]]
+    ];
+
+    conj4 = Module[{l1L, l2L, l3L, h21, h32, transAt, mp1, mp2,
+                    dH32, dH21},
+      l1L = mkVar["l1C4", listAP[]];
+      l2L = mkVar["l2C4", listAP[]];
+      l3L = mkVar["l3C4", listAP[]];
+      h21 = ASSUME[permTm[l2L, l1L]];
+      h32 = ASSUME[permTm[l3L, l2L]];
+      transAt = HOL`Bool`SPEC[l1L, HOL`Bool`SPEC[l2L,
+        HOL`Bool`SPEC[l3L, permTransThm]]];
+      (* ⊢ PERM l3 l2 ⇒ PERM l2 l1 ⇒ PERM l3 l1 *)
+      mp1 = HOL`Bool`MP[transAt, h32];
+      mp2 = HOL`Bool`MP[mp1, h21];
+      dH32 = HOL`Bool`DISCH[permTm[l3L, l2L], mp2];
+      dH21 = HOL`Bool`DISCH[permTm[l2L, l1L], dH32];
+      HOL`Bool`GEN[l1L, HOL`Bool`GEN[l2L, HOL`Bool`GEN[l3L, dH21]]]
+    ];
+
+    closureProof = HOL`Bool`CONJ[conj1,
+      HOL`Bool`CONJ[conj2, HOL`Bool`CONJ[conj3, conj4]]];
+    applyAll = HOL`Bool`MP[indBeta, closureProof];
+    applyAll
+  ];
+
+(* ============================================================ *)
+(* permFoldrTimesThm                                             *)
+(*   ⊢ ∀l1 l2. PERM l1 l2 ⇒ FOLDR * (SUC 0) l1                  *)
+(*                            = FOLDR * (SUC 0) l2.              *)
+(* PERM induction at predicate λa b. FOLDR * 1 a = FOLDR * 1 b.   *)
+(*                                                              *)
+(* Swap clause uses x * (y * z) = y * (x * z) via                *)
+(*   x * (y * z) = (x * y) * z          (timesAssoc, reversed)   *)
+(*               = (y * x) * z          (timesComm at x, y)      *)
+(*               = y * (x * z)          (timesAssoc forward).    *)
+(* ============================================================ *)
+
+(* foldrConsNumAt[x, l] : ⊢ FOLDR * 1 (CONS x l) = x * FOLDR * 1 l *)
+foldrConsNumAt[xTm_, lTm_] :=
+  Module[{αTyL, βTyL, foldrConsInst},
+    αTyL = mkVarType["A"]; βTyL = mkVarType["B"];
+    foldrConsInst = INSTTYPE[{αTyL -> numTy, βTyL -> numTy},
+      HOL`Stdlib`List`foldrConsThm];
+    HOL`Bool`SPEC[lTm, HOL`Bool`SPEC[xTm, HOL`Bool`SPEC[oneN[],
+      HOL`Bool`SPEC[HOL`Stdlib`Num`timesConst[], foldrConsInst]]]]
+  ];
+
+permFoldrTimesThm =
+  Module[{aV, bV, predLam, indAt, indBeta, conj1, conj2, conj3,
+          conj4, closureProof, applyAll},
+    aV = mkVar["aPF", numListTy[]];
+    bV = mkVar["bPF", numListTy[]];
+
+    predLam = mkAbs[aV, mkAbs[bV,
+      mkEq[foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], aV],
+           foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], bV]]]];
+    indAt = HOL`Bool`ISPEC[predLam, permInductThm];
+    indBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], indAt];
+
+    conj1 = REFL[foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], nilNumTm[]]];
+
+    conj2 = Module[{xV, l1L, l2L, hypH, foldrL1, foldrL2, hypApp,
+                    chain, dischH},
+      xV  = mkVar["xF2", numTy];
+      l1L = mkVar["l1F2", numListTy[]];
+      l2L = mkVar["l2F2", numListTy[]];
+      hypH = ASSUME[mkEq[
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], l1L],
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], l2L]]];
+      foldrL1 = foldrConsNumAt[xV, l1L];
+      foldrL2 = foldrConsNumAt[xV, l2L];
+      hypApp = HOL`Equal`APTERM[
+        mkComb[HOL`Stdlib`Num`timesConst[], xV], hypH];
+      (* ⊢ x * FOLDR * 1 l1 = x * FOLDR * 1 l2 *)
+      chain = TRANS[foldrL1, TRANS[hypApp, HOL`Equal`SYM[foldrL2]]];
+      (* ⊢ FOLDR * 1 (CONS x l1) = FOLDR * 1 (CONS x l2) *)
+      dischH = HOL`Bool`DISCH[concl[hypH], chain];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[l1L, HOL`Bool`GEN[l2L, dischH]]]
+    ];
+
+    conj3 = Module[{xV, yV, lV, foldrLhs1, foldrLhs2, foldrRhs1,
+                    foldrRhs2, lhsExpanded, rhsExpanded, swapEq,
+                    assocBack, commXY, commXYTimesZ, assocFwd,
+                    chain, finalChain, foldrLAt},
+      xV = mkVar["xF3", numTy]; yV = mkVar["yF3", numTy];
+      lV = mkVar["lF3", numListTy[]];
+
+      (* LHS = FOLDR * 1 (CONS x (CONS y l)) = x * FOLDR * 1 (CONS y l) *)
+      foldrLhs1 = foldrConsNumAt[xV, consNumApp[yV, lV]];
+      (*       = x * (y * FOLDR * 1 l) *)
+      foldrLAt = foldrConsNumAt[yV, lV];
+      foldrLhs2 = HOL`Equal`APTERM[
+        mkComb[HOL`Stdlib`Num`timesConst[], xV], foldrLAt];
+      lhsExpanded = TRANS[foldrLhs1, foldrLhs2];
+      (* ⊢ FOLDR * 1 (CONS x (CONS y l)) = x * (y * FOLDR * 1 l) *)
+
+      foldrRhs1 = foldrConsNumAt[yV, consNumApp[xV, lV]];
+      foldrRhs2 = HOL`Equal`APTERM[
+        mkComb[HOL`Stdlib`Num`timesConst[], yV],
+        foldrConsNumAt[xV, lV]];
+      rhsExpanded = TRANS[foldrRhs1, foldrRhs2];
+      (* ⊢ FOLDR * 1 (CONS y (CONS x l)) = y * (x * FOLDR * 1 l) *)
+
+      (* x * (y * z) = y * (x * z): assoc-back; comm on (x*y); assoc-fwd. *)
+      (* Use timesAssocThm: ⊢ ∀a b c. (a * b) * c = a * (b * c) *)
+      assocBack = HOL`Equal`SYM[HOL`Bool`SPEC[
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], lV],
+        HOL`Bool`SPEC[yV, HOL`Bool`SPEC[xV,
+          HOL`Stdlib`Num`timesAssocThm]]]];
+      (* ⊢ x * (y * FOLDR…l) = (x * y) * FOLDR…l *)
+      commXY = HOL`Bool`SPEC[yV, HOL`Bool`SPEC[xV,
+        HOL`Stdlib`Num`timesCommThm]];
+      (* ⊢ x * y = y * x *)
+      commXYTimesZ = HOL`Equal`APTHM[
+        HOL`Equal`APTERM[HOL`Stdlib`Num`timesConst[], commXY],
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], lV]];
+      (* ⊢ (x * y) * FOLDR…l = (y * x) * FOLDR…l *)
+      assocFwd = HOL`Bool`SPEC[
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], lV],
+        HOL`Bool`SPEC[xV, HOL`Bool`SPEC[yV,
+          HOL`Stdlib`Num`timesAssocThm]]];
+      (* ⊢ (y * x) * FOLDR…l = y * (x * FOLDR…l) *)
+      swapEq = TRANS[assocBack, TRANS[commXYTimesZ, assocFwd]];
+      (* ⊢ x * (y * FOLDR…l) = y * (x * FOLDR…l) *)
+
+      chain = TRANS[lhsExpanded, swapEq];
+      finalChain = TRANS[chain, HOL`Equal`SYM[rhsExpanded]];
+      (* ⊢ FOLDR * 1 (CONS x (CONS y l)) = FOLDR * 1 (CONS y (CONS x l)) *)
+
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[lV, finalChain]]]
+    ];
+
+    conj4 = Module[{l1L, l2L, l3L, hyp12, hyp23, trChain, dH23, dH12},
+      l1L = mkVar["l1F4", numListTy[]];
+      l2L = mkVar["l2F4", numListTy[]];
+      l3L = mkVar["l3F4", numListTy[]];
+      hyp12 = ASSUME[mkEq[
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], l1L],
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], l2L]]];
+      hyp23 = ASSUME[mkEq[
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], l2L],
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], l3L]]];
+      trChain = TRANS[hyp12, hyp23];
+      dH23 = HOL`Bool`DISCH[concl[hyp23], trChain];
+      dH12 = HOL`Bool`DISCH[concl[hyp12], dH23];
+      HOL`Bool`GEN[l1L, HOL`Bool`GEN[l2L, HOL`Bool`GEN[l3L, dH12]]]
+    ];
+
+    closureProof = HOL`Bool`CONJ[conj1,
+      HOL`Bool`CONJ[conj2, HOL`Bool`CONJ[conj3, conj4]]];
+    applyAll = HOL`Bool`MP[indBeta, closureProof];
+    applyAll
+  ];
+
+(* ============================================================ *)
+(* permAllThm                                                    *)
+(*   ⊢ ∀p l1 l2. PERM l1 l2 ⇒ ALL p l1 = ALL p l2.               *)
+(* Fix p outside; PERM induction at predicate                    *)
+(*   λa b. ALL p a = ALL p b.                                    *)
+(*                                                              *)
+(* Swap clause needs ALL p (CONS x (CONS y l))                   *)
+(*   = (p x ∧ (p y ∧ ALL p l))                                   *)
+(*   = (p y ∧ (p x ∧ ALL p l))   (and-swap on a, b, c).          *)
+(* ============================================================ *)
+
+(* andSwapMidThm : ⊢ ∀a b c. (a ∧ (b ∧ c)) = (b ∧ (a ∧ c)).      *)
+andSwapMidThm =
+  Module[{aV, bV, cV, fwdHyp, fwdResult, bwdHyp, bwdResult},
+    aV = mkVar["aSW", boolTy]; bV = mkVar["bSW", boolTy];
+    cV = mkVar["cSW", boolTy];
+
+    fwdHyp = ASSUME[andTm[aV, andTm[bV, cV]]];
+    fwdResult = HOL`Bool`CONJ[
+      HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[fwdHyp]],
+      HOL`Bool`CONJ[HOL`Bool`CONJUNCT1[fwdHyp],
+        HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[fwdHyp]]]];
+    (* {a ∧ (b ∧ c)} ⊢ b ∧ (a ∧ c) *)
+
+    bwdHyp = ASSUME[andTm[bV, andTm[aV, cV]]];
+    bwdResult = HOL`Bool`CONJ[
+      HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[bwdHyp]],
+      HOL`Bool`CONJ[HOL`Bool`CONJUNCT1[bwdHyp],
+        HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[bwdHyp]]]];
+    (* {b ∧ (a ∧ c)} ⊢ a ∧ (b ∧ c) *)
+
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Kernel`DEDUCTANTISYM[bwdResult, fwdResult]]]]
+    (* DEDUCTANTISYM[thA, thB] : p=q where p=concl(thA), q=concl(thB). *)
+    (* thA = bwdResult : ⊢ a ∧ (b ∧ c); thB = fwdResult : ⊢ b ∧ (a ∧ c). *)
+    (* Result: ⊢ a ∧ (b ∧ c) = b ∧ (a ∧ c).                              *)
+  ];
+
+(* allConsAt[predTm, x, l] : ⊢ ALL p (CONS x l) = p x ∧ ALL p l *)
+allConsAt[predTm_, xTm_, lTm_] :=
+  Module[{αTyL, allConsInst},
+    αTyL = mkVarType["A"];
+    allConsInst = INSTTYPE[{αTyL -> typeOf[xTm]},
+      HOL`Stdlib`List`allConsThm];
+    HOL`Bool`SPEC[lTm, HOL`Bool`SPEC[xTm,
+      HOL`Bool`SPEC[predTm, allConsInst]]]
+  ];
+
+permAllThm =
+  Module[{predFnTy, pV, aV, bV, predLam, indAt, indBeta, conj1, conj2,
+          conj3, conj4, closureProof, applyAll, dischP, gen},
+    predFnTy = tyFun[αPerm, boolTy];
+    pV = mkVar["pPA", predFnTy];
+    aV = mkVar["aPA", listAP[]];
+    bV = mkVar["bPA", listAP[]];
+
+    predLam = mkAbs[aV, mkAbs[bV,
+      mkEq[mkComb[mkComb[
+        mkConst["ALL", tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], aV],
+        mkComb[mkComb[
+          mkConst["ALL", tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], bV]
+      ]]];
+    indAt = HOL`Bool`SPEC[predLam, permInductThm];
+    indBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], indAt];
+    (* ⊢ (closure-conjuncts at λa b. ALL p a = ALL p b)
+       ⇒ ∀l1 l2. PERM l1 l2 ⇒ ALL p l1 = ALL p l2 *)
+
+    conj1 = REFL[mkComb[mkComb[
+      mkConst["ALL", tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV],
+      nilAP[]]];
+
+    conj2 = Module[{xV, l1L, l2L, hypH, allL1, allL2, hypApp,
+                    chain, dischH},
+      xV  = mkVar["xA2", αPerm];
+      l1L = mkVar["l1A2", listAP[]];
+      l2L = mkVar["l2A2", listAP[]];
+      hypH = ASSUME[mkEq[
+        mkComb[mkComb[mkConst["ALL",
+          tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], l1L],
+        mkComb[mkComb[mkConst["ALL",
+          tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], l2L]]];
+      allL1 = allConsAt[pV, xV, l1L];
+      allL2 = allConsAt[pV, xV, l2L];
+      hypApp = HOL`Equal`APTERM[
+        mkComb[mkConst["∧",
+          tyFun[boolTy, tyFun[boolTy, boolTy]]], mkComb[pV, xV]], hypH];
+      (* ⊢ p x ∧ ALL p l1 = p x ∧ ALL p l2 *)
+      chain = TRANS[allL1, TRANS[hypApp, HOL`Equal`SYM[allL2]]];
+      dischH = HOL`Bool`DISCH[concl[hypH], chain];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[l1L, HOL`Bool`GEN[l2L, dischH]]]
+    ];
+
+    conj3 = Module[{xV, yV, lV, allLhsOuter, allLhsInner, allRhsOuter,
+                    allRhsInner, lhsExpanded, rhsExpanded, swapEq,
+                    chain, finalChain, allPLTm},
+      xV = mkVar["xA3", αPerm]; yV = mkVar["yA3", αPerm];
+      lV = mkVar["lA3", listAP[]];
+
+      allPLTm = mkComb[mkComb[mkConst["ALL",
+        tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], lV];
+
+      (* LHS = ALL p (CONS x (CONS y l)) = p x ∧ ALL p (CONS y l) *)
+      allLhsOuter = allConsAt[pV, xV, consAPApp[yV, lV]];
+      (*               = p x ∧ (p y ∧ ALL p l) *)
+      allLhsInner = HOL`Equal`APTERM[
+        mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+          mkComb[pV, xV]], allConsAt[pV, yV, lV]];
+      lhsExpanded = TRANS[allLhsOuter, allLhsInner];
+      (* ⊢ ALL p (CONS x (CONS y l)) = p x ∧ (p y ∧ ALL p l) *)
+
+      allRhsOuter = allConsAt[pV, yV, consAPApp[xV, lV]];
+      allRhsInner = HOL`Equal`APTERM[
+        mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+          mkComb[pV, yV]], allConsAt[pV, xV, lV]];
+      rhsExpanded = TRANS[allRhsOuter, allRhsInner];
+
+      swapEq = HOL`Bool`SPEC[allPLTm, HOL`Bool`SPEC[mkComb[pV, yV],
+        HOL`Bool`SPEC[mkComb[pV, xV], andSwapMidThm]]];
+      (* ⊢ p x ∧ (p y ∧ ALL p l) = p y ∧ (p x ∧ ALL p l) *)
+
+      chain = TRANS[lhsExpanded, swapEq];
+      finalChain = TRANS[chain, HOL`Equal`SYM[rhsExpanded]];
+      (* ⊢ ALL p (CONS x (CONS y l)) = ALL p (CONS y (CONS x l)) *)
+
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[lV, finalChain]]]
+    ];
+
+    conj4 = Module[{l1L, l2L, l3L, hyp12, hyp23, trChain, dH23, dH12},
+      l1L = mkVar["l1A4", listAP[]];
+      l2L = mkVar["l2A4", listAP[]];
+      l3L = mkVar["l3A4", listAP[]];
+      hyp12 = ASSUME[mkEq[
+        mkComb[mkComb[mkConst["ALL",
+          tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], l1L],
+        mkComb[mkComb[mkConst["ALL",
+          tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], l2L]]];
+      hyp23 = ASSUME[mkEq[
+        mkComb[mkComb[mkConst["ALL",
+          tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], l2L],
+        mkComb[mkComb[mkConst["ALL",
+          tyFun[predFnTy, tyFun[listAP[], boolTy]]], pV], l3L]]];
+      trChain = TRANS[hyp12, hyp23];
+      dH23 = HOL`Bool`DISCH[concl[hyp23], trChain];
+      dH12 = HOL`Bool`DISCH[concl[hyp12], dH23];
+      HOL`Bool`GEN[l1L, HOL`Bool`GEN[l2L, HOL`Bool`GEN[l3L, dH12]]]
+    ];
+
+    closureProof = HOL`Bool`CONJ[conj1,
+      HOL`Bool`CONJ[conj2, HOL`Bool`CONJ[conj3, conj4]]];
+    applyAll = HOL`Bool`MP[indBeta, closureProof];
+    (* (free p) ⊢ ∀l1 l2. PERM l1 l2 ⇒ ALL p l1 = ALL p l2 *)
+    gen = HOL`Bool`GEN[pV, applyAll];
     gen
   ];
 
