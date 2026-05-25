@@ -253,3 +253,32 @@ HOLTest`runTests["FTA stage 3.b: permAllThm — PERM preserves ALL",
           comb[const["∀", _], abs[bvar[0, _], _, _]], _]], _]]],
       "shape: ∀p l1 l2. …"];
 ]];
+
+HOLTest`runTests["FTA stage 3.c: memSplitThm — MEM x l ⇒ ∃l1 l2. l = APPEND l1 (CONS x l2)",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`memSplitThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    (* ⊢ ∀x l. MEM x l ⇒ ∃l1 l2. l = APPEND l1 (CONS x l2) *)
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[comb[const["⇒", _], comb[comb[const["MEM", _], _], _]],
+            comb[const["∃", _], abs[bvar[0, _],
+              comb[const["∃", _], abs[bvar[0, _], _, _]], _]]], _]], _]]],
+      "shape: ∀x l. MEM x l ⇒ ∃l1 l2. _"];
+]];
+
+HOLTest`runTests["FTA stage 3.c: permAppendConsThm — PERM (APPEND l1 (CONS x l2)) (CONS x (APPEND l1 l2))",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`permAppendConsThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    (* ⊢ ∀x l1 l2. PERM (APPEND l1 (CONS x l2)) (CONS x (APPEND l1 l2)) *)
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _],
+            comb[comb[const["PERM", _], _], _], _]], _]], _]]],
+      "shape: ∀x l1 l2. PERM _ _"];
+]];

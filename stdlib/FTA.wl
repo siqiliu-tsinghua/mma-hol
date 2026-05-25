@@ -39,6 +39,9 @@ permSymThm::usage = "permSymThm — ⊢ ∀l1 l2. PERM l1 l2 ⇒ PERM l2 l1. PER
 permFoldrTimesThm::usage = "permFoldrTimesThm — ⊢ ∀l1 l2. PERM l1 l2 ⇒ FOLDR * (SUC 0) l1 = FOLDR * (SUC 0) l2. Permutation preserves the * fold (stage 3.d prerequisite); swap case uses timesAssoc + timesComm + timesAssoc.";
 permAllThm::usage = "permAllThm — ⊢ ∀p l1 l2. PERM l1 l2 ⇒ ALL p l1 = ALL p l2. Permutation preserves universal-quantifier-over-list.";
 
+memSplitThm::usage = "memSplitThm — ⊢ ∀x l. MEM x l ⇒ ∃l1 l2. l = APPEND l1 (CONS x l2). Membership induces a split: a witnessed member can be extracted with the surrounding prefix and suffix. (FTA stage 3.c.)";
+permAppendConsThm::usage = "permAppendConsThm — ⊢ ∀x l1 l2. PERM (APPEND l1 (CONS x l2)) (CONS x (APPEND l1 l2)). Moving CONS-x across the prefix l1 is a permutation. (FTA stage 3.c.)";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -1715,6 +1718,385 @@ permAllThm =
     (* (free p) ⊢ ∀l1 l2. PERM l1 l2 ⇒ ALL p l1 = ALL p l2 *)
     gen = HOL`Bool`GEN[pV, applyAll];
     gen
+  ];
+
+(* ============================================================ *)
+(* memSplitThm                                                  *)
+(*   ⊢ ∀x l. MEM x l ⇒ ∃l1 l2. l = APPEND l1 (CONS x l2).        *)
+(*                                                              *)
+(* List induction on l (x fixed). NIL: MEM x NIL = F ⇒ vacuous   *)
+(* via CONTR. CONS y l': memCons → (x = y ∨ MEM x l');           *)
+(*   x = y branch: l1 = NIL, l2 = l' (use SUBS[x = y]);          *)
+(*   MEM x l' branch: IH gives l1', l2' for l';                  *)
+(*     take l1 = CONS y l1', l2 = l2' (appendConsThm rewrites    *)
+(*     APPEND (CONS y l1') (CONS x l2') = CONS y (APPEND l1'     *)
+(*     (CONS x l2')) = CONS y l').                                *)
+(* ============================================================ *)
+
+memSplitThm =
+  Module[{αP, αPL, xT, lV, l1V, l2V, appendC, consC, nilC, memC,
+          existsLTy, exConcl, memAt, predLam, inductSpec, inductBeta,
+          baseCase, indStep, conjForall, finalAtL, genX},
+    αP  = mkVarType["A"];
+    αPL = HOL`Stdlib`List`listTy[αP];
+    xT  = mkVar["xMS", αP];
+    lV  = mkVar["lMS", αPL];
+    l1V = mkVar["l1MS", αPL];
+    l2V = mkVar["l2MS", αPL];
+
+    appendC = mkConst["APPEND", tyFun[αPL, tyFun[αPL, αPL]]];
+    consC   = mkConst["CONS", tyFun[αP, tyFun[αPL, αPL]]];
+    nilC    = mkConst["NIL", αPL];
+    memC    = mkConst["MEM", tyFun[αP, tyFun[αPL, boolTy]]];
+
+    existsLTy[v_, body_] :=
+      mkComb[mkConst["∃", tyFun[tyFun[αPL, boolTy], boolTy]],
+        mkAbs[v, body]];
+
+    exConcl[lt_] := existsLTy[l1V, existsLTy[l2V,
+      mkEq[lt, mkComb[mkComb[appendC, l1V],
+        mkComb[mkComb[consC, xT], l2V]]]]];
+
+    memAt[lt_] := mkComb[mkComb[memC, xT], lt];
+
+    predLam = mkAbs[lV, impTm[memAt[lV], exConcl[lV]]];
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{mkVarType["A"] -> αP},
+        HOL`Stdlib`List`listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+
+    (* --- NIL case --- *)
+    baseCase = Module[{memNilAt, memHyp, fThm},
+      memNilAt = HOL`Bool`SPEC[xT,
+        INSTTYPE[{mkVarType["A"] -> αP},
+          HOL`Stdlib`List`memNilThm]];
+      (* ⊢ MEM xT NIL = F *)
+      memHyp = ASSUME[memAt[nilC]];
+      fThm = EQMP[memNilAt, memHyp];
+      HOL`Bool`DISCH[memAt[nilC],
+        HOL`Bool`CONTR[exConcl[nilC], fThm]]
+    ];
+
+    (* --- CONS case --- *)
+    indStep = Module[{yV, lLoc, ihHypT, ihHyp, memConsHyp, memConsAt,
+                      memConsDisj, headCase, tailCase, bodyEx,
+                      dischMem, stepInner},
+      yV   = mkVar["yMS", αP];
+      lLoc = mkVar["lMSI", αPL];
+
+      ihHypT = impTm[memAt[lLoc], exConcl[lLoc]];
+      ihHyp = ASSUME[ihHypT];
+
+      memConsHyp = ASSUME[memAt[mkComb[mkComb[consC, yV], lLoc]]];
+      memConsAt = HOL`Bool`SPEC[lLoc, HOL`Bool`SPEC[yV,
+        HOL`Bool`SPEC[xT,
+          INSTTYPE[{mkVarType["A"] -> αP},
+            HOL`Stdlib`List`memConsThm]]]];
+      (* ⊢ MEM xT (CONS y l) = (xT = y ∨ MEM xT l) *)
+      memConsDisj = EQMP[memConsAt, memConsHyp];
+
+      (* head branch: x = y. Take l1 = NIL, l2 = lLoc. *)
+      headCase = Module[{xEqY, appendNilAt, consXLEq, eqL,
+                        eqLSym, exL2Tm, exL2, exL1Tm, exL1},
+        xEqY = ASSUME[mkEq[xT, yV]];
+
+        appendNilAt = HOL`Bool`SPEC[
+          mkComb[mkComb[consC, xT], lLoc],
+          INSTTYPE[{mkVarType["A"] -> αP},
+            HOL`Stdlib`List`appendNilThm]];
+        (* ⊢ APPEND NIL (CONS xT lLoc) = CONS xT lLoc *)
+
+        consXLEq = HOL`Equal`APTHM[
+          HOL`Equal`APTERM[consC, xEqY], lLoc];
+        (* (xT = yV) ⊢ CONS xT lLoc = CONS yV lLoc *)
+        eqL = TRANS[appendNilAt, consXLEq];
+        (* (xT = yV) ⊢ APPEND NIL (CONS xT lLoc) = CONS yV lLoc *)
+        eqLSym = HOL`Equal`SYM[eqL];
+        (* (xT = yV) ⊢ CONS yV lLoc = APPEND NIL (CONS xT lLoc) *)
+
+        exL2Tm = existsLTy[l2V,
+          mkEq[mkComb[mkComb[consC, yV], lLoc],
+            mkComb[mkComb[appendC, nilC],
+              mkComb[mkComb[consC, xT], l2V]]]];
+        exL2 = HOL`Bool`EXISTS[exL2Tm, lLoc, eqLSym];
+        (* (xT = yV) ⊢ ∃l2. CONS yV lLoc = APPEND NIL (CONS xT l2) *)
+
+        exL1Tm = existsLTy[l1V,
+          existsLTy[l2V,
+            mkEq[mkComb[mkComb[consC, yV], lLoc],
+              mkComb[mkComb[appendC, l1V],
+                mkComb[mkComb[consC, xT], l2V]]]]];
+        exL1 = HOL`Bool`EXISTS[exL1Tm, nilC, exL2];
+        (* (xT = yV) ⊢ ∃l1 l2. CONS yV lLoc = APPEND l1 (CONS xT l2) *)
+        exL1
+      ];
+
+      (* tail branch: MEM xT lLoc. Apply IH to get l1', l2' for lLoc, *)
+      (* then prepend yV.                                              *)
+      tailCase = Module[{memHyp, mpFromIH, l1pV, l2pV, innerEqTm,
+                        innerEqHyp, appendConsAt, consSymL, chainEq,
+                        chainSymEq, exL2Tm, exL2, exL1Tm, exL1,
+                        outerExTm, innerChose, outerChose},
+        memHyp = ASSUME[memAt[lLoc]];
+        mpFromIH = HOL`Bool`MP[ihHyp, memHyp];
+        (* (IH, MEM xT lLoc) ⊢ ∃l1 l2. lLoc = APPEND l1 (CONS xT l2) *)
+
+        l1pV = mkVar["l1pMS", αPL];
+        l2pV = mkVar["l2pMS", αPL];
+
+        innerEqTm = mkEq[lLoc,
+          mkComb[mkComb[appendC, l1pV],
+            mkComb[mkComb[consC, xT], l2pV]]];
+        innerEqHyp = ASSUME[innerEqTm];
+        (* (lLoc = APPEND l1p (CONS xT l2p)) ⊢ … *)
+
+        appendConsAt = HOL`Bool`SPEC[
+          mkComb[mkComb[consC, xT], l2pV],
+          HOL`Bool`SPEC[l1pV, HOL`Bool`SPEC[yV,
+            INSTTYPE[{mkVarType["A"] -> αP},
+              HOL`Stdlib`List`appendConsThm]]]];
+        (* ⊢ APPEND (CONS yV l1p) (CONS xT l2p)
+             = CONS yV (APPEND l1p (CONS xT l2p)) *)
+
+        consSymL = HOL`Equal`APTERM[
+          mkComb[consC, yV],
+          HOL`Equal`SYM[innerEqHyp]];
+        (* (innerEq) ⊢ CONS yV (APPEND l1p (CONS xT l2p)) = CONS yV lLoc *)
+
+        chainEq = TRANS[appendConsAt, consSymL];
+        (* (innerEq) ⊢ APPEND (CONS yV l1p) (CONS xT l2p) = CONS yV lLoc *)
+        chainSymEq = HOL`Equal`SYM[chainEq];
+        (* (innerEq) ⊢ CONS yV lLoc = APPEND (CONS yV l1p) (CONS xT l2p) *)
+
+        exL2Tm = existsLTy[l2V,
+          mkEq[mkComb[mkComb[consC, yV], lLoc],
+            mkComb[mkComb[appendC, mkComb[mkComb[consC, yV], l1pV]],
+              mkComb[mkComb[consC, xT], l2V]]]];
+        exL2 = HOL`Bool`EXISTS[exL2Tm, l2pV, chainSymEq];
+        (* (innerEq) ⊢ ∃l2. CONS yV lLoc = APPEND (CONS yV l1p) (CONS xT l2) *)
+
+        exL1Tm = existsLTy[l1V,
+          existsLTy[l2V,
+            mkEq[mkComb[mkComb[consC, yV], lLoc],
+              mkComb[mkComb[appendC, l1V],
+                mkComb[mkComb[consC, xT], l2V]]]]];
+        exL1 = HOL`Bool`EXISTS[exL1Tm, mkComb[mkComb[consC, yV], l1pV], exL2];
+        (* (innerEq) ⊢ ∃l1 l2. CONS yV lLoc = APPEND l1 (CONS xT l2) *)
+
+        outerExTm = existsLTy[l2pV, innerEqTm];
+        (* ∃l2p. lLoc = APPEND l1p (CONS xT l2p)  (outer of two ∃) *)
+        innerChose = HOL`Bool`CHOOSE[l2pV, ASSUME[outerExTm], exL1];
+        (* (∃l2. lLoc = APPEND l1p (CONS xT l2)) ⊢ ∃l1 l2. CONS yV lLoc = … *)
+
+        outerChose = HOL`Bool`CHOOSE[l1pV, mpFromIH, innerChose];
+        (* (IH, MEM xT lLoc) ⊢ ∃l1 l2. CONS yV lLoc = APPEND l1 (CONS xT l2) *)
+        outerChose
+      ];
+
+      bodyEx = HOL`Bool`DISJCASES[memConsDisj, headCase, tailCase];
+      dischMem = HOL`Bool`DISCH[memAt[mkComb[mkComb[consC, yV], lLoc]],
+        bodyEx];
+      stepInner = HOL`Bool`DISCH[ihHypT, dischMem];
+      HOL`Bool`GEN[yV, HOL`Bool`GEN[lLoc, stepInner]]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalAtL = HOL`Bool`MP[inductBeta, conjForall];
+    (* ⊢ ∀l. MEM xT l ⇒ ∃l1 l2. l = APPEND l1 (CONS xT l2) *)
+    genX = HOL`Bool`GEN[xT, finalAtL];
+    genX
+  ];
+
+(* ============================================================ *)
+(* permAppendConsThm                                            *)
+(*   ⊢ ∀x l1 l2. PERM (APPEND l1 (CONS x l2)) (CONS x (APPEND l1 l2)). *)
+(*                                                              *)
+(* List induction on l1 (x and l2 free in the induction).        *)
+(*   NIL: APPEND NIL (CONS x l2) = CONS x l2 (appendNil);        *)
+(*        CONS x (APPEND NIL l2) = CONS x l2.                     *)
+(*        So both sides equal CONS x l2 and permReflThm closes.   *)
+(*   CONS y l1':                                                  *)
+(*     APPEND (CONS y l1') (CONS x l2) = CONS y (APPEND l1' …)   *)
+(*     IH:  PERM (APPEND l1' (CONS x l2)) (CONS x (APPEND l1' l2)) *)
+(*     permCons at y:                                             *)
+(*       PERM (CONS y (APPEND l1' (CONS x l2)))                    *)
+(*            (CONS y (CONS x (APPEND l1' l2)))                    *)
+(*     permSwap at y, x, APPEND l1' l2:                            *)
+(*       PERM (CONS y (CONS x (APPEND l1' l2)))                    *)
+(*            (CONS x (CONS y (APPEND l1' l2)))                    *)
+(*     CONS y (APPEND l1' l2) = APPEND (CONS y l1') l2.            *)
+(*     Chain via permTransThm + rewrite under CONS y at the head.  *)
+(* ============================================================ *)
+
+permAppendConsThm =
+  Module[{αP, αPL, xT, l2T, l1V, yV, appendC, consC, nilC,
+          predLam, inductSpec, inductBeta, baseCase, indStep,
+          conjForall, finalAtL1, genX, genL2},
+    αP  = mkVarType["A"];
+    αPL = HOL`Stdlib`List`listTy[αP];
+    xT  = mkVar["xPAC", αP];
+    l2T = mkVar["l2PAC", αPL];
+    l1V = mkVar["l1PAC", αPL];
+    yV  = mkVar["yPAC", αP];
+
+    appendC = mkConst["APPEND", tyFun[αPL, tyFun[αPL, αPL]]];
+    consC   = mkConst["CONS", tyFun[αP, tyFun[αPL, αPL]]];
+    nilC    = mkConst["NIL", αPL];
+
+    (* predLam[L1] = PERM (APPEND L1 (CONS xT l2T))
+                          (CONS xT (APPEND L1 l2T)) *)
+    predLam = mkAbs[l1V,
+      permTm[
+        mkComb[mkComb[appendC, l1V],
+          mkComb[mkComb[consC, xT], l2T]],
+        mkComb[mkComb[consC, xT],
+          mkComb[mkComb[appendC, l1V], l2T]]]];
+
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{mkVarType["A"] -> αP},
+        HOL`Stdlib`List`listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+    (* ⊢ (P NIL ∧ ∀y l1. P l1 ⇒ P (CONS y l1)) ⇒ ∀l1. P l1 *)
+
+    (* --- NIL case --- *)
+    (* Both APPEND NIL (CONS x l2) and CONS x (APPEND NIL l2) reduce to     *)
+    (* CONS x l2 via appendNilThm. Build the equation A = B (= CONS x l2)   *)
+    (* then APTERM(PERM A) lifts refl PERM A A to PERM A B.                 *)
+    baseCase = Module[{appendNil1, appendNil2, rhsEq, aTm, bTm, eqAB,
+                       reflAA, permA, apEq, permAB},
+      appendNil1 = HOL`Bool`SPEC[
+        mkComb[mkComb[consC, xT], l2T],
+        INSTTYPE[{mkVarType["A"] -> αP},
+          HOL`Stdlib`List`appendNilThm]];
+      (* ⊢ APPEND NIL (CONS xT l2T) = CONS xT l2T *)
+      appendNil2 = HOL`Bool`SPEC[l2T,
+        INSTTYPE[{mkVarType["A"] -> αP},
+          HOL`Stdlib`List`appendNilThm]];
+      (* ⊢ APPEND NIL l2T = l2T *)
+      rhsEq = HOL`Equal`APTERM[mkComb[consC, xT], appendNil2];
+      (* ⊢ CONS xT (APPEND NIL l2T) = CONS xT l2T *)
+
+      aTm = mkComb[mkComb[appendC, nilC],
+        mkComb[mkComb[consC, xT], l2T]];
+      bTm = mkComb[mkComb[consC, xT],
+        mkComb[mkComb[appendC, nilC], l2T]];
+      eqAB = TRANS[appendNil1, HOL`Equal`SYM[rhsEq]];
+      (* ⊢ aTm = bTm *)
+
+      reflAA = HOL`Bool`SPEC[aTm,
+        INSTTYPE[{αPerm -> αP}, permReflThm]];
+      (* ⊢ PERM aTm aTm *)
+      permA = mkComb[permConst[], aTm];
+      apEq = HOL`Equal`APTERM[permA, eqAB];
+      (* ⊢ PERM aTm aTm = PERM aTm bTm *)
+      permAB = EQMP[apEq, reflAA];
+      permAB
+    ];
+
+    (* --- CONS y l1' case --- *)
+    indStep = Module[{l1pV, ihHypT, ihHyp, appendConsAtLhs, appendConsAtRhs,
+                      lhsExpand, rhsExpand, permConsAt, permSwapAt,
+                      transFirst, transChainAt, transChain, rhsRewrite,
+                      finalPerm, dischIH},
+      l1pV = mkVar["l1pPAC", αPL];
+
+      ihHypT = permTm[
+        mkComb[mkComb[appendC, l1pV],
+          mkComb[mkComb[consC, xT], l2T]],
+        mkComb[mkComb[consC, xT],
+          mkComb[mkComb[appendC, l1pV], l2T]]];
+      ihHyp = ASSUME[ihHypT];
+
+      (* appendCons: APPEND (CONS y l1') l2 = CONS y (APPEND l1' l2). *)
+      (* At y, l1', (CONS xT l2T): *)
+      appendConsAtLhs = HOL`Bool`SPEC[
+        mkComb[mkComb[consC, xT], l2T],
+        HOL`Bool`SPEC[l1pV, HOL`Bool`SPEC[yV,
+          INSTTYPE[{mkVarType["A"] -> αP},
+            HOL`Stdlib`List`appendConsThm]]]];
+      (* ⊢ APPEND (CONS yV l1pV) (CONS xT l2T)
+           = CONS yV (APPEND l1pV (CONS xT l2T)) *)
+
+      (* At y, l1', l2T: *)
+      appendConsAtRhs = HOL`Bool`SPEC[l2T,
+        HOL`Bool`SPEC[l1pV, HOL`Bool`SPEC[yV,
+          INSTTYPE[{mkVarType["A"] -> αP},
+            HOL`Stdlib`List`appendConsThm]]]];
+      (* ⊢ APPEND (CONS yV l1pV) l2T = CONS yV (APPEND l1pV l2T) *)
+
+      (* PERM(CONS y (APPEND l1p (CONS x l2T)))
+              (CONS y (CONS x (APPEND l1p l2T))) via permCons + IH *)
+      permConsAt = HOL`Bool`SPEC[
+        mkComb[mkComb[consC, xT],
+          mkComb[mkComb[appendC, l1pV], l2T]],
+        HOL`Bool`SPEC[
+          mkComb[mkComb[appendC, l1pV],
+            mkComb[mkComb[consC, xT], l2T]],
+          HOL`Bool`SPEC[yV, permConsThm]]];
+      (* ⊢ PERM (APPEND l1p (CONS x l2T)) (CONS x (APPEND l1p l2T))
+           ⇒ PERM (CONS yV (APPEND l1p (CONS x l2T)))
+                  (CONS yV (CONS x (APPEND l1p l2T))) *)
+      transFirst = HOL`Bool`MP[permConsAt, ihHyp];
+      (* (IH) ⊢ PERM (CONS yV (APPEND l1p (CONS x l2T)))
+                     (CONS yV (CONS x (APPEND l1p l2T))) *)
+
+      (* permSwap at y, x, (APPEND l1p l2T): *)
+      permSwapAt = HOL`Bool`SPEC[
+        mkComb[mkComb[appendC, l1pV], l2T],
+        HOL`Bool`SPEC[xT, HOL`Bool`SPEC[yV, permSwapThm]]];
+      (* ⊢ PERM (CONS yV (CONS xT (APPEND l1p l2T)))
+                (CONS xT (CONS yV (APPEND l1p l2T))) *)
+
+      (* Combine via permTransThm. *)
+      transChainAt = HOL`Bool`SPEC[
+        mkComb[mkComb[consC, xT],
+          mkComb[mkComb[consC, yV],
+            mkComb[mkComb[appendC, l1pV], l2T]]],
+        HOL`Bool`SPEC[
+          mkComb[mkComb[consC, yV],
+            mkComb[mkComb[consC, xT],
+              mkComb[mkComb[appendC, l1pV], l2T]]],
+          HOL`Bool`SPEC[
+            mkComb[mkComb[consC, yV],
+              mkComb[mkComb[appendC, l1pV],
+                mkComb[mkComb[consC, xT], l2T]]],
+            permTransThm]]];
+      (* ⊢ PERM l1 l2 ⇒ PERM l2 l3 ⇒ PERM l1 l3 (with the three lists above) *)
+      transChain = HOL`Bool`MP[HOL`Bool`MP[transChainAt, transFirst],
+        permSwapAt];
+      (* (IH) ⊢ PERM (CONS yV (APPEND l1p (CONS x l2T)))
+                     (CONS xT (CONS yV (APPEND l1p l2T))) *)
+
+      (* Use appendConsAtLhs (SYM) to rewrite the first argument:    *)
+      (*   CONS yV (APPEND l1p (CONS x l2T))                          *)
+      (*     = APPEND (CONS yV l1p) (CONS x l2T)                      *)
+      (* And appendConsAtRhs (SYM) to rewrite the second argument:    *)
+      (*   CONS yV (APPEND l1p l2T) = APPEND (CONS yV l1p) l2T        *)
+      finalPerm = HOL`Drule`SUBS[
+        {HOL`Equal`SYM[appendConsAtLhs], HOL`Equal`SYM[appendConsAtRhs]},
+        transChain];
+      (* (IH) ⊢ PERM (APPEND (CONS yV l1p) (CONS x l2T))
+                     (CONS x (APPEND (CONS yV l1p) l2T)) *)
+
+      dischIH = HOL`Bool`DISCH[ihHypT, finalPerm];
+      HOL`Bool`GEN[yV, HOL`Bool`GEN[l1pV, dischIH]]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalAtL1 = HOL`Bool`MP[inductBeta, conjForall];
+    (* (free xT, l2T) ⊢ ∀l1. PERM (APPEND l1 (CONS xT l2T))
+                                  (CONS xT (APPEND l1 l2T)) *)
+    (* SPEC down to a free l1, then GEN back in the order x l1 l2. *)
+    Module[{l1FreeV, specL1, genL2, genL1, genX2},
+      l1FreeV = mkVar["l1PACO", αPL];
+      specL1 = HOL`Bool`SPEC[l1FreeV, finalAtL1];
+      genL2 = HOL`Bool`GEN[l2T, specL1];
+      genL1 = HOL`Bool`GEN[l1FreeV, genL2];
+      genX2 = HOL`Bool`GEN[xT, genL1];
+      genX2
+    ]
   ];
 
 End[];
