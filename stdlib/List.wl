@@ -203,6 +203,23 @@ foldlDefThm::usage = "foldlDefThm — ⊢ FOLDL = (λf e l. FOLDR (λx r a. r (f
 foldlNilThm::usage = "foldlNilThm — ⊢ ∀f e. FOLDL f e NIL = e.";
 foldlConsThm::usage = "foldlConsThm — ⊢ ∀f e x l. FOLDL f e (CONS x l) = FOLDL f (f e x) l.";
 
+allConst::usage =
+  "allConst[] — ALL : (α→bool) → α list → bool. Universal predicate over a list; ALL P [x1,…,xn] = P x1 ∧ … ∧ P xn ∧ T.";
+allDefThm::usage = "allDefThm — ⊢ ALL = (λp l. (ε g. g NIL = T ∧ ∀x l. g (CONS x l) = p x ∧ g l) l).";
+allNilThm::usage = "allNilThm — ⊢ ∀p. ALL p NIL = T.";
+allConsThm::usage = "allConsThm — ⊢ ∀p x l. ALL p (CONS x l) = p x ∧ ALL p l.";
+
+memConst::usage =
+  "memConst[] — MEM : α → α list → bool. List membership.";
+memDefThm::usage = "memDefThm — ⊢ MEM = (λx l. (ε g. g NIL = F ∧ ∀y t. g (CONS y t) = (x = y ∨ g t)) l).";
+memNilThm::usage = "memNilThm — ⊢ ∀x. MEM x NIL = F.";
+memConsThm::usage = "memConsThm — ⊢ ∀x y l. MEM x (CONS y l) = (x = y ∨ MEM x l).";
+
+foldrAppendThm::usage =
+  "foldrAppendThm — ⊢ ∀f e l1 l2. FOLDR f e (APPEND l1 l2) = FOLDR f (FOLDR f e l2) l1. APPEND-FOLDR distribution (list induction on l1).";
+allAppendThm::usage =
+  "allAppendThm — ⊢ ∀p l1 l2. ALL p (APPEND l1 l2) = ALL p l1 ∧ ALL p l2. APPEND-ALL distribution.";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -3275,6 +3292,364 @@ foldlAppEq[fTm_, eTm_, lTm_] :=
     {HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, nilBase]],
      HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, HOL`Bool`GEN[xV,
        HOL`Bool`GEN[lV, consBase]]]]}
+  ];
+
+(* ============================================================ *)
+(* M7-4-d.5 : ALL / MEM + APPEND distribution lemmas             *)
+(*   (FTA stage-2 prerequisites)                                  *)
+(* ============================================================ *)
+
+orC[] := mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+orTm[a_, b_] := mkComb[mkComb[orC[], a], b];
+tConst[] := mkConst["T", boolTy];
+fConst[] := mkConst["F", boolTy];
+
+(* ---- ALL --------------------------------------------------- *)
+(* step λx r. p x ∧ r ; base T.                                  *)
+
+allTy = tyFun[tyFun[αTy, boolTy], tyFun[listTy[αTy], boolTy]];
+
+allStep[pV_] :=
+  Module[{xV, rV},
+    xV = mkVar["x", αTy]; rV = mkVar["r", boolTy];
+    mkAbs[xV, mkAbs[rV, andTm[mkComb[pV, xV], rV]]]
+  ];
+
+Module[{pV, selTerm, allBody},
+  pV = mkVar["p", tyFun[αTy, boolTy]];
+  selTerm = listRecExists[αTy, tConst[], allStep[pV]][[2]];
+  allBody = mkAbs[pV, mkAbs[mkVar["l", listTy[αTy]],
+    mkComb[selTerm, mkVar["l", listTy[αTy]]]]];
+  allDefThm = newDefinition[mkEq[mkVar["ALL", allTy], allBody]];
+];
+
+allConst[] := mkConst["ALL", allTy];
+
+allAppEq[pTm_, lTm_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[allDefThm, pTm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, lTm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+{allNilThm, allConsThm} =
+  Module[{pV, lV, xV, satThm, selTerm, gNilEq, nilBase,
+          consXL, gConsSpec, stepThm, eqRec, consBase},
+    pV = mkVar["p", tyFun[αTy, boolTy]];
+    lV = mkVar["l", listTy[αTy]]; xV = mkVar["x", αTy];
+    {satThm, selTerm} = listRecExists[αTy, tConst[], allStep[pV]];
+
+    gNilEq = HOL`Bool`CONJUNCT1[satThm];
+    (* ⊢ selTerm NIL = T *)
+    nilBase = TRANS[allAppEq[pV, nilConst[]], gNilEq];
+    (* ⊢ ALL p NIL = T *)
+
+    consXL = mkComb[mkComb[consConst[], xV], lV];
+    gConsSpec = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[xV,
+      HOL`Bool`CONJUNCT2[satThm]]];
+    (* ⊢ selTerm (CONS x l) = p x ∧ selTerm l *)
+    stepThm = TRANS[allAppEq[pV, consXL], gConsSpec];
+    eqRec = HOL`Equal`SYM[allAppEq[pV, lV]];
+    (* ⊢ selTerm l = ALL p l *)
+    consBase = HOL`Drule`SUBS[{eqRec}, stepThm];
+    (* ⊢ ALL p (CONS x l) = p x ∧ ALL p l *)
+
+    {HOL`Bool`GEN[pV, nilBase],
+     HOL`Bool`GEN[pV, HOL`Bool`GEN[xV, HOL`Bool`GEN[lV, consBase]]]}
+  ];
+
+(* ---- MEM --------------------------------------------------- *)
+(* MEM x l recurses on l; base F, step λy r. (x = y ∨ r).         *)
+
+memTy = tyFun[αTy, tyFun[listTy[αTy], boolTy]];
+
+memStep[xV_] :=
+  Module[{yV, rV},
+    yV = mkVar["y", αTy]; rV = mkVar["r", boolTy];
+    mkAbs[yV, mkAbs[rV, orTm[mkEq[xV, yV], rV]]]
+  ];
+
+Module[{xV, selTerm, memBody},
+  xV = mkVar["x", αTy];
+  selTerm = listRecExists[αTy, fConst[], memStep[xV]][[2]];
+  memBody = mkAbs[xV, mkAbs[mkVar["l", listTy[αTy]],
+    mkComb[selTerm, mkVar["l", listTy[αTy]]]]];
+  memDefThm = newDefinition[mkEq[mkVar["MEM", memTy], memBody]];
+];
+
+memConst[] := mkConst["MEM", memTy];
+
+memAppEq[xTm_, lTm_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[memDefThm, xTm];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, lTm];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+{memNilThm, memConsThm} =
+  Module[{xV, yV, lV, satThm, selTerm, gNilEq, nilBase,
+          consYL, gConsSpec, stepThm, eqRec, consBase},
+    xV = mkVar["x", αTy]; yV = mkVar["y", αTy]; lV = mkVar["l", listTy[αTy]];
+    {satThm, selTerm} = listRecExists[αTy, fConst[], memStep[xV]];
+
+    gNilEq = HOL`Bool`CONJUNCT1[satThm];
+    (* ⊢ selTerm NIL = F *)
+    nilBase = TRANS[memAppEq[xV, nilConst[]], gNilEq];
+    (* ⊢ MEM x NIL = F *)
+
+    consYL = mkComb[mkComb[consConst[], yV], lV];
+    gConsSpec = HOL`Bool`SPEC[lV, HOL`Bool`SPEC[yV,
+      HOL`Bool`CONJUNCT2[satThm]]];
+    (* ⊢ selTerm (CONS y l) = (x = y ∨ selTerm l) *)
+    stepThm = TRANS[memAppEq[xV, consYL], gConsSpec];
+    eqRec = HOL`Equal`SYM[memAppEq[xV, lV]];
+    (* ⊢ selTerm l = MEM x l *)
+    consBase = HOL`Drule`SUBS[{eqRec}, stepThm];
+    (* ⊢ MEM x (CONS y l) = (x = y ∨ MEM x l) *)
+
+    {HOL`Bool`GEN[xV, nilBase],
+     HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[lV, consBase]]]}
+  ];
+
+(* ---- foldrAppendThm: FOLDR f e (APPEND l1 l2)                  *)
+(*                       = FOLDR f (FOLDR f e l2) l1.             *)
+(* By list induction on l1; the IH-bearing predicate quantifies   *)
+(* over the inner accumulator e.                                  *)
+
+foldrAppendThm =
+  Module[{fV, eV, l1V, l2V, xV, pV, inductSpec, inductBeta,
+          baseStep, indStep, allLPred, conjForall, finalGen,
+          ihHyp, ihAtL2eq, lhsCons, lhsBeta, rhsCons, rhsBeta,
+          stepEq, stepDisch, stepGen, baseGenL2, indGenAll},
+    fV = mkVar["f", iterFnTy]; eV = mkVar["e", βTy];
+    l1V = mkVar["l1", listTy[αTy]];
+    l2V = mkVar["l2", listTy[αTy]];
+    xV = mkVar["x", αTy];
+
+    (* P l1 ≡ ∀l2. FOLDR f e (APPEND l1 l2) = FOLDR f (FOLDR f e l2) l1 *)
+    pV = mkAbs[l1V,
+      mkComb[forallC[listTy[αTy]], mkAbs[l2V,
+        mkEq[
+          mkComb[mkComb[mkComb[foldrConst[], fV], eV],
+            mkComb[mkComb[appendConst[], l1V], l2V]],
+          mkComb[mkComb[mkComb[foldrConst[], fV],
+            mkComb[mkComb[mkComb[foldrConst[], fV], eV], l2V]], l1V]
+        ]]]];
+
+    inductSpec = HOL`Bool`SPEC[pV,
+      INSTTYPE[{αTy -> αTy}, listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+    (* ⊢ (∀l2. FOLDR f e (APPEND NIL l2) = FOLDR f (FOLDR f e l2) NIL)
+       ∧ (∀x l1. (∀l2. … l1 …) ⇒ (∀l2. … CONS x l1 …))
+       ⇒ ∀l1. ∀l2. … *)
+
+    (* Base case: ∀l2. FOLDR f e (APPEND NIL l2)
+                       = FOLDR f (FOLDR f e l2) NIL. *)
+    baseStep = Module[{lhsEqL2, rhsBeta2},
+      lhsEqL2 = HOL`Equal`APTERM[
+        mkComb[mkComb[foldrConst[], fV], eV],
+        HOL`Bool`SPEC[l2V, appendNilThm]];
+      (* ⊢ FOLDR f e (APPEND NIL l2) = FOLDR f e l2 *)
+      rhsBeta2 = HOL`Equal`SYM[HOL`Bool`SPEC[
+        mkComb[mkComb[mkComb[foldrConst[], fV], eV], l2V],
+        HOL`Bool`SPEC[fV, foldrNilThm]]];
+      (* ⊢ FOLDR f e l2 = FOLDR f (FOLDR f e l2) NIL *)
+      TRANS[lhsEqL2, rhsBeta2]
+    ];
+    baseGenL2 = HOL`Bool`GEN[l2V, baseStep];
+
+    (* Inductive case: ∀x l1. (∀l2. … l1 …) ⇒ (∀l2. … CONS x l1 …). *)
+    indStep = Module[{ihHypT, ihAtL2, appConsEq, fold1Cons, foldEq,
+                      foldEq2, ihAtL2Stepped, foldEq3, rhsConsRev,
+                      stepDisch2},
+      ihHypT = mkComb[forallC[listTy[αTy]], mkAbs[l2V,
+        mkEq[
+          mkComb[mkComb[mkComb[foldrConst[], fV], eV],
+            mkComb[mkComb[appendConst[], l1V], l2V]],
+          mkComb[mkComb[mkComb[foldrConst[], fV],
+            mkComb[mkComb[mkComb[foldrConst[], fV], eV], l2V]], l1V]
+        ]]];
+      ihHyp = ASSUME[ihHypT];
+      (* (ihHyp) ⊢ ∀l2. … l1 … *)
+
+      (* APPEND (CONS x l1) l2 = CONS x (APPEND l1 l2) *)
+      appConsEq = HOL`Bool`SPEC[l2V, HOL`Bool`SPEC[l1V,
+        HOL`Bool`SPEC[xV, appendConsThm]]];
+      (* ⊢ FOLDR f e (APPEND (CONS x l1) l2)
+           = FOLDR f e (CONS x (APPEND l1 l2)) *)
+      foldEq = HOL`Equal`APTERM[
+        mkComb[mkComb[foldrConst[], fV], eV], appConsEq];
+      (* FOLDR f e (CONS x (APPEND l1 l2)) = f x (FOLDR f e (APPEND l1 l2)) *)
+      fold1Cons = HOL`Bool`SPEC[
+        mkComb[mkComb[appendConst[], l1V], l2V],
+        HOL`Bool`SPEC[xV, HOL`Bool`SPEC[eV,
+          HOL`Bool`SPEC[fV, foldrConsThm]]]];
+      foldEq2 = TRANS[foldEq, fold1Cons];
+      (* ⊢ FOLDR f e (APPEND (CONS x l1) l2)
+           = f x (FOLDR f e (APPEND l1 l2)) *)
+
+      ihAtL2 = HOL`Bool`SPEC[l2V, ihHyp];
+      (* ⊢ FOLDR f e (APPEND l1 l2) = FOLDR f (FOLDR f e l2) l1 *)
+      ihAtL2Stepped = HOL`Equal`APTERM[mkComb[fV, xV], ihAtL2];
+      (* ⊢ f x (FOLDR f e (APPEND l1 l2))
+           = f x (FOLDR f (FOLDR f e l2) l1) *)
+      foldEq3 = TRANS[foldEq2, ihAtL2Stepped];
+
+      rhsConsRev = HOL`Equal`SYM[HOL`Bool`SPEC[l1V,
+        HOL`Bool`SPEC[xV,
+          HOL`Bool`SPEC[mkComb[mkComb[mkComb[foldrConst[], fV], eV], l2V],
+            HOL`Bool`SPEC[fV, foldrConsThm]]]]];
+      (* ⊢ f x (FOLDR f (FOLDR f e l2) l1)
+           = FOLDR f (FOLDR f e l2) (CONS x l1) *)
+      stepEq = TRANS[foldEq3, rhsConsRev];
+
+      stepGen = HOL`Bool`GEN[l2V, stepEq];
+      stepDisch2 = HOL`Bool`DISCH[ihHypT, stepGen];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[l1V, stepDisch2]]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseGenL2, indStep];
+    finalGen = HOL`Bool`MP[inductBeta, conjForall];
+    (* ⊢ ∀l1. ∀l2. FOLDR f e (APPEND l1 l2)
+                  = FOLDR f (FOLDR f e l2) l1 *)
+    HOL`Bool`GEN[fV, HOL`Bool`GEN[eV, finalGen]]
+  ];
+
+(* ---- allAppendThm: ALL p (APPEND l1 l2) = ALL p l1 ∧ ALL p l2. *)
+(* List induction on l1 again.                                    *)
+
+allAppendThm =
+  Module[{pV, l1V, l2V, xV, predLam, inductSpec, inductBeta,
+          baseCase, baseGen, indStep, conjForall, finalGen},
+    pV = mkVar["p", tyFun[αTy, boolTy]];
+    l1V = mkVar["l1", listTy[αTy]];
+    l2V = mkVar["l2", listTy[αTy]];
+    xV = mkVar["x", αTy];
+
+    (* P l1 ≡ ∀l2. ALL p (APPEND l1 l2) = ALL p l1 ∧ ALL p l2 *)
+    predLam = mkAbs[l1V,
+      mkComb[forallC[listTy[αTy]], mkAbs[l2V,
+        mkEq[
+          mkComb[mkComb[allConst[], pV],
+            mkComb[mkComb[appendConst[], l1V], l2V]],
+          andTm[mkComb[mkComb[allConst[], pV], l1V],
+            mkComb[mkComb[allConst[], pV], l2V]]]]]];
+
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{αTy -> αTy}, listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+
+    (* Base: ∀l2. ALL p (APPEND NIL l2) = ALL p NIL ∧ ALL p l2.    *)
+    (*  LHS reduces to ALL p l2 via appendNil.                     *)
+    (*  DEDUCTANTISYM gives ⊢ T ∧ qA = qA; SYM ⇒ ⊢ qA = T ∧ qA.    *)
+    (*  INST at qA := ALL p l2; SUBS with (T = ALL p NIL) (i.e.    *)
+    (*  SYM of allNilT) replaces T on the RHS.                     *)
+    baseCase = Module[{appendNilL2, lhsToL2, allNilT, qV, tAndQEqQ,
+                      qEqTAndQ, l2EqAllNilAndL2, finalEq},
+      appendNilL2 = HOL`Bool`SPEC[l2V, appendNilThm];
+      lhsToL2 = HOL`Equal`APTERM[mkComb[allConst[], pV], appendNilL2];
+      (* ⊢ ALL p (APPEND NIL l2) = ALL p l2 *)
+
+      allNilT = HOL`Bool`SPEC[pV, allNilThm];
+      (* ⊢ ALL p NIL = T *)
+
+      qV = mkVar["qA", boolTy];
+      tAndQEqQ = HOL`Kernel`DEDUCTANTISYM[
+        HOL`Bool`CONJ[HOL`Bool`TRUTH, ASSUME[qV]],
+        HOL`Bool`CONJUNCT2[ASSUME[andTm[tConst[], qV]]]];
+      (* ⊢ T ∧ qA = qA *)
+      qEqTAndQ = HOL`Equal`SYM[INST[
+        {qV -> mkComb[mkComb[allConst[], pV], l2V]}, tAndQEqQ]];
+      (* ⊢ ALL p l2 = T ∧ ALL p l2 *)
+      l2EqAllNilAndL2 = HOL`Drule`SUBS[
+        {HOL`Equal`SYM[allNilT]}, qEqTAndQ];
+      (* ⊢ ALL p l2 = (ALL p NIL) ∧ ALL p l2 *)
+      finalEq = TRANS[lhsToL2, l2EqAllNilAndL2];
+      finalEq
+    ];
+    baseGen = HOL`Bool`GEN[l2V, baseCase];
+
+    indStep = Module[{ihHypT, ihHyp, ihAtL2, appCons, fold1Cons,
+                      lhsEq1, lhsEq2, allConsRhs, allConsAtCons,
+                      rewriteIH, reassoc, stepEq, stepGen, stepDisch},
+      ihHypT = mkComb[forallC[listTy[αTy]], mkAbs[l2V,
+        mkEq[
+          mkComb[mkComb[allConst[], pV],
+            mkComb[mkComb[appendConst[], l1V], l2V]],
+          andTm[mkComb[mkComb[allConst[], pV], l1V],
+            mkComb[mkComb[allConst[], pV], l2V]]]]];
+      ihHyp = ASSUME[ihHypT];
+      ihAtL2 = HOL`Bool`SPEC[l2V, ihHyp];
+      (* ⊢ ALL p (APPEND l1 l2) = ALL p l1 ∧ ALL p l2 *)
+
+      appCons = HOL`Bool`SPEC[l2V, HOL`Bool`SPEC[l1V,
+        HOL`Bool`SPEC[xV, appendConsThm]]];
+      (* ⊢ APPEND (CONS x l1) l2 = CONS x (APPEND l1 l2) *)
+      lhsEq1 = HOL`Equal`APTERM[mkComb[allConst[], pV], appCons];
+      (* ⊢ ALL p (APPEND (CONS x l1) l2)
+           = ALL p (CONS x (APPEND l1 l2)) *)
+      lhsEq2 = HOL`Bool`SPEC[
+        mkComb[mkComb[appendConst[], l1V], l2V],
+        HOL`Bool`SPEC[xV, HOL`Bool`SPEC[pV, allConsThm]]];
+      (* ⊢ ALL p (CONS x (APPEND l1 l2))
+           = p x ∧ ALL p (APPEND l1 l2) *)
+      rewriteIH = HOL`Drule`SUBS[{ihAtL2}, lhsEq2];
+      (* ⊢ ALL p (CONS x (APPEND l1 l2))
+           = p x ∧ (ALL p l1 ∧ ALL p l2) *)
+
+      (* Reassociate p x ∧ (ALL p l1 ∧ ALL p l2)
+                   = (p x ∧ ALL p l1) ∧ ALL p l2.
+         Build by DEDUCTANTISYM on hypotheses.                    *)
+      reassoc = Module[{aV, bV, cV, andABCHyp, andABabHyp,
+                       leftToRight, rightToLeft},
+        aV = mkVar["aA", boolTy]; bV = mkVar["bA", boolTy];
+        cV = mkVar["cA", boolTy];
+        andABCHyp = ASSUME[andTm[aV, andTm[bV, cV]]];
+        leftToRight = HOL`Bool`CONJ[
+          HOL`Bool`CONJ[HOL`Bool`CONJUNCT1[andABCHyp],
+            HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[andABCHyp]]],
+          HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[andABCHyp]]];
+        andABabHyp = ASSUME[andTm[andTm[aV, bV], cV]];
+        rightToLeft = HOL`Bool`CONJ[
+          HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT1[andABabHyp]],
+          HOL`Bool`CONJ[
+            HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT1[andABabHyp]],
+            HOL`Bool`CONJUNCT2[andABabHyp]]];
+        HOL`Kernel`DEDUCTANTISYM[rightToLeft, leftToRight]
+      ];
+      (* ⊢ (aA ∧ (bA ∧ cA)) = ((aA ∧ bA) ∧ cA) *)
+
+      allConsAtCons = HOL`Bool`SPEC[l1V,
+        HOL`Bool`SPEC[xV, HOL`Bool`SPEC[pV, allConsThm]]];
+      (* ⊢ ALL p (CONS x l1) = p x ∧ ALL p l1 *)
+      allConsRhs = Module[{instReassoc, replacePxl1},
+        instReassoc = INST[{
+          mkVar["aA", boolTy] -> mkComb[pV, xV],
+          mkVar["bA", boolTy] -> mkComb[mkComb[allConst[], pV], l1V],
+          mkVar["cA", boolTy] -> mkComb[mkComb[allConst[], pV], l2V]
+        }, reassoc];
+        (* ⊢ (p x ∧ (ALL p l1 ∧ ALL p l2))
+             = ((p x ∧ ALL p l1) ∧ ALL p l2) *)
+        replacePxl1 = HOL`Drule`SUBS[
+          {HOL`Equal`SYM[allConsAtCons]}, instReassoc];
+        (* ⊢ (p x ∧ (ALL p l1 ∧ ALL p l2))
+             = (ALL p (CONS x l1) ∧ ALL p l2) *)
+        replacePxl1
+      ];
+
+      stepEq = TRANS[lhsEq1, TRANS[rewriteIH, allConsRhs]];
+      stepGen = HOL`Bool`GEN[l2V, stepEq];
+      stepDisch = HOL`Bool`DISCH[ihHypT, stepGen];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[l1V, stepDisch]]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseGen, indStep];
+    finalGen = HOL`Bool`MP[inductBeta, conjForall];
+    HOL`Bool`GEN[pV, finalGen]
   ];
 
 End[];

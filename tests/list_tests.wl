@@ -656,5 +656,88 @@ HOLTest`runTests["stdlib/List: foldlNilThm / foldlConsThm",
     HOLTest`assertEq[hyp[HOL`Stdlib`List`foldlConsThm], {}, "foldlCons no hyps"];
 ]];
 
+HOLTest`runTests["stdlib/List: allNilThm / allConsThm",
+  Module[{pTy, pV, xV, lV, allC, consC, nilC, andC, px, recCall,
+          expN, expC},
+    pTy = tyFun[αTy, boolTy];
+    pV = mkVar["p", pTy]; xV = mkVar["x", αTy]; lV = mkVar["l", listATy];
+    allC = HOL`Stdlib`List`allConst[];
+    consC = HOL`Stdlib`List`consConst[]; nilC = HOL`Stdlib`List`nilConst[];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    px = mkComb[pV, xV]; recCall = ap2[allC, pV, lV];
+    expN = mkComb[forallAt[pTy], mkAbs[pV,
+      mkEq[ap2[allC, pV, nilC], mkConst["T", boolTy]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`allNilThm], expN],
+      "∀p. ALL p NIL = T"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`allNilThm], {}, "allNil no hyps"];
+    expC = mkComb[forallAt[pTy], mkAbs[pV, mkComb[forallAt[αTy], mkAbs[xV,
+      mkComb[forallAt[listATy], mkAbs[lV,
+        mkEq[ap2[allC, pV, ap2[consC, xV, lV]],
+             ap2[andC, px, recCall]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`allConsThm], expC],
+      "∀p x l. ALL p (CONS x l) = p x ∧ ALL p l"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`allConsThm], {}, "allCons no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: memNilThm / memConsThm",
+  Module[{xV, yV, lV, memC, consC, nilC, orC, expN, expC},
+    xV = mkVar["x", αTy]; yV = mkVar["y", αTy]; lV = mkVar["l", listATy];
+    memC = HOL`Stdlib`List`memConst[];
+    consC = HOL`Stdlib`List`consConst[]; nilC = HOL`Stdlib`List`nilConst[];
+    orC = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    expN = mkComb[forallAt[αTy], mkAbs[xV,
+      mkEq[ap2[memC, xV, nilC], mkConst["F", boolTy]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`memNilThm], expN],
+      "∀x. MEM x NIL = F"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`memNilThm], {}, "memNil no hyps"];
+    expC = mkComb[forallAt[αTy], mkAbs[xV, mkComb[forallAt[αTy], mkAbs[yV,
+      mkComb[forallAt[listATy], mkAbs[lV,
+        mkEq[ap2[memC, xV, ap2[consC, yV, lV]],
+             ap2[orC, mkEq[xV, yV], ap2[memC, xV, lV]]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`memConsThm], expC],
+      "∀x y l. MEM x (CONS y l) = (x = y ∨ MEM x l)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`memConsThm], {}, "memCons no hyps"];
+]];
+
+HOLTest`runTests["stdlib/List: foldrAppendThm / allAppendThm",
+  Module[{βTy, fTy, fV, eV, l1V, l2V, foldrC, appendC, allC, andC,
+          pTy, pV, expFoldrAppend, expAllAppend},
+    βTy = mkVarType["B"]; fTy = tyFun[αTy, tyFun[βTy, βTy]];
+    fV = mkVar["f", fTy]; eV = mkVar["e", βTy];
+    l1V = mkVar["l1", listATy]; l2V = mkVar["l2", listATy];
+    foldrC = HOL`Stdlib`List`foldrConst[];
+    appendC = HOL`Stdlib`List`appendConst[];
+    allC = HOL`Stdlib`List`allConst[];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    pTy = tyFun[αTy, boolTy]; pV = mkVar["p", pTy];
+
+    expFoldrAppend = mkComb[forallAt[fTy], mkAbs[fV,
+      mkComb[forallAt[βTy], mkAbs[eV,
+        mkComb[forallAt[listATy], mkAbs[l1V,
+          mkComb[forallAt[listATy], mkAbs[l2V,
+            mkEq[
+              mkComb[ap2[foldrC, fV, eV], ap2[appendC, l1V, l2V]],
+              mkComb[ap2[foldrC, fV, mkComb[ap2[foldrC, fV, eV], l2V]], l1V]
+            ]]]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`foldrAppendThm],
+      expFoldrAppend],
+      "∀f e l1 l2. FOLDR f e (APPEND l1 l2) = FOLDR f (FOLDR f e l2) l1"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`foldrAppendThm], {},
+      "foldrAppend no hyps"];
+
+    expAllAppend = mkComb[forallAt[pTy], mkAbs[pV,
+      mkComb[forallAt[listATy], mkAbs[l1V,
+        mkComb[forallAt[listATy], mkAbs[l2V,
+          mkEq[
+            ap2[allC, pV, ap2[appendC, l1V, l2V]],
+            ap2[andC, ap2[allC, pV, l1V], ap2[allC, pV, l2V]]
+          ]]]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[concl[HOL`Stdlib`List`allAppendThm],
+      expAllAppend],
+      "∀p l1 l2. ALL p (APPEND l1 l2) = ALL p l1 ∧ ALL p l2"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`List`allAppendThm], {},
+      "allAppend no hyps"];
+]];
+
 End[];
 EndPackage[];
