@@ -74,9 +74,11 @@ M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeB
 
 **M7-3 FTA stage 1 done (stdlib/FTA.wl)** — `dividesPosThm`/`dividesTransThm`/`notOneNorZeroLtThm` helpers + `primeOrCompositeThm` (n>1 ⇒ prime or has a proper divisor) + **`primeDivExistsThm`** (every n>1 has a prime divisor). Strong induction + EM.
 
-**M7-3 FTA stage 2 done (stdlib/FTA.wl)** — `posAddLtThm` (¬(d=0) ⇒ c < c+d via numCases + leqDef unfold) + `ltMultIfOneLtThm` (1<p ⇒ ¬(c=0) ⇒ c < p*c, via SUC(SUC k) decomposition) + **`primeFactorsExistsThm`** (⊢ ∀n. ¬(n=0) ⇒ ∃l. ALL prime l ∧ FOLDR * (SUC 0) l = n). Strong induction on n with leqCaseEqLt split on SUC 0 vs n. NIL works for n=1; for n>1, primeDivExistsThm + ltMultIfOneLtThm push to the cofactor c<n and prepend p to the IH list. Uniqueness modulo permutation (stage 3) still queued.
+**M7-3 FTA stage 2 done (stdlib/FTA.wl)** — `posAddLtThm` (¬(d=0) ⇒ c < c+d via numCases + leqDef unfold) + `ltMultIfOneLtThm` (1<p ⇒ ¬(c=0) ⇒ c < p*c, via SUC(SUC k) decomposition) + **`primeFactorsExistsThm`** (⊢ ∀n. ¬(n=0) ⇒ ∃l. ALL prime l ∧ FOLDR * (SUC 0) l = n). Strong induction on n with leqCaseEqLt split on SUC 0 vs n. NIL works for n=1; for n>1, primeDivExistsThm + ltMultIfOneLtThm push to the cofactor c<n and prepend p to the IH list.
 
-**Next**: M7-3 FTA stage 3 (uniqueness modulo permutation, needs Euclid's lemma on lists) or M7-δ `auto/Arith.wl` (Presburger linear arithmetic, multi-session) → M7-5 `stdlib/Int.wl` → M7-6 Rat → M7-7 Real → … per PLAN. (List `EL`/`REVERSE`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
+**M7-3 FTA stage 3.a done (stdlib/FTA.wl)** — `notLeqSucSelfThm` (¬(SUC n ≤ n), via leqSuc + leqAntisym + sucNotEqSelf) + `primeNotDivOneThm` (prime p ⇒ ¬ p|1, via primeDef + dividesLeqThm + notLeqSucSelf) + **`primeDivFoldrTimesThm`** (⊢ ∀p. prime p ⇒ ∀l. p | FOLDR * 1 l ⇒ ∃y. MEM y l ∧ p | y) — Euclid's lemma on lists by list induction on l, NIL case rejected via primeNotDivOne, CONS case splits the product via euclidLemmaThm with the head (memCons-DISJ1) and tail (IH + memCons-DISJ2) branches. Capstone stage 3 (PERM relation + uniqueness modulo permutation) still queued.
+
+**Next**: M7-3 FTA stage 3.b (PERM relation: inductive refl + CONS-congr + CONS-swap + trans; congruence with APPEND + FOLDR) → 3.c (memSplit `MEM x l ⇒ ∃l1 l2. l = APPEND l1 (CONS x l2)`) → 3.d (uniqueness capstone via list induction + Euclid-on-lists + memSplit). Multi-session. Alternative: M7-δ `auto/Arith.wl` (Presburger linear arithmetic, multi-session) → M7-5 `stdlib/Int.wl` → M7-6 Rat → M7-7 Real → … per PLAN. (List `EL`/`REVERSE`/`EX` etc. on demand.) **Audit issues parked in `TODO.md`.**
 
 Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 

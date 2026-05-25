@@ -23,6 +23,10 @@ posAddLtThm::usage = "posAddLtThm — ⊢ ∀c d. ¬ (d = 0) ⇒ c < c + d. Addi
 ltMultIfOneLtThm::usage = "ltMultIfOneLtThm — ⊢ ∀p c. SUC 0 < p ⇒ ¬ (c = 0) ⇒ c < p * c. Multiplying a positive amount by p > 1 strictly increases. (FTA stage-2 helper.)";
 primeFactorsExistsThm::usage = "primeFactorsExistsThm — ⊢ ∀n. ¬ (n = 0) ⇒ ∃l. ALL prime l ∧ FOLDR * (SUC 0) l = n. Every positive integer admits a prime factorization (FTA stage-2 capstone).";
 
+notLeqSucSelfThm::usage = "notLeqSucSelfThm — ⊢ ∀n. ¬ (SUC n ≤ n). (Stage 3.a helper.)";
+primeNotDivOneThm::usage = "primeNotDivOneThm — ⊢ ∀p. prime p ⇒ ¬ (divides p (SUC 0)). A prime cannot divide 1. (Stage 3.a helper.)";
+primeDivFoldrTimesThm::usage = "primeDivFoldrTimesThm — ⊢ ∀p l. prime p ⇒ divides p (FOLDR * (SUC 0) l) ⇒ ∃y. MEM y l ∧ divides p y. Euclid's lemma on lists: a prime dividing a product of primes divides one of them. (FTA stage 3.a.)";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -768,6 +772,283 @@ primeFactorsExistsThm =
 
     mainConcl = HOL`Bool`MP[specBeta, stepAnte];
     mainConcl
+  ];
+
+(* ============================================================ *)
+(* notLeqSucSelfThm  (stage-3.a helper)                          *)
+(*   ⊢ ∀n. ¬ (SUC n ≤ n).                                        *)
+(*                                                              *)
+(* Assume SUC n ≤ n; combine with leqSucThm (n ≤ SUC n) via      *)
+(* leqAntisymThm to get SUC n = n, contradicting sucNotEqSelfThm.*)
+(* ============================================================ *)
+
+notLeqSucSelfThm =
+  Module[{nV, sucLeqHyp, nLeqSuc, antisym, sucEqN, notEq, fThm,
+          notIntro, gen},
+    nV = mkVar["nSL", numTy];
+    sucLeqHyp = ASSUME[leqN[sucN[nV], nV]];
+    nLeqSuc = HOL`Bool`SPEC[nV, HOL`Stdlib`Num`leqSucThm];
+    (* ⊢ n ≤ SUC n *)
+    antisym = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[sucN[nV],
+        HOL`Stdlib`Num`leqAntisymThm]],
+      sucLeqHyp], nLeqSuc];
+    (* (SUC n ≤ n) ⊢ SUC n = n *)
+    notEq = HOL`Bool`SPEC[nV, HOL`Stdlib`Num`sucNotEqSelfThm];
+    (* ⊢ ¬(SUC n = n) *)
+    fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[notEq], antisym];
+    (* (SUC n ≤ n) ⊢ F *)
+    notIntro = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[leqN[sucN[nV], nV], fThm]];
+    gen = HOL`Bool`GEN[nV, notIntro];
+    gen
+  ];
+
+(* ============================================================ *)
+(* primeNotDivOneThm  (stage-3.a helper)                         *)
+(*   ⊢ ∀p. prime p ⇒ ¬ (divides p (SUC 0)).                      *)
+(*                                                              *)
+(* From prime p extract SUC 0 < p (primeDef CONJUNCT1).          *)
+(* Unfold < to get SUC (SUC 0) ≤ p.                              *)
+(* Assume divides p (SUC 0); dividesLeqThm with SUC 0 ≠ 0 gives  *)
+(*   p ≤ SUC 0.                                                  *)
+(* Combine SUC (SUC 0) ≤ p and p ≤ SUC 0 via leqTrans:            *)
+(*   SUC (SUC 0) ≤ SUC 0, contradicting notLeqSucSelfThm.        *)
+(* ============================================================ *)
+
+primeNotDivOneThm =
+  Module[{pV, primeHyp, primeUnf, primeUnfApplied, oneLtP, ltUnfP,
+          dividesHyp, oneNotZero, pLeqOne, sucOneLeqOne, fThm,
+          notIntro, dischPrime, gen, oneTm, sucOneTm},
+    pV = mkVar["pND", numTy];
+    oneTm = oneN[];
+    sucOneTm = sucN[oneTm];
+
+    primeHyp = ASSUME[primeN[pV]];
+    primeUnf = Module[{apP},
+      apP = HOL`Equal`APTHM[HOL`Stdlib`Num`primeDefThm, pV];
+      TRANS[apP, BETACONV[concl[apP][[2]]]]
+    ];
+    (* ⊢ prime p = SUC 0 < p ∧ (∀d. divides d p ⇒ d = SUC 0 ∨ d = p) *)
+    primeUnfApplied = EQMP[primeUnf, primeHyp];
+    oneLtP = HOL`Bool`CONJUNCT1[primeUnfApplied];
+    (* (prime p) ⊢ SUC 0 < p *)
+    ltUnfP = EQMP[unfoldLt[oneTm, pV], oneLtP];
+    (* (prime p) ⊢ SUC (SUC 0) ≤ p *)
+
+    dividesHyp = ASSUME[dividesN[pV, oneTm]];
+    (* (divides p 1) ⊢ … *)
+
+    oneNotZero = Module[{eqHyp, fT, suc0NeqZ},
+      eqHyp = ASSUME[mkEq[oneTm, zeroN[]]];
+      suc0NeqZ = HOL`Bool`SPEC[zeroN[], HOL`Stdlib`Num`sucNotZeroThm];
+      (* ⊢ ¬(SUC 0 = 0) *)
+      fT = HOL`Bool`MP[HOL`Bool`NOTELIM[suc0NeqZ], eqHyp];
+      HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[oneTm, zeroN[]], fT]]
+    ];
+    (* ⊢ ¬(SUC 0 = 0) *)
+
+    pLeqOne = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[oneTm, HOL`Bool`SPEC[pV,
+        HOL`Stdlib`Num`dividesLeqThm]],
+      oneNotZero], dividesHyp];
+    (* (divides p 1) ⊢ p ≤ SUC 0 *)
+
+    sucOneLeqOne = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[oneTm, HOL`Bool`SPEC[pV,
+        HOL`Bool`SPEC[sucOneTm, HOL`Stdlib`Num`leqTransThm]]],
+      ltUnfP], pLeqOne];
+    (* (prime p, divides p 1) ⊢ SUC (SUC 0) ≤ SUC 0 *)
+
+    fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[
+      HOL`Bool`SPEC[oneTm, notLeqSucSelfThm]],
+      sucOneLeqOne];
+    (* (prime p, divides p 1) ⊢ F *)
+
+    notIntro = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[
+      dividesN[pV, oneTm], fThm]];
+    (* (prime p) ⊢ ¬(divides p (SUC 0)) *)
+    dischPrime = HOL`Bool`DISCH[primeN[pV], notIntro];
+    gen = HOL`Bool`GEN[pV, dischPrime];
+    gen
+  ];
+
+(* ============================================================ *)
+(* primeDivFoldrTimesThm  (FTA stage 3.a)                        *)
+(*   ⊢ ∀p l. prime p ⇒ divides p (FOLDR * (SUC 0) l)             *)
+(*           ⇒ ∃y. MEM y l ∧ divides p y.                         *)
+(*                                                              *)
+(* For fixed prime p, list-induct on l.                          *)
+(*   NIL: FOLDR * (SUC 0) NIL = SUC 0; divides p (SUC 0)         *)
+(*         contradicts primeNotDivOneThm.                        *)
+(*   CONS y l': FOLDR * (SUC 0) (CONS y l')                      *)
+(*               = y * FOLDR * (SUC 0) l' (foldrConsThm).        *)
+(*     euclidLemmaThm: p | y ∨ p | (FOLDR * (SUC 0) l').          *)
+(*     - p|y branch: take MEM y (CONS y l') (head).               *)
+(*     - p|FOLDR branch: IH gives ∃y'. MEM y' l' ∧ p|y';          *)
+(*       MEM y' (CONS y l') via tail of memCons.                  *)
+(* ============================================================ *)
+
+primeDivFoldrTimesThm =
+  Module[{αTy, βTy, pV, lV, yV, bndV, primeHyp, predLam, inductSpec,
+          inductBeta, baseCase, indStep, conjForall, finalGen,
+          dischPrime, gen, foldrAt, memAt, exConcl},
+    αTy = mkVarType["A"]; βTy = mkVarType["B"];
+    pV = mkVar["pE", numTy];
+    lV = mkVar["lE", numListTy[]];
+    yV = mkVar["yE", numTy];
+    (* bndV is the fresh ∃-binder used in exConcl — distinct from the
+       per-case witnesses yLocal / ypV so listTm can mention either freely. *)
+    bndV = mkVar["yBnd", numTy];
+
+    primeHyp = ASSUME[primeN[pV]];
+
+    (* The MEM and FOLDR terms specialized to num. *)
+    memAt[xTm_, listTm_] := mkComb[mkComb[
+      mkConst["MEM", tyFun[numTy, tyFun[numListTy[], boolTy]]],
+      xTm], listTm];
+
+    foldrAt[listTm_] := foldrTm[
+      HOL`Stdlib`Num`timesConst[], oneN[], listTm];
+
+    (* exConcl[listTm] = ∃bndV. MEM bndV listTm ∧ divides p bndV *)
+    exConcl[listTm_] := mkComb[
+      mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[bndV, andTm[memAt[bndV, listTm], dividesN[pV, bndV]]]];
+
+    (* P l ≡ divides p (FOLDR * (SUC 0) l) ⇒ ∃y. MEM y l ∧ divides p y *)
+    predLam = mkAbs[lV,
+      impTm[dividesN[pV, foldrAt[lV]], exConcl[lV]]];
+
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{αTy -> numTy}, HOL`Stdlib`List`listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+    (* ⊢ (divides p (FOLDR * 1 NIL) ⇒ ∃y. MEM y NIL ∧ divides p y)
+       ∧ (∀x l. (divides p (FOLDR * 1 l) ⇒ ∃y. MEM y l ∧ divides p y)
+              ⇒ (divides p (FOLDR * 1 (CONS x l))
+                   ⇒ ∃y. MEM y (CONS x l) ∧ divides p y))
+       ⇒ ∀l. divides p (FOLDR * 1 l) ⇒ ∃y. MEM y l ∧ divides p y *)
+
+    (* NIL case: divides p 1 contradicts primeNotDivOneThm. *)
+    baseCase = Module[{foldrNilAtNum, divPFoldrHyp, divP1, notDivP1,
+                       fThm, dischDiv},
+      foldrNilAtNum = HOL`Bool`SPEC[oneN[],
+        HOL`Bool`SPEC[HOL`Stdlib`Num`timesConst[],
+          INSTTYPE[{αTy -> numTy, βTy -> numTy},
+            HOL`Stdlib`List`foldrNilThm]]];
+      (* ⊢ FOLDR * (SUC 0) NIL = SUC 0 *)
+      divPFoldrHyp = ASSUME[dividesN[pV, foldrAt[nilNumTm[]]]];
+      divP1 = HOL`Drule`SUBS[{foldrNilAtNum}, divPFoldrHyp];
+      (* (divides p (FOLDR * 1 NIL)) ⊢ divides p (SUC 0) *)
+      notDivP1 = HOL`Bool`MP[
+        HOL`Bool`SPEC[pV, primeNotDivOneThm], primeHyp];
+      (* (prime p) ⊢ ¬(divides p (SUC 0)) *)
+      fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[notDivP1], divP1];
+      (* (prime p, divides p (FOLDR * 1 NIL)) ⊢ F *)
+      dischDiv = HOL`Bool`DISCH[dividesN[pV, foldrAt[nilNumTm[]]],
+        HOL`Bool`CONTR[exConcl[nilNumTm[]], fThm]];
+      dischDiv
+    ];
+
+    (* CONS case: ∀y l. (IH) ⇒ (divides p (FOLDR * 1 (CONS y l))
+                                ⇒ ∃z. MEM z (CONS y l) ∧ divides p z). *)
+    indStep = Module[{yLocal, lLocal, ihHypT, ihHyp, foldrConsAt, divHyp,
+                      divPYTimesFold, euclidAt, splitDisj,
+                      headBranch, tailBranch, exFromBranches,
+                      dischDiv, stepInner, allLOuter},
+      yLocal = yV;
+      lLocal = lV;
+
+      ihHypT = impTm[dividesN[pV, foldrAt[lLocal]], exConcl[lLocal]];
+      ihHyp = ASSUME[ihHypT];
+
+      foldrConsAt = HOL`Bool`SPEC[lLocal, HOL`Bool`SPEC[yLocal,
+        HOL`Bool`SPEC[oneN[], HOL`Bool`SPEC[HOL`Stdlib`Num`timesConst[],
+          INSTTYPE[{αTy -> numTy, βTy -> numTy},
+            HOL`Stdlib`List`foldrConsThm]]]]];
+      (* ⊢ FOLDR * (SUC 0) (CONS y l)
+           = y * FOLDR * (SUC 0) l *)
+
+      divHyp = ASSUME[dividesN[pV, foldrAt[consNumApp[yLocal, lLocal]]]];
+      divPYTimesFold = HOL`Drule`SUBS[{foldrConsAt}, divHyp];
+      (* (…) ⊢ divides p (y * FOLDR * (SUC 0) l) *)
+
+      euclidAt = HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Bool`SPEC[foldrAt[lLocal],
+          HOL`Bool`SPEC[yLocal, HOL`Bool`SPEC[pV,
+            HOL`Stdlib`Num`euclidLemmaThm]]],
+        primeHyp], divPYTimesFold];
+      (* (prime p, …) ⊢ divides p y ∨ divides p (FOLDR * 1 l) *)
+
+      headBranch = Module[{divPYHyp, memConsAtY, eqYY, headDisj,
+                           memYConsRaw, memYCons, conjY, exAtY},
+        divPYHyp = ASSUME[dividesN[pV, yLocal]];
+
+        memConsAtY = HOL`Bool`SPEC[lLocal, HOL`Bool`SPEC[yLocal,
+          HOL`Bool`SPEC[yLocal,
+            INSTTYPE[{αTy -> numTy}, HOL`Stdlib`List`memConsThm]]]];
+        (* ⊢ MEM y (CONS y l) = (y = y ∨ MEM y l) *)
+        eqYY = REFL[yLocal];
+        (* ⊢ y = y *)
+        headDisj = HOL`Bool`DISJ1[eqYY,
+          mkComb[mkComb[
+            mkConst["MEM", tyFun[numTy, tyFun[numListTy[], boolTy]]],
+            yLocal], lLocal]];
+        (* ⊢ y = y ∨ MEM y l *)
+        memYCons = EQMP[HOL`Equal`SYM[memConsAtY], headDisj];
+        (* ⊢ MEM y (CONS y l) *)
+        conjY = HOL`Bool`CONJ[memYCons, divPYHyp];
+        exAtY = HOL`Bool`EXISTS[exConcl[consNumApp[yLocal, lLocal]],
+          yLocal, conjY];
+        exAtY
+      ];
+
+      tailBranch = Module[{divPFoldHyp, ihApplied, ypV, conjYpBody,
+                           conjYpHyp, memYpL, divPYp, memConsAtYp, tailDisj,
+                           memYpCons, conjYpFinal, exAtYp, chosenYp},
+        divPFoldHyp = ASSUME[dividesN[pV, foldrAt[lLocal]]];
+        ihApplied = HOL`Bool`MP[ihHyp, divPFoldHyp];
+        (* (IH, divides p (FOLDR * 1 l)) ⊢ ∃y. MEM y l ∧ divides p y *)
+
+        ypV = mkVar["ypE", numTy];
+        conjYpBody = andTm[memAt[ypV, lLocal], dividesN[pV, ypV]];
+        conjYpHyp = ASSUME[conjYpBody];
+        memYpL = HOL`Bool`CONJUNCT1[conjYpHyp];
+        divPYp = HOL`Bool`CONJUNCT2[conjYpHyp];
+
+        memConsAtYp = HOL`Bool`SPEC[lLocal, HOL`Bool`SPEC[yLocal,
+          HOL`Bool`SPEC[ypV,
+            INSTTYPE[{αTy -> numTy}, HOL`Stdlib`List`memConsThm]]]];
+        (* ⊢ MEM y' (CONS y l) = (y' = y ∨ MEM y' l) *)
+        tailDisj = HOL`Bool`DISJ2[memYpL, mkEq[ypV, yLocal]];
+        (* ⊢ y' = y ∨ MEM y' l *)
+        memYpCons = EQMP[HOL`Equal`SYM[memConsAtYp], tailDisj];
+        (* (MEM y' l) ⊢ MEM y' (CONS y l) *)
+        conjYpFinal = HOL`Bool`CONJ[memYpCons, divPYp];
+        exAtYp = HOL`Bool`EXISTS[exConcl[consNumApp[yLocal, lLocal]],
+          ypV, conjYpFinal];
+        chosenYp = HOL`Bool`CHOOSE[ypV, ihApplied, exAtYp];
+        chosenYp
+      ];
+
+      exFromBranches = HOL`Bool`DISJCASES[euclidAt, headBranch, tailBranch];
+      (* (prime p, IH, divides p (FOLDR * 1 (CONS y l))) ⊢ ∃z. MEM z (CONS y l) ∧ divides p z *)
+
+      dischDiv = HOL`Bool`DISCH[
+        dividesN[pV, foldrAt[consNumApp[yLocal, lLocal]]],
+        exFromBranches];
+      stepInner = HOL`Bool`DISCH[ihHypT, dischDiv];
+      allLOuter = HOL`Bool`GEN[yLocal, HOL`Bool`GEN[lLocal, stepInner]];
+      allLOuter
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalGen = HOL`Bool`MP[inductBeta, conjForall];
+    (* (prime p) ⊢ ∀l. divides p (FOLDR * 1 l) ⇒ ∃y. MEM y l ∧ divides p y *)
+
+    dischPrime = HOL`Bool`DISCH[primeN[pV], finalGen];
+    gen = HOL`Bool`GEN[pV, dischPrime];
+    gen
   ];
 
 End[];
