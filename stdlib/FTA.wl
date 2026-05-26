@@ -42,6 +42,14 @@ permAllThm::usage = "permAllThm — ⊢ ∀p l1 l2. PERM l1 l2 ⇒ ALL p l1 = AL
 memSplitThm::usage = "memSplitThm — ⊢ ∀x l. MEM x l ⇒ ∃l1 l2. l = APPEND l1 (CONS x l2). Membership induces a split: a witnessed member can be extracted with the surrounding prefix and suffix. (FTA stage 3.c.)";
 permAppendConsThm::usage = "permAppendConsThm — ⊢ ∀x l1 l2. PERM (APPEND l1 (CONS x l2)) (CONS x (APPEND l1 l2)). Moving CONS-x across the prefix l1 is a permutation. (FTA stage 3.c.)";
 
+multEqZeroThm::usage = "multEqZeroThm — ⊢ ∀x a. x * a = 0 ⇒ x = 0 ∨ a = 0. No zero divisors in ℕ. (FTA stage 3.d helper.)";
+multLeftCancelThm::usage = "multLeftCancelThm — ⊢ ∀x. ¬(x = 0) ⇒ ∀a b. x * a = x * b ⇒ a = b. Left multiplicative cancellation in ℕ. (FTA stage 3.d helper.)";
+primeNotZeroThm::usage = "primeNotZeroThm — ⊢ ∀p. prime p ⇒ ¬(p = 0). (FTA stage 3.d helper.)";
+primesEqIfDividesThm::usage = "primesEqIfDividesThm — ⊢ ∀p q. prime p ⇒ prime q ⇒ divides p q ⇒ p = q. Two primes are equal whenever one divides the other. (FTA stage 3.d helper.)";
+allMemImpThm::usage = "allMemImpThm — ⊢ ∀P l. ALL P l ⇒ ∀x. MEM x l ⇒ P x. ALL is universally quantified MEM. (FTA stage 3.d helper.)";
+foldrEqOneNilThm::usage = "foldrEqOneNilThm — ⊢ ∀l. ALL prime l ⇒ FOLDR * (SUC 0) l = SUC 0 ⇒ l = NIL. A product of primes equals 1 only for the empty list. (FTA stage 3.d helper.)";
+primeFactorsUniqueThm::usage = "primeFactorsUniqueThm — ⊢ ∀l1 l2. ALL prime l1 ⇒ ALL prime l2 ⇒ FOLDR * (SUC 0) l1 = FOLDR * (SUC 0) l2 ⇒ PERM l1 l2. Uniqueness of prime factorization modulo permutation. FTA stage 3 capstone.";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -109,6 +117,14 @@ foldrTm[fn_, base_, list_] :=
 existsListTm[v_, body_] :=
   mkComb[mkConst["∃", tyFun[tyFun[numListTy[], boolTy], boolTy]],
     mkAbs[v, body]];
+memNumConst[] := mkConst["MEM", tyFun[numTy, tyFun[numListTy[], boolTy]]];
+memNumTm[x_, l_] := mkComb[mkComb[memNumConst[], x], l];
+appendNumConst[] := mkConst["APPEND",
+  tyFun[numListTy[], tyFun[numListTy[], numListTy[]]]];
+appendNumTm[a_, b_] := mkComb[mkComb[appendNumConst[], a], b];
+permNumConst[] := mkConst["PERM",
+  tyFun[numListTy[], tyFun[numListTy[], boolTy]]];
+permNumTm[a_, b_] := mkComb[mkComb[permNumConst[], a], b];
 
 (* ============================================================ *)
 (* posAddLtThm  (stage-2 helper)                                 *)
@@ -2097,6 +2113,956 @@ permAppendConsThm =
       genX2 = HOL`Bool`GEN[xT, genL1];
       genX2
     ]
+  ];
+
+(* ============================================================ *)
+(* multEqZeroThm  (stage-3.d helper)                             *)
+(*   ⊢ ∀x a. x * a = 0 ⇒ x = 0 ∨ a = 0.                          *)
+(* Cases on x via numCasesThm. x = 0: DISJ1. x = SUC k:           *)
+(*   SUC k * a = a + k * a (timesLeftSucThm), so a + k * a = 0;   *)
+(*   addEqZeroLeftThm gives a = 0; DISJ2.                          *)
+(* ============================================================ *)
+
+multEqZeroThm =
+  Module[{xV, aV, kV, hypH, casesX, zeroBranch, sucBranch, exKBody,
+          body, dischHyp, gens},
+    xV = mkVar["xMZ", numTy];
+    aV = mkVar["aMZ", numTy];
+    kV = mkVar["kMZ", numTy];
+
+    hypH = ASSUME[mkEq[timesN[xV, aV], zeroN[]]];
+    casesX = HOL`Bool`SPEC[xV, HOL`Stdlib`Num`numCasesThm];
+    (* ⊢ x = 0 ∨ ∃m. x = SUC m *)
+
+    zeroBranch = Module[{xEq0Hyp},
+      xEq0Hyp = ASSUME[mkEq[xV, zeroN[]]];
+      HOL`Bool`DISJ1[xEq0Hyp, mkEq[aV, zeroN[]]]
+    ];
+
+    sucBranch = Module[{exKHyp, xEqSucKHyp, sucMultEqZ, timesLeftAt,
+                       addEqZ, aEq0, chosen},
+      exKBody = mkComb[mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]],
+        mkAbs[kV, mkEq[xV, sucN[kV]]]];
+      exKHyp = ASSUME[exKBody];
+      xEqSucKHyp = ASSUME[mkEq[xV, sucN[kV]]];
+
+      sucMultEqZ = HOL`Drule`SUBS[{xEqSucKHyp}, hypH];
+      (* (xEqSucK, hypH) ⊢ SUC k * a = 0 *)
+      timesLeftAt = HOL`Bool`SPEC[aV, HOL`Bool`SPEC[kV,
+        HOL`Stdlib`Num`timesLeftSucThm]];
+      (* ⊢ SUC k * a = a + k * a *)
+      addEqZ = TRANS[HOL`Equal`SYM[timesLeftAt], sucMultEqZ];
+      (* (…) ⊢ a + k * a = 0 *)
+      aEq0 = HOL`Bool`MP[
+        HOL`Bool`SPEC[timesN[kV, aV],
+          HOL`Bool`SPEC[aV, HOL`Stdlib`Num`addEqZeroLeftThm]],
+        addEqZ];
+      (* (…) ⊢ a = 0 *)
+      chosen = HOL`Bool`CHOOSE[kV, exKHyp,
+        HOL`Bool`DISJ2[aEq0, mkEq[xV, zeroN[]]]];
+      chosen
+    ];
+
+    body = HOL`Bool`DISJCASES[casesX, zeroBranch, sucBranch];
+    dischHyp = HOL`Bool`DISCH[mkEq[timesN[xV, aV], zeroN[]], body];
+    gens = HOL`Bool`GEN[xV, HOL`Bool`GEN[aV, dischHyp]];
+    gens
+  ];
+
+(* ============================================================ *)
+(* multLeftCancelThm  (stage-3.d helper)                         *)
+(*   ⊢ ∀x. ¬(x = 0) ⇒ ∀a b. x * a = x * b ⇒ a = b.               *)
+(*                                                              *)
+(* Fix x with x ≠ 0 outside; num induction on a.                  *)
+(*   Base a = 0: x*b = 0 (from x*0=0 + hyp); multEqZeroThm with    *)
+(*     ¬(x=0) gives b=0; SYM gives 0 = b.                          *)
+(*   Step a = SUC a': IH ⊢ ∀b. x*a' = x*b ⇒ a' = b.                *)
+(*     Cases on b (numCasesThm). b = 0: x*SUC a' = x*0 = 0,        *)
+(*       x*SUC a' = x*a' + x by timesSucEq, so x*a' + x = 0;        *)
+(*       addEqZeroRight gives x=0 — contradiction; CONTR.          *)
+(*     b = SUC b': two timesSucEq + addRightCancel reduce to        *)
+(*       x*a' = x*b'; IH yields a' = b'; APTERM[SUC] +              *)
+(*       SUBS gives SUC a' = b.                                     *)
+(* ============================================================ *)
+
+multLeftCancelThm =
+  Module[{xV, aV, aPV, bV, bPV, kCasesV, xNotZero, predLam, inductSpec,
+          inductBeta, baseCase, indStep, conjForall, finalAtA,
+          dischNotZ, gen},
+    xV = mkVar["xMC", numTy];
+    aV = mkVar["aMC", numTy];
+    aPV = mkVar["aPMC", numTy];
+    bV = mkVar["bMC", numTy];
+    bPV = mkVar["bPMC", numTy];
+    kCasesV = mkVar["kMCs", numTy];
+
+    xNotZero = ASSUME[notTm[mkEq[xV, zeroN[]]]];
+
+    (* predLam[a] = ∀b. x * a = x * b ⇒ a = b *)
+    predLam = mkAbs[aV,
+      mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+        mkAbs[bV, impTm[mkEq[timesN[xV, aV], timesN[xV, bV]],
+          mkEq[aV, bV]]]]];
+
+    inductSpec = HOL`Bool`SPEC[predLam, HOL`Stdlib`Num`numInductionThm];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+    (* ⊢ (∀b. x*0 = x*b ⇒ 0 = b)
+       ∧ (∀a'. (∀b. x*a' = x*b ⇒ a' = b)
+                ⇒ (∀b. x*SUC a' = x*b ⇒ SUC a' = b))
+       ⇒ ∀a. ∀b. x*a = x*b ⇒ a = b *)
+
+    baseCase = Module[{bLocal, eqHyp, x0Eq, eqVia0, symEq, bEq0Disj,
+                      bEq0, zeroEqB, dischEq},
+      bLocal = bV;
+      eqHyp = ASSUME[mkEq[timesN[xV, zeroN[]], timesN[xV, bLocal]]];
+      x0Eq = HOL`Bool`SPEC[xV, HOL`Stdlib`Num`timesZeroEqThm];
+      (* ⊢ x * 0 = 0 *)
+      eqVia0 = TRANS[HOL`Equal`SYM[x0Eq], eqHyp];
+      (* (eqHyp) ⊢ 0 = x * bLocal *)
+      symEq = HOL`Equal`SYM[eqVia0];
+      (* (eqHyp) ⊢ x * bLocal = 0 *)
+      bEq0Disj = HOL`Bool`MP[
+        HOL`Bool`SPEC[bLocal, HOL`Bool`SPEC[xV, multEqZeroThm]],
+        symEq];
+      (* (eqHyp) ⊢ x = 0 ∨ bLocal = 0 *)
+      bEq0 = HOL`Bool`DISJCASES[bEq0Disj,
+        Module[{xEq0Hyp, fThm},
+          xEq0Hyp = ASSUME[mkEq[xV, zeroN[]]];
+          fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[xNotZero], xEq0Hyp];
+          HOL`Bool`CONTR[mkEq[bLocal, zeroN[]], fThm]],
+        ASSUME[mkEq[bLocal, zeroN[]]]];
+      (* (eqHyp, ¬(x=0)) ⊢ bLocal = 0 *)
+      zeroEqB = HOL`Equal`SYM[bEq0];
+      (* (eqHyp, ¬(x=0)) ⊢ 0 = bLocal *)
+      dischEq = HOL`Bool`DISCH[
+        mkEq[timesN[xV, zeroN[]], timesN[xV, bLocal]], zeroEqB];
+      HOL`Bool`GEN[bLocal, dischEq]
+    ];
+
+    indStep = Module[{aPL, ihHypT, ihHyp, bLocal, eqHyp, casesB,
+                     zeroBranch, sucBranch, sucBody, dischEq, allB,
+                     dischIH},
+      aPL = aPV;
+      ihHypT = mkComb[mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]],
+        mkAbs[bV, impTm[mkEq[timesN[xV, aPL], timesN[xV, bV]],
+          mkEq[aPL, bV]]]];
+      ihHyp = ASSUME[ihHypT];
+
+      bLocal = bV;
+      eqHyp = ASSUME[mkEq[timesN[xV, sucN[aPL]], timesN[xV, bLocal]]];
+      casesB = HOL`Bool`SPEC[bLocal, HOL`Stdlib`Num`numCasesThm];
+
+      zeroBranch = Module[{bEq0Hyp, eqAt0, xT0Eq, eqIsZ, timesSucEq,
+                          addEqZAtX, xEq0, fThm},
+        bEq0Hyp = ASSUME[mkEq[bLocal, zeroN[]]];
+        eqAt0 = HOL`Drule`SUBS[{bEq0Hyp}, eqHyp];
+        (* (bEq0, eqHyp) ⊢ x * SUC aPL = x * 0 *)
+        xT0Eq = HOL`Bool`SPEC[xV, HOL`Stdlib`Num`timesZeroEqThm];
+        eqIsZ = TRANS[eqAt0, xT0Eq];
+        (* (…) ⊢ x * SUC aPL = 0 *)
+        timesSucEq = HOL`Bool`SPEC[aPL, HOL`Bool`SPEC[xV,
+          HOL`Stdlib`Num`timesSucEqThm]];
+        (* ⊢ x * SUC aPL = x * aPL + x *)
+        addEqZAtX = TRANS[HOL`Equal`SYM[timesSucEq], eqIsZ];
+        (* (…) ⊢ x * aPL + x = 0 *)
+        xEq0 = HOL`Bool`MP[
+          HOL`Bool`SPEC[xV, HOL`Bool`SPEC[timesN[xV, aPL],
+            HOL`Stdlib`Num`addEqZeroRightThm]],
+          addEqZAtX];
+        (* (…) ⊢ x = 0 *)
+        fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[xNotZero], xEq0];
+        HOL`Bool`CONTR[mkEq[sucN[aPL], bLocal], fThm]
+      ];
+
+      sucBranch = Module[{exBpBody, exBpHyp, bEqSucBpHyp, eqAtSucBp,
+                         timesSucAtA, timesSucAtBp, addCancAtRow,
+                         midEq, cancled, ihAtBp, apEq, sucAEqSucBp,
+                         finalEq, chosen},
+        exBpBody = mkComb[mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[bPV, mkEq[bLocal, sucN[bPV]]]];
+        exBpHyp = ASSUME[exBpBody];
+        bEqSucBpHyp = ASSUME[mkEq[bLocal, sucN[bPV]]];
+
+        eqAtSucBp = HOL`Drule`SUBS[{bEqSucBpHyp}, eqHyp];
+        (* (bEqSucBp, eqHyp) ⊢ x * SUC aPL = x * SUC bPV *)
+        timesSucAtA = HOL`Bool`SPEC[aPL, HOL`Bool`SPEC[xV,
+          HOL`Stdlib`Num`timesSucEqThm]];
+        (* ⊢ x * SUC aPL = x * aPL + x *)
+        timesSucAtBp = HOL`Bool`SPEC[bPV, HOL`Bool`SPEC[xV,
+          HOL`Stdlib`Num`timesSucEqThm]];
+        (* ⊢ x * SUC bPV = x * bPV + x *)
+        midEq = TRANS[HOL`Equal`SYM[timesSucAtA],
+          TRANS[eqAtSucBp, timesSucAtBp]];
+        (* (…) ⊢ x * aPL + x = x * bPV + x *)
+        addCancAtRow = HOL`Bool`SPEC[timesN[xV, bPV],
+          HOL`Bool`SPEC[timesN[xV, aPL], HOL`Bool`SPEC[xV,
+            HOL`Stdlib`Num`addRightCancelThm]]];
+        (* addRightCancelThm: ∀m n k. n + m = k + m ⇒ n = k.       *)
+        (* Outermost ∀m → xV (the common right operand), then       *)
+        (* ∀n → xV*aPL, then ∀k → xV*bPV.                            *)
+        (* ⊢ x*aPL + x = x*bPV + x ⇒ x*aPL = x*bPV *)
+        cancled = HOL`Bool`MP[addCancAtRow, midEq];
+        (* (…) ⊢ x * aPL = x * bPV *)
+
+        ihAtBp = HOL`Bool`SPEC[bPV, ihHyp];
+        (* ⊢ x * aPL = x * bPV ⇒ aPL = bPV *)
+        apEq = HOL`Bool`MP[ihAtBp, cancled];
+        (* (…) ⊢ aPL = bPV *)
+        sucAEqSucBp = HOL`Equal`APTERM[
+          HOL`Stdlib`Num`sucConst[], apEq];
+        (* (…) ⊢ SUC aPL = SUC bPV *)
+        finalEq = HOL`Drule`SUBS[{HOL`Equal`SYM[bEqSucBpHyp]},
+          sucAEqSucBp];
+        (* (bEqSucBp, …) ⊢ SUC aPL = bLocal *)
+        chosen = HOL`Bool`CHOOSE[bPV, exBpHyp, finalEq];
+        (* (∃bp. b = SUC bp, …) ⊢ SUC aPL = bLocal *)
+        chosen
+      ];
+
+      sucBody = HOL`Bool`DISJCASES[casesB, zeroBranch, sucBranch];
+      dischEq = HOL`Bool`DISCH[
+        mkEq[timesN[xV, sucN[aPL]], timesN[xV, bLocal]], sucBody];
+      allB = HOL`Bool`GEN[bLocal, dischEq];
+      dischIH = HOL`Bool`DISCH[ihHypT, allB];
+      HOL`Bool`GEN[aPL, dischIH]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalAtA = HOL`Bool`MP[inductBeta, conjForall];
+    (* (¬(x=0)) ⊢ ∀a. ∀b. x*a = x*b ⇒ a = b *)
+    dischNotZ = HOL`Bool`DISCH[notTm[mkEq[xV, zeroN[]]], finalAtA];
+    gen = HOL`Bool`GEN[xV, dischNotZ];
+    gen
+  ];
+
+(* ============================================================ *)
+(* primeNotZeroThm  (stage-3.d helper)                            *)
+(*   ⊢ ∀p. prime p ⇒ ¬(p = 0).                                    *)
+(* From prime p extract SUC 0 < p. If p = 0, SUC 0 < 0 — but       *)
+(* notLtZeroThm says ¬(n < 0).                                    *)
+(* ============================================================ *)
+
+primeNotZeroThm =
+  Module[{pV, primeHyp, primeUnf, primeUnfApplied, oneLtP, pEq0Hyp,
+          oneLtZero, fThm, notIntro, dischP, gen},
+    pV = mkVar["pNZ", numTy];
+
+    primeHyp = ASSUME[primeN[pV]];
+    primeUnf = Module[{ap},
+      ap = HOL`Equal`APTHM[HOL`Stdlib`Num`primeDefThm, pV];
+      TRANS[ap, BETACONV[concl[ap][[2]]]]];
+    primeUnfApplied = EQMP[primeUnf, primeHyp];
+    oneLtP = HOL`Bool`CONJUNCT1[primeUnfApplied];
+    (* (prime p) ⊢ SUC 0 < p *)
+
+    pEq0Hyp = ASSUME[mkEq[pV, zeroN[]]];
+    oneLtZero = HOL`Drule`SUBS[{pEq0Hyp}, oneLtP];
+    (* (prime p, p = 0) ⊢ SUC 0 < 0 *)
+    fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[
+      HOL`Bool`SPEC[oneN[], HOL`Stdlib`Num`notLtZeroThm]],
+      oneLtZero];
+    (* (prime p, p = 0) ⊢ F *)
+    notIntro = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[pV, zeroN[]], fThm]];
+    (* (prime p) ⊢ ¬(p = 0) *)
+    dischP = HOL`Bool`DISCH[primeN[pV], notIntro];
+    gen = HOL`Bool`GEN[pV, dischP];
+    gen
+  ];
+
+(* ============================================================ *)
+(* primesEqIfDividesThm  (stage-3.d helper)                       *)
+(*   ⊢ ∀p q. prime p ⇒ prime q ⇒ divides p q ⇒ p = q.             *)
+(*                                                              *)
+(* From prime q: ∀d. d | q ⇒ d = SUC 0 ∨ d = q. SPEC at d = p     *)
+(* gives p = SUC 0 ∨ p = q. From prime p: SUC 0 < p, so p ≠ SUC 0  *)
+(* (ltImpliesNotEq + SYM), leaving p = q.                          *)
+(* ============================================================ *)
+
+primesEqIfDividesThm =
+  Module[{pV, qV, primePHyp, primeQHyp, divHyp, primeUnfQ, primeQApp,
+          oneLtP, primeUnfP, primePApp, allDClause, atP, mpDiv,
+          oneEqPHyp, sucNeqP, sucEqPHyp, sucEqP, fThm, eqPCase,
+          notSucEqPThm, divCase, body, dischDiv, dischPQ, dischPP, gens},
+    pV = mkVar["pPED", numTy];
+    qV = mkVar["qPED", numTy];
+
+    primePHyp = ASSUME[primeN[pV]];
+    primeQHyp = ASSUME[primeN[qV]];
+    divHyp = ASSUME[dividesN[pV, qV]];
+
+    primeUnfQ = Module[{ap},
+      ap = HOL`Equal`APTHM[HOL`Stdlib`Num`primeDefThm, qV];
+      TRANS[ap, BETACONV[concl[ap][[2]]]]];
+    primeQApp = EQMP[primeUnfQ, primeQHyp];
+    (* (prime q) ⊢ SUC 0 < q ∧ (∀d. d|q ⇒ d = SUC 0 ∨ d = q) *)
+    allDClause = HOL`Bool`CONJUNCT2[primeQApp];
+    atP = HOL`Bool`SPEC[pV, allDClause];
+    (* ⊢ p | q ⇒ p = SUC 0 ∨ p = q *)
+    mpDiv = HOL`Bool`MP[atP, divHyp];
+    (* (prime q, p|q) ⊢ p = SUC 0 ∨ p = q *)
+
+    primeUnfP = Module[{ap},
+      ap = HOL`Equal`APTHM[HOL`Stdlib`Num`primeDefThm, pV];
+      TRANS[ap, BETACONV[concl[ap][[2]]]]];
+    primePApp = EQMP[primeUnfP, primePHyp];
+    oneLtP = HOL`Bool`CONJUNCT1[primePApp];
+    (* (prime p) ⊢ SUC 0 < p *)
+
+    notSucEqPThm = HOL`Bool`MP[
+      HOL`Bool`SPEC[pV, HOL`Bool`SPEC[oneN[],
+        HOL`Stdlib`Num`ltImpliesNotEqThm]],
+      oneLtP];
+    (* (prime p) ⊢ ¬(SUC 0 = p) *)
+
+    eqPCase = Module[{pEqOneHyp, oneEqP, fThm2},
+      pEqOneHyp = ASSUME[mkEq[pV, oneN[]]];
+      oneEqP = HOL`Equal`SYM[pEqOneHyp];
+      (* (p = SUC 0) ⊢ SUC 0 = p *)
+      fThm2 = HOL`Bool`MP[HOL`Bool`NOTELIM[notSucEqPThm], oneEqP];
+      HOL`Bool`CONTR[mkEq[pV, qV], fThm2]
+    ];
+    (* (prime p, p = SUC 0) ⊢ p = q *)
+
+    divCase = ASSUME[mkEq[pV, qV]];
+    (* (p = q) ⊢ p = q *)
+
+    body = HOL`Bool`DISJCASES[mpDiv, eqPCase, divCase];
+    (* (prime p, prime q, p|q) ⊢ p = q *)
+    dischDiv = HOL`Bool`DISCH[dividesN[pV, qV], body];
+    dischPQ = HOL`Bool`DISCH[primeN[qV], dischDiv];
+    dischPP = HOL`Bool`DISCH[primeN[pV], dischPQ];
+    gens = HOL`Bool`GEN[pV, HOL`Bool`GEN[qV, dischPP]];
+    gens
+  ];
+
+(* ============================================================ *)
+(* allMemImpThm  (stage-3.d helper)                               *)
+(*   ⊢ ∀P l. ALL P l ⇒ ∀x. MEM x l ⇒ P x.                         *)
+(* List induction on l (P free outside). NIL: MEM x NIL = F gives  *)
+(* vacuous. CONS y l': from ALL P (CONS y l') = P y ∧ ALL P l';    *)
+(*   MEM x (CONS y l') = (x = y ∨ MEM x l'); x=y branch uses        *)
+(*   SUBS[x=y]→P x = P y from the ALL conjunct; MEM x l' branch     *)
+(*   applies IH.                                                  *)
+(* ============================================================ *)
+
+allMemImpThm =
+  Module[{αAM, αAML, predFnTy, pV, lV, xT, predLam, inductSpec,
+          inductBeta, baseCase, indStep, conjForall, finalAtL,
+          dischP, genP, allC, memC, nilC, consC, allAt, memAt},
+    αAM = mkVarType["A"];
+    αAML = HOL`Stdlib`List`listTy[αAM];
+    predFnTy = tyFun[αAM, boolTy];
+    pV = mkVar["pAM", predFnTy];
+    lV = mkVar["lAM", αAML];
+    xT = mkVar["xAM", αAM];
+
+    allC = mkConst["ALL", tyFun[predFnTy, tyFun[αAML, boolTy]]];
+    memC = mkConst["MEM", tyFun[αAM, tyFun[αAML, boolTy]]];
+    nilC = mkConst["NIL", αAML];
+    consC = mkConst["CONS", tyFun[αAM, tyFun[αAML, αAML]]];
+
+    allAt[lt_] := mkComb[mkComb[allC, pV], lt];
+    memAt[xt_, lt_] := mkComb[mkComb[memC, xt], lt];
+
+    (* predLam[l] = ALL P l ⇒ ∀x. MEM x l ⇒ P x *)
+    predLam = mkAbs[lV,
+      impTm[allAt[lV],
+        mkComb[mkConst["∀", tyFun[tyFun[αAM, boolTy], boolTy]],
+          mkAbs[xT, impTm[memAt[xT, lV], mkComb[pV, xT]]]]]];
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{mkVarType["A"] -> αAM},
+        HOL`Stdlib`List`listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+
+    baseCase = Module[{allNilHyp, memHyp, memNilAt, fThm, dischMem,
+                      genX, dischAll},
+      allNilHyp = ASSUME[allAt[nilC]];
+      memHyp = ASSUME[memAt[xT, nilC]];
+      memNilAt = HOL`Bool`SPEC[xT,
+        INSTTYPE[{mkVarType["A"] -> αAM},
+          HOL`Stdlib`List`memNilThm]];
+      fThm = EQMP[memNilAt, memHyp];
+      dischMem = HOL`Bool`DISCH[memAt[xT, nilC],
+        HOL`Bool`CONTR[mkComb[pV, xT], fThm]];
+      genX = HOL`Bool`GEN[xT, dischMem];
+      dischAll = HOL`Bool`DISCH[allAt[nilC], genX];
+      dischAll
+    ];
+
+    indStep = Module[{yV, lLoc, ihHypT, ihHyp, allConsHyp, allConsAt,
+                     allConsConj, allHyp, allLLoc, pY, dischIH,
+                     genCase, memConsHyp, memConsAt, memDisj, headCase,
+                     tailCase, body, dischMem, genX, dischAll, dischIHOuter},
+      yV   = mkVar["yAM", αAM];
+      lLoc = mkVar["lAMI", αAML];
+
+      ihHypT = impTm[allAt[lLoc],
+        mkComb[mkConst["∀", tyFun[tyFun[αAM, boolTy], boolTy]],
+          mkAbs[xT, impTm[memAt[xT, lLoc], mkComb[pV, xT]]]]];
+      ihHyp = ASSUME[ihHypT];
+
+      allConsHyp = ASSUME[allAt[mkComb[mkComb[consC, yV], lLoc]]];
+      allConsAt = HOL`Bool`SPEC[lLoc, HOL`Bool`SPEC[yV,
+        HOL`Bool`SPEC[pV,
+          INSTTYPE[{mkVarType["A"] -> αAM},
+            HOL`Stdlib`List`allConsThm]]]];
+      (* ⊢ ALL P (CONS y l) = P y ∧ ALL P l *)
+      allConsConj = EQMP[allConsAt, allConsHyp];
+      pY = HOL`Bool`CONJUNCT1[allConsConj];
+      allLLoc = HOL`Bool`CONJUNCT2[allConsConj];
+      (* (ALL P (CONS y l)) ⊢ P y    and    ⊢ ALL P l *)
+
+      memConsHyp = ASSUME[memAt[xT, mkComb[mkComb[consC, yV], lLoc]]];
+      memConsAt = HOL`Bool`SPEC[lLoc, HOL`Bool`SPEC[yV,
+        HOL`Bool`SPEC[xT,
+          INSTTYPE[{mkVarType["A"] -> αAM},
+            HOL`Stdlib`List`memConsThm]]]];
+      memDisj = EQMP[memConsAt, memConsHyp];
+
+      headCase = Module[{xEqYHyp, pXEqPY, pXFromY},
+        xEqYHyp = ASSUME[mkEq[xT, yV]];
+        pXEqPY = HOL`Equal`APTERM[pV, xEqYHyp];
+        (* (x = y) ⊢ P x = P y *)
+        pXFromY = EQMP[HOL`Equal`SYM[pXEqPY], pY];
+        (* (x = y, ALL P (CONS y l)) ⊢ P x *)
+        pXFromY
+      ];
+
+      tailCase = Module[{memXLHyp, ihAppliedAll, ihAtX, pXFromTail},
+        memXLHyp = ASSUME[memAt[xT, lLoc]];
+        ihAppliedAll = HOL`Bool`MP[ihHyp, allLLoc];
+        (* (IH, ALL P (CONS y l)) ⊢ ∀x. MEM x l ⇒ P x *)
+        ihAtX = HOL`Bool`SPEC[xT, ihAppliedAll];
+        (* ⊢ MEM x l ⇒ P x *)
+        pXFromTail = HOL`Bool`MP[ihAtX, memXLHyp];
+        pXFromTail
+      ];
+
+      body = HOL`Bool`DISJCASES[memDisj, headCase, tailCase];
+      dischMem = HOL`Bool`DISCH[memAt[xT, mkComb[mkComb[consC, yV], lLoc]], body];
+      genX = HOL`Bool`GEN[xT, dischMem];
+      dischAll = HOL`Bool`DISCH[allAt[mkComb[mkComb[consC, yV], lLoc]], genX];
+      dischIHOuter = HOL`Bool`DISCH[ihHypT, dischAll];
+      HOL`Bool`GEN[yV, HOL`Bool`GEN[lLoc, dischIHOuter]]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalAtL = HOL`Bool`MP[inductBeta, conjForall];
+    (* (free pV) ⊢ ∀l. ALL P l ⇒ ∀x. MEM x l ⇒ P x *)
+    genP = HOL`Bool`GEN[pV, finalAtL];
+    genP
+  ];
+
+(* ============================================================ *)
+(* foldrEqOneNilThm  (stage-3.d helper)                          *)
+(*   ⊢ ∀l. ALL prime l ⇒ FOLDR * (SUC 0) l = SUC 0 ⇒ l = NIL.    *)
+(*                                                              *)
+(* Cases on l. NIL: trivial. CONS y l': from ALL prime (CONS y l')*)
+(* extract prime y, hence SUC 0 < y. Then y * FOLDR l' = SUC 0,   *)
+(* so y | SUC 0, contradicting primeNotDivOne. (Hence the CONS    *)
+(* case is vacuous via CONTR.)                                    *)
+(* ============================================================ *)
+
+foldrEqOneNilThm =
+  Module[{lV, allHyp, foldrEqHyp, predLam, inductSpec, inductBeta,
+          baseCase, indStep, conjForall, finalAtL},
+    lV = mkVar["lFE", numListTy[]];
+
+    predLam = mkAbs[lV,
+      impTm[allTm[HOL`Stdlib`Num`primeConst[], lV],
+        impTm[mkEq[foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], lV],
+                   oneN[]],
+              mkEq[lV, nilNumTm[]]]]];
+
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{mkVarType["A"] -> numTy},
+        HOL`Stdlib`List`listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+
+    baseCase = Module[{allNilHyp, foldrHyp, refl, dischFold, dischAll},
+      allNilHyp = ASSUME[allTm[HOL`Stdlib`Num`primeConst[], nilNumTm[]]];
+      foldrHyp = ASSUME[mkEq[
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], nilNumTm[]],
+        oneN[]]];
+      refl = REFL[nilNumTm[]];
+      dischFold = HOL`Bool`DISCH[concl[foldrHyp], refl];
+      dischAll = HOL`Bool`DISCH[concl[allNilHyp], dischFold];
+      dischAll
+    ];
+
+    indStep = Module[{yV, lLoc, ihHypT, ihHyp, allConsHyp, foldrEqHyp,
+                    allConsAt, allConsConj, primeY, foldrConsAt,
+                    foldrEqDecomp, divPart, divYOne, notDivYOne, fThm,
+                    dischFold, dischAll, dischIHOuter},
+      yV   = mkVar["yFE", numTy];
+      lLoc = mkVar["lFEI", numListTy[]];
+
+      ihHypT = impTm[allTm[HOL`Stdlib`Num`primeConst[], lLoc],
+        impTm[mkEq[foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], lLoc],
+                   oneN[]],
+              mkEq[lLoc, nilNumTm[]]]];
+      ihHyp = ASSUME[ihHypT];
+
+      allConsHyp = ASSUME[allTm[HOL`Stdlib`Num`primeConst[],
+        consNumApp[yV, lLoc]]];
+      foldrEqHyp = ASSUME[mkEq[
+        foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], consNumApp[yV, lLoc]],
+        oneN[]]];
+
+      allConsAt = HOL`Bool`SPEC[lLoc, HOL`Bool`SPEC[yV,
+        HOL`Bool`SPEC[HOL`Stdlib`Num`primeConst[],
+          INSTTYPE[{mkVarType["A"] -> numTy},
+            HOL`Stdlib`List`allConsThm]]]];
+      allConsConj = EQMP[allConsAt, allConsHyp];
+      primeY = HOL`Bool`CONJUNCT1[allConsConj];
+      (* (ALL prime (CONS y l)) ⊢ prime y *)
+
+      foldrConsAt = HOL`Bool`SPEC[lLoc, HOL`Bool`SPEC[yV,
+        HOL`Bool`SPEC[oneN[], HOL`Bool`SPEC[HOL`Stdlib`Num`timesConst[],
+          INSTTYPE[{mkVarType["A"] -> numTy, mkVarType["B"] -> numTy},
+            HOL`Stdlib`List`foldrConsThm]]]]];
+      (* ⊢ FOLDR * 1 (CONS y l) = y * FOLDR * 1 l *)
+      foldrEqDecomp = TRANS[HOL`Equal`SYM[foldrConsAt], foldrEqHyp];
+      (* (foldrEqHyp) ⊢ y * FOLDR * 1 l = 1 *)
+
+      (* From y * FOLDR = 1: y | 1 (witness c = FOLDR * 1 l). *)
+      divPart = Module[{exC, exTm, witness},
+        witness = HOL`Equal`SYM[foldrEqDecomp];
+        (* (foldrEqHyp) ⊢ 1 = y * FOLDR * 1 l *)
+        exTm = mkComb[
+          mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[mkVar["cFE", numTy],
+            mkEq[oneN[], timesN[yV, mkVar["cFE", numTy]]]]];
+        exC = HOL`Bool`EXISTS[exTm,
+          foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], lLoc], witness];
+        EQMP[HOL`Equal`SYM[unfoldDivides[yV, oneN[]]], exC]
+      ];
+      divYOne = divPart;
+      (* (foldrEqHyp) ⊢ divides y (SUC 0) *)
+
+      notDivYOne = HOL`Bool`MP[
+        HOL`Bool`SPEC[yV, primeNotDivOneThm], primeY];
+      (* (ALL prime …) ⊢ ¬(divides y (SUC 0)) *)
+
+      fThm = HOL`Bool`MP[HOL`Bool`NOTELIM[notDivYOne], divYOne];
+      (* (…) ⊢ F *)
+      dischFold = HOL`Bool`DISCH[concl[foldrEqHyp],
+        HOL`Bool`CONTR[mkEq[consNumApp[yV, lLoc], nilNumTm[]], fThm]];
+      dischAll = HOL`Bool`DISCH[concl[allConsHyp], dischFold];
+      dischIHOuter = HOL`Bool`DISCH[ihHypT, dischAll];
+      HOL`Bool`GEN[yV, HOL`Bool`GEN[lLoc, dischIHOuter]]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalAtL = HOL`Bool`MP[inductBeta, conjForall];
+    finalAtL
+  ];
+
+(* ============================================================ *)
+(* primeFactorsUniqueThm  (FTA stage 3 capstone)                 *)
+(*                                                              *)
+(*   ⊢ ∀l1 l2. ALL prime l1 ⇒ ALL prime l2                       *)
+(*           ⇒ FOLDR * (SUC 0) l1 = FOLDR * (SUC 0) l2           *)
+(*           ⇒ PERM l1 l2.                                       *)
+(*                                                              *)
+(* List induction on l1 (predicate quantifies ∀l2 inside).        *)
+(*                                                              *)
+(* NIL case: FOLDR NIL = 1, so FOLDR l2 = 1; foldrEqOneNilThm     *)
+(*   gives l2 = NIL; permNilThm + APTERM(PERM NIL) closes.        *)
+(*                                                              *)
+(* CONS x l1' case: prime x ⇒ ¬(x = 0) (primeNotZeroThm).         *)
+(*   x * FOLDR l1' = FOLDR l2, so x | FOLDR l2 (witness FOLDR l1').*)
+(*   primeDivFoldrTimesThm ⇒ ∃y. MEM y l2 ∧ x | y.                *)
+(*   allMemImpThm + ALL prime l2 + MEM y l2 ⇒ prime y.            *)
+(*   primesEqIfDividesThm ⇒ x = y, hence MEM x l2.                *)
+(*   memSplitThm ⇒ ∃l2a l2b. l2 = APPEND l2a (CONS x l2b).        *)
+(*   permAppendConsThm + SUBS ⇒ PERM l2 (CONS x (APPEND l2a l2b)).*)
+(*   permFoldrTimesThm transports FOLDR through.                  *)
+(*   multLeftCancelThm cancels x ⇒                                *)
+(*     FOLDR l1' = FOLDR (APPEND l2a l2b).                        *)
+(*   ALL prime l2 splits via allAppend + allCons ⇒                *)
+(*     ALL prime l2a ∧ ALL prime l2b ⇒ ALL prime (APPEND l2a l2b).*)
+(*   IH at (APPEND l2a l2b) ⇒ PERM l1' (APPEND l2a l2b).          *)
+(*   permConsThm at x ⇒ PERM (CONS x l1') (CONS x (APPEND l2a l2b)).*)
+(*   permSymThm of the permAppendCons step + permTransThm assemble*)
+(*     PERM (CONS x l1') l2.                                      *)
+(* ============================================================ *)
+
+
+primeFactorsUniqueThm =
+  Module[{αTyL, βTyL, l1V, l2V, xV, l1pV, predLam, inductSpec, inductBeta,
+          baseCase, indStep, conjForall, finalAtL1,
+          allPrimePred, foldrAtL,
+          permNilNum, permConsNum, permSymNum, permTransNum,
+          permAppendConsNum},
+    αTyL = mkVarType["A"]; βTyL = mkVarType["B"];
+
+    l1V = mkVar["l1FU", numListTy[]];
+    l2V = mkVar["l2FU", numListTy[]];
+    xV  = mkVar["xFU", numTy];
+    l1pV = mkVar["l1pFU", numListTy[]];
+
+    allPrimePred[lt_] := allTm[HOL`Stdlib`Num`primeConst[], lt];
+    foldrAtL[lt_] := foldrTm[HOL`Stdlib`Num`timesConst[], oneN[], lt];
+
+    (* Num-instantiated PERM theorems. *)
+    permNilNum         = INSTTYPE[{αPerm -> numTy}, permNilThm];
+    permConsNum        = INSTTYPE[{αPerm -> numTy}, permConsThm];
+    permSymNum         = INSTTYPE[{αPerm -> numTy}, permSymThm];
+    permTransNum       = INSTTYPE[{αPerm -> numTy}, permTransThm];
+    permAppendConsNum  = INSTTYPE[{αPerm -> numTy}, permAppendConsThm];
+
+    (* predLam[l1] = ∀l2. ALL prime l1 ⇒ ALL prime l2
+                          ⇒ FOLDR * 1 l1 = FOLDR * 1 l2
+                          ⇒ PERM l1 l2 *)
+    predLam = mkAbs[l1V,
+      mkComb[mkConst["∀", tyFun[tyFun[numListTy[], boolTy], boolTy]],
+        mkAbs[l2V,
+          impTm[allPrimePred[l1V],
+            impTm[allPrimePred[l2V],
+              impTm[mkEq[foldrAtL[l1V], foldrAtL[l2V]],
+                permNumTm[l1V, l2V]]]]]]];
+
+    inductSpec = HOL`Bool`SPEC[predLam,
+      INSTTYPE[{mkVarType["A"] -> numTy},
+        HOL`Stdlib`List`listInductionThm]];
+    inductBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], inductSpec];
+
+    (* ============= NIL case ============= *)
+    baseCase = Module[{l2Loc, allNilHyp, allL2Hyp, foldrEqHyp,
+                       foldrNilAt, foldrL2EqOne, l2EqNil, permNilNil,
+                       permLifted, dischFold, dischAllL2, dischAllNil,
+                       genL2},
+      l2Loc = l2V;
+      allNilHyp = ASSUME[allPrimePred[nilNumTm[]]];
+      allL2Hyp = ASSUME[allPrimePred[l2Loc]];
+      foldrEqHyp = ASSUME[mkEq[foldrAtL[nilNumTm[]], foldrAtL[l2Loc]]];
+
+      foldrNilAt = HOL`Bool`SPEC[oneN[],
+        HOL`Bool`SPEC[HOL`Stdlib`Num`timesConst[],
+          INSTTYPE[{αTyL -> numTy, βTyL -> numTy},
+            HOL`Stdlib`List`foldrNilThm]]];
+      (* ⊢ FOLDR * 1 NIL = SUC 0 *)
+      foldrL2EqOne = TRANS[HOL`Equal`SYM[foldrEqHyp], foldrNilAt];
+      (* (foldrEqHyp) ⊢ FOLDR * 1 l2 = SUC 0 *)
+
+      l2EqNil = HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Bool`SPEC[l2Loc, foldrEqOneNilThm], allL2Hyp], foldrL2EqOne];
+      (* (…) ⊢ l2 = NIL *)
+
+      permNilNil = permNilNum;
+      (* ⊢ PERM NIL NIL (at num) *)
+      permLifted = EQMP[
+        HOL`Equal`APTERM[mkComb[permNumConst[], nilNumTm[]],
+          HOL`Equal`SYM[l2EqNil]],
+        permNilNil];
+      (* (…) ⊢ PERM NIL l2 *)
+
+      dischFold = HOL`Bool`DISCH[concl[foldrEqHyp], permLifted];
+      dischAllL2 = HOL`Bool`DISCH[concl[allL2Hyp], dischFold];
+      dischAllNil = HOL`Bool`DISCH[concl[allNilHyp], dischAllL2];
+      genL2 = HOL`Bool`GEN[l2Loc, dischAllNil];
+      genL2
+    ];
+
+    (* ============= CONS x l1' case ============= *)
+    indStep = Module[{l1pLoc, xLoc, ihHypT, ihHyp, ihAtl2, l2Loc,
+                      allConsXl1pHyp, allL2Hyp, foldrEqHyp,
+                      allConsXl1pUnf, primeXThm, allPrimeL1pThm,
+                      xNotZero, foldrConsXl1pAt, foldrAtCons,
+                      xTimesFoldrL1pEqFoldrL2,
+                      divXFoldrL2, primeDivFoldrAt, primeDivFoldrAtL2,
+                      exYBody, exYHyp, yV, yMemDivBodyTm, yMemDivHyp,
+                      memYL2, divXY, primeY,
+                      xEqY, memXL2,
+                      memSplitAt, memSplitMP, l2aV, l2bV,
+                      l2aExBodyTm, l2aExHyp, l2EqSplit,
+                      permAppendConsAt, permL2AndExpanded, permL2Form,
+                      permFoldrAt, foldrL2EqXTimesAppend,
+                      foldrEqFromCons,
+                      eqViaConcrete, allL2InAppendForm,
+                      allAppendL2aXl2b, allConjL2aRest, allL2a,
+                      allConsXl2bConj, primeXFromL2, allPrimeL2b,
+                      allAppendL2aL2b, allAppendInst,
+                      foldrCancelEq, foldrL1pEqFoldrAppend,
+                      ihApplied, permL1pAppend, permConsXL1pXAppend,
+                      permXAppendL2, permConsXl1pL2,
+                      dischFoldFinal, dischAllL2Final, dischAllConsFinal,
+                      genL2Final, dischIH, outerGens,
+                      memYBody, memYAtCons, eqFromMemY,
+                      memXL2Subst},
+      l1pLoc = l1pV;
+      xLoc   = xV;
+      l2Loc  = l2V;
+
+      (* IH at l1pLoc *)
+      ihHypT = mkComb[mkConst["∀", tyFun[tyFun[numListTy[], boolTy], boolTy]],
+        mkAbs[l2V,
+          impTm[allPrimePred[l1pLoc],
+            impTm[allPrimePred[l2V],
+              impTm[mkEq[foldrAtL[l1pLoc], foldrAtL[l2V]],
+                permNumTm[l1pLoc, l2V]]]]]];
+      ihHyp = ASSUME[ihHypT];
+
+      allConsXl1pHyp = ASSUME[allPrimePred[consNumApp[xLoc, l1pLoc]]];
+      allL2Hyp = ASSUME[allPrimePred[l2Loc]];
+      foldrEqHyp = ASSUME[mkEq[
+        foldrAtL[consNumApp[xLoc, l1pLoc]], foldrAtL[l2Loc]]];
+
+      (* prime x ∧ ALL prime l1' from ALL prime (CONS x l1') *)
+      allConsXl1pUnf = EQMP[
+        HOL`Bool`SPEC[l1pLoc, HOL`Bool`SPEC[xLoc,
+          HOL`Bool`SPEC[HOL`Stdlib`Num`primeConst[],
+            INSTTYPE[{αTyL -> numTy}, HOL`Stdlib`List`allConsThm]]]],
+        allConsXl1pHyp];
+      primeXThm     = HOL`Bool`CONJUNCT1[allConsXl1pUnf];
+      allPrimeL1pThm = HOL`Bool`CONJUNCT2[allConsXl1pUnf];
+
+      xNotZero = HOL`Bool`MP[
+        HOL`Bool`SPEC[xLoc, primeNotZeroThm], primeXThm];
+      (* (…) ⊢ ¬(x = 0) *)
+
+      (* FOLDR (CONS x l1') = x * FOLDR l1' *)
+      foldrConsXl1pAt = HOL`Bool`SPEC[l1pLoc, HOL`Bool`SPEC[xLoc,
+        HOL`Bool`SPEC[oneN[], HOL`Bool`SPEC[HOL`Stdlib`Num`timesConst[],
+          INSTTYPE[{αTyL -> numTy, βTyL -> numTy},
+            HOL`Stdlib`List`foldrConsThm]]]]];
+
+      xTimesFoldrL1pEqFoldrL2 = TRANS[HOL`Equal`SYM[foldrConsXl1pAt],
+        foldrEqHyp];
+      (* (foldrEqHyp) ⊢ x * FOLDR l1' = FOLDR l2 *)
+
+      (* x | FOLDR l2: ∃c. FOLDR l2 = x * c with c = FOLDR l1'. *)
+      divXFoldrL2 = Module[{cVlocal, exTm, witnessEq, exThm},
+        cVlocal = mkVar["cDFL", numTy];
+        exTm = mkComb[mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]],
+          mkAbs[cVlocal, mkEq[foldrAtL[l2Loc],
+            timesN[xLoc, cVlocal]]]];
+        witnessEq = HOL`Equal`SYM[xTimesFoldrL1pEqFoldrL2];
+        (* (…) ⊢ FOLDR l2 = x * FOLDR l1' *)
+        exThm = HOL`Bool`EXISTS[exTm, foldrAtL[l1pLoc], witnessEq];
+        EQMP[HOL`Equal`SYM[unfoldDivides[xLoc, foldrAtL[l2Loc]]], exThm]
+      ];
+      (* (foldrEqHyp) ⊢ divides x (FOLDR l2) *)
+
+      (* primeDivFoldrTimesThm: prime x ⇒ ∀l. divides x (FOLDR l) ⇒
+                                ∃y. MEM y l ∧ divides x y. *)
+      primeDivFoldrAt = HOL`Bool`MP[
+        HOL`Bool`SPEC[xLoc, primeDivFoldrTimesThm], primeXThm];
+      primeDivFoldrAtL2 = HOL`Bool`MP[
+        HOL`Bool`SPEC[l2Loc, primeDivFoldrAt], divXFoldrL2];
+      (* (…) ⊢ ∃y. MEM y l2 ∧ divides x y *)
+
+      yV = mkVar["yFU", numTy];
+      yMemDivBodyTm = andTm[memNumTm[yV, l2Loc], dividesN[xLoc, yV]];
+      yMemDivHyp = ASSUME[yMemDivBodyTm];
+      memYL2 = HOL`Bool`CONJUNCT1[yMemDivHyp];
+      divXY  = HOL`Bool`CONJUNCT2[yMemDivHyp];
+
+      (* prime y from allMemImp at p=prime *)
+      primeY = Module[{allMemAt, allMemAtPrimeL2, ihAt, mpFirst, mpSecond},
+        allMemAt = HOL`Bool`SPEC[l2Loc, HOL`Bool`SPEC[
+          HOL`Stdlib`Num`primeConst[],
+          INSTTYPE[{mkVarType["A"] -> numTy}, allMemImpThm]]];
+        (* ⊢ ALL prime l2 ⇒ ∀x. MEM x l2 ⇒ prime x *)
+        mpFirst = HOL`Bool`MP[allMemAt, allL2Hyp];
+        mpSecond = HOL`Bool`MP[HOL`Bool`SPEC[yV, mpFirst], memYL2];
+        mpSecond
+      ];
+      (* (…) ⊢ prime y *)
+
+      xEqY = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Bool`SPEC[yV, HOL`Bool`SPEC[xLoc, primesEqIfDividesThm]],
+        primeXThm], primeY], divXY];
+      (* (…) ⊢ x = y *)
+
+      (* MEM x l2 via SUBS x = y ↔ y = x in MEM y l2 *)
+      memXL2 = HOL`Drule`SUBS[{HOL`Equal`SYM[xEqY]}, memYL2];
+      (* (…) ⊢ MEM x l2 *)
+
+      (* memSplitThm: MEM x l2 ⇒ ∃l1 l2. l2 = APPEND l1 (CONS x l2) *)
+      memSplitMP = HOL`Bool`MP[
+        HOL`Bool`SPEC[l2Loc, HOL`Bool`SPEC[xLoc,
+          INSTTYPE[{mkVarType["A"] -> numTy}, memSplitThm]]], memXL2];
+      (* (…) ⊢ ∃l1' l2'. l2 = APPEND l1' (CONS x l2') *)
+
+      l2aV = mkVar["l2aFU", numListTy[]];
+      l2bV = mkVar["l2bFU", numListTy[]];
+
+      l2aExBodyTm = mkEq[l2Loc,
+        appendNumTm[l2aV, consNumApp[xLoc, l2bV]]];
+
+      (* The huge body that uses l2a, l2b to finish. *)
+      Module[{innerBody},
+        innerBody = Module[{l2EqSplitHyp,
+                            permAppendConsAtV, permL2InCons,
+                            permFoldrAtV, foldrL2EqXAppend,
+                            xTimesFoldrL1pEqXTimesAppend,
+                            foldrL1pEqAppend,
+                            allL2InAppForm, allAppendAt,
+                            allAppendConj, allL2a, allConsRest,
+                            allConsAtV, allConsConj, allL2b,
+                            allAppendL2aL2bThm,
+                            ihAt, ihAllPrimeL1p, ihAllPrimeApp,
+                            ihFoldrEq, permL1pAppendL2,
+                            permConsXCong, permApendConsBacks,
+                            permSymTrans, finalPerm,
+                            outerExHyp},
+          l2EqSplitHyp = ASSUME[l2aExBodyTm];
+
+          (* permAppendCons: PERM (APPEND l2a (CONS x l2b))
+                                  (CONS x (APPEND l2a l2b)) *)
+          permAppendConsAtV = HOL`Bool`SPEC[l2bV,
+            HOL`Bool`SPEC[l2aV,
+              HOL`Bool`SPEC[xLoc, permAppendConsNum]]];
+
+          (* Substitute l2 = APPEND l2a (CONS x l2b) into above
+             to get PERM l2 (CONS x (APPEND l2a l2b)). *)
+          permL2InCons = HOL`Drule`SUBS[
+            {HOL`Equal`SYM[l2EqSplitHyp]}, permAppendConsAtV];
+
+          (* permFoldrTimes: PERM a b ⇒ FOLDR * 1 a = FOLDR * 1 b *)
+          permFoldrAtV = HOL`Bool`MP[
+            HOL`Bool`SPEC[mkComb[mkComb[consNumConst[], xLoc],
+              appendNumTm[l2aV, l2bV]],
+              HOL`Bool`SPEC[l2Loc, permFoldrTimesThm]],
+            permL2InCons];
+          (* (…) ⊢ FOLDR l2 = FOLDR (CONS x (APPEND l2a l2b)) *)
+
+          (* FOLDR (CONS x (APPEND l2a l2b)) = x * FOLDR (APPEND l2a l2b) *)
+          foldrAtCons = HOL`Bool`SPEC[appendNumTm[l2aV, l2bV],
+            HOL`Bool`SPEC[xLoc,
+              HOL`Bool`SPEC[oneN[], HOL`Bool`SPEC[HOL`Stdlib`Num`timesConst[],
+                INSTTYPE[{αTyL -> numTy, βTyL -> numTy},
+                  HOL`Stdlib`List`foldrConsThm]]]]];
+
+          foldrL2EqXAppend = TRANS[permFoldrAtV, foldrAtCons];
+          (* (…) ⊢ FOLDR l2 = x * FOLDR (APPEND l2a l2b) *)
+
+          xTimesFoldrL1pEqXTimesAppend = TRANS[
+            xTimesFoldrL1pEqFoldrL2, foldrL2EqXAppend];
+          (* (…) ⊢ x * FOLDR l1' = x * FOLDR (APPEND l2a l2b) *)
+
+          (* multLeftCancelThm: ¬(x=0) ⇒ ∀a b. x*a = x*b ⇒ a = b *)
+          foldrL1pEqAppend = HOL`Bool`MP[
+            HOL`Bool`SPEC[foldrAtL[appendNumTm[l2aV, l2bV]],
+              HOL`Bool`SPEC[foldrAtL[l1pLoc],
+                HOL`Bool`MP[HOL`Bool`SPEC[xLoc, multLeftCancelThm],
+                  xNotZero]]],
+            xTimesFoldrL1pEqXTimesAppend];
+          (* (…) ⊢ FOLDR l1' = FOLDR (APPEND l2a l2b) *)
+
+          (* ALL prime l2 → ALL prime (APPEND l2a l2b) *)
+          allL2InAppForm = HOL`Drule`SUBS[{l2EqSplitHyp}, allL2Hyp];
+          (* (…) ⊢ ALL prime (APPEND l2a (CONS x l2b)) *)
+          allAppendAt = HOL`Bool`SPEC[consNumApp[xLoc, l2bV],
+            HOL`Bool`SPEC[l2aV, HOL`Bool`SPEC[
+              HOL`Stdlib`Num`primeConst[],
+              INSTTYPE[{mkVarType["A"] -> numTy},
+                HOL`Stdlib`List`allAppendThm]]]];
+          (* ⊢ ALL prime (APPEND l2a (CONS x l2b))
+                = ALL prime l2a ∧ ALL prime (CONS x l2b) *)
+          allAppendConj = EQMP[allAppendAt, allL2InAppForm];
+          allL2a = HOL`Bool`CONJUNCT1[allAppendConj];
+          allConsRest = HOL`Bool`CONJUNCT2[allAppendConj];
+          (* (…) ⊢ ALL prime (CONS x l2b) *)
+          allConsAtV = HOL`Bool`SPEC[l2bV, HOL`Bool`SPEC[xLoc,
+            HOL`Bool`SPEC[HOL`Stdlib`Num`primeConst[],
+              INSTTYPE[{mkVarType["A"] -> numTy},
+                HOL`Stdlib`List`allConsThm]]]];
+          allConsConj = EQMP[allConsAtV, allConsRest];
+          allL2b = HOL`Bool`CONJUNCT2[allConsConj];
+
+          (* Build ALL prime (APPEND l2a l2b) via SYM of allAppend at l2b *)
+          allAppendL2aL2bThm = Module[{appAtV2, conjV},
+            appAtV2 = HOL`Bool`SPEC[l2bV, HOL`Bool`SPEC[l2aV,
+              HOL`Bool`SPEC[HOL`Stdlib`Num`primeConst[],
+                INSTTYPE[{mkVarType["A"] -> numTy},
+                  HOL`Stdlib`List`allAppendThm]]]];
+            (* ⊢ ALL prime (APPEND l2a l2b)
+                 = ALL prime l2a ∧ ALL prime l2b *)
+            conjV = HOL`Bool`CONJ[allL2a, allL2b];
+            EQMP[HOL`Equal`SYM[appAtV2], conjV]
+          ];
+          (* (…) ⊢ ALL prime (APPEND l2a l2b) *)
+
+          (* Apply IH at l2 := APPEND l2a l2b *)
+          ihAt = HOL`Bool`SPEC[appendNumTm[l2aV, l2bV], ihHyp];
+          (* ⊢ ALL prime l1' ⇒ ALL prime (APPEND l2a l2b)
+                ⇒ FOLDR l1' = FOLDR (APPEND l2a l2b) ⇒ PERM l1' (APPEND l2a l2b) *)
+          permL1pAppendL2 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[ihAt,
+            allPrimeL1pThm], allAppendL2aL2bThm], foldrL1pEqAppend];
+          (* (…) ⊢ PERM l1' (APPEND l2a l2b) *)
+
+          (* permCons at x: PERM (CONS x l1') (CONS x (APPEND l2a l2b)) *)
+          permConsXCong = HOL`Bool`MP[
+            HOL`Bool`SPEC[appendNumTm[l2aV, l2bV],
+              HOL`Bool`SPEC[l1pLoc,
+                HOL`Bool`SPEC[xLoc, permConsNum]]],
+            permL1pAppendL2];
+          (* (…) ⊢ PERM (CONS x l1') (CONS x (APPEND l2a l2b)) *)
+
+          (* PERM l2 (CONS x (APPEND l2a l2b)) ⇒
+             PERM (CONS x (APPEND l2a l2b)) l2 via permSym *)
+          (* permSymNum: ∀l1 l2. PERM l1 l2 ⇒ PERM l2 l1. Need to apply  *)
+          (* with l1 = l2Loc, l2 = CONS x (APPEND l2a l2b). Innermost   *)
+          (* SPEC sets the outer ∀l1 → l2Loc.                            *)
+          permSymTrans = HOL`Bool`MP[
+            HOL`Bool`SPEC[
+              mkComb[mkComb[consNumConst[], xLoc],
+                appendNumTm[l2aV, l2bV]],
+              HOL`Bool`SPEC[l2Loc, permSymNum]],
+            permL2InCons];
+          (* (…) ⊢ PERM (CONS x (APPEND l2a l2b)) l2 *)
+
+          (* permTrans: PERM (CONS x l1') l2 *)
+          finalPerm = HOL`Bool`MP[HOL`Bool`MP[
+            HOL`Bool`SPEC[l2Loc, HOL`Bool`SPEC[
+              mkComb[mkComb[consNumConst[], xLoc],
+                appendNumTm[l2aV, l2bV]],
+              HOL`Bool`SPEC[consNumApp[xLoc, l1pLoc], permTransNum]]],
+            permConsXCong], permSymTrans];
+          (* (…) ⊢ PERM (CONS x l1') l2 *)
+
+          finalPerm
+        ];
+
+        (* CHOOSE l2bV from the inner ∃l2'. l2 = APPEND l2a (CONS x l2') *)
+        Module[{outerL2bExBodyTm, l2bExHyp, chosenL2b, chosenL2a},
+          outerL2bExBodyTm = existsListTm[l2bV, l2aExBodyTm];
+          l2bExHyp = ASSUME[outerL2bExBodyTm];
+          chosenL2b = HOL`Bool`CHOOSE[l2bV, l2bExHyp, innerBody];
+          chosenL2a = HOL`Bool`CHOOSE[l2aV, memSplitMP, chosenL2b];
+          (* (…) ⊢ PERM (CONS x l1') l2 *)
+
+          (* Now CHOOSE yV from the ∃y. MEM y l2 ∧ divides x y *)
+          Module[{chosenY, dischFoldFinal, dischAllL2Final,
+                  dischAllConsFinal, genL2Final, dischIH, outerGens},
+            chosenY = HOL`Bool`CHOOSE[yV, primeDivFoldrAtL2, chosenL2a];
+            (* (foldrEqHyp, allConsXl1p, allL2, IH) ⊢ PERM (CONS x l1') l2 *)
+
+            dischFoldFinal = HOL`Bool`DISCH[concl[foldrEqHyp], chosenY];
+            dischAllL2Final = HOL`Bool`DISCH[concl[allL2Hyp], dischFoldFinal];
+            dischAllConsFinal = HOL`Bool`DISCH[
+              concl[allConsXl1pHyp], dischAllL2Final];
+            genL2Final = HOL`Bool`GEN[l2Loc, dischAllConsFinal];
+            dischIH = HOL`Bool`DISCH[ihHypT, genL2Final];
+            outerGens = HOL`Bool`GEN[xLoc, HOL`Bool`GEN[l1pLoc, dischIH]];
+            outerGens
+          ]
+        ]
+      ]
+    ];
+
+    conjForall = HOL`Bool`CONJ[baseCase, indStep];
+    finalAtL1 = HOL`Bool`MP[inductBeta, conjForall];
+    (* ⊢ ∀l1. ∀l2. ALL prime l1 ⇒ ALL prime l2
+                  ⇒ FOLDR * 1 l1 = FOLDR * 1 l2 ⇒ PERM l1 l2 *)
+    finalAtL1
   ];
 
 End[];

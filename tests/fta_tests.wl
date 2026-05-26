@@ -282,3 +282,88 @@ HOLTest`runTests["FTA stage 3.c: permAppendConsThm — PERM (APPEND l1 (CONS x l
             comb[comb[const["PERM", _], _], _], _]], _]], _]]],
       "shape: ∀x l1 l2. PERM _ _"];
 ]];
+
+HOLTest`runTests["FTA stage 3.d: multEqZeroThm — ⊢ ∀x a. x*a = 0 ⇒ x = 0 ∨ a = 0",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`multEqZeroThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _], _, _]], _]]],
+      "shape: ∀x a. …"];
+]];
+
+HOLTest`runTests["FTA stage 3.d: multLeftCancelThm — ⊢ ∀x. ¬(x=0) ⇒ ∀a b. x*a = x*b ⇒ a = b",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`multLeftCancelThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["⇒", _], comb[const["¬", _], _]], _], _]]],
+      "shape: ∀x. ¬(_) ⇒ _"];
+]];
+
+HOLTest`runTests["FTA stage 3.d: primeNotZeroThm — ⊢ ∀p. prime p ⇒ ¬(p = 0)",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`primeNotZeroThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["⇒", _], comb[const["prime", _], _]],
+          comb[const["¬", _], _]], _]]],
+      "shape: ∀p. prime p ⇒ ¬(p = 0)"];
+]];
+
+HOLTest`runTests["FTA stage 3.d: primesEqIfDividesThm — ⊢ ∀p q. prime p ⇒ prime q ⇒ p|q ⇒ p = q",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`primesEqIfDividesThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _], _, _]], _]]],
+      "shape: ∀p q. …"];
+]];
+
+HOLTest`runTests["FTA stage 3.d: allMemImpThm — ⊢ ∀P l. ALL P l ⇒ ∀x. MEM x l ⇒ P x",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`allMemImpThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _], _, _]], _]]],
+      "shape: ∀P l. …"];
+]];
+
+HOLTest`runTests["FTA stage 3.d: foldrEqOneNilThm — ⊢ ∀l. ALL prime l ⇒ FOLDR * 1 l = 1 ⇒ l = NIL",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`foldrEqOneNilThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["⇒", _], _],
+          comb[comb[const["⇒", _], _], _]], _]]],
+      "shape: ∀l. _ ⇒ _ ⇒ _ = NIL"];
+]];
+
+HOLTest`runTests["FTA stage 3 capstone: primeFactorsUniqueThm — uniqueness modulo permutation",
+  Module[{dThm, c},
+    dThm = HOL`Stdlib`FTA`primeFactorsUniqueThm;
+    c = concl[dThm];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+    (* ⊢ ∀l1 l2. ALL prime l1 ⇒ ALL prime l2
+                ⇒ FOLDR * 1 l1 = FOLDR * 1 l2 ⇒ PERM l1 l2 *)
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[comb[const["⇒", _], _],
+            comb[comb[const["⇒", _], _],
+              comb[comb[const["⇒", _], _],
+                comb[comb[const["PERM", _], _], _]]]], _]], _]]],
+      "shape: ∀l1 l2. … ⇒ PERM l1 l2"];
+]];
