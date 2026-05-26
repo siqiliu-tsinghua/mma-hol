@@ -37,9 +37,19 @@
 BeginPackage["HOL`Auto`Arith`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
+  "HOL`Auto`PropTaut`",
   "HOL`Auto`Simp`",
   "HOL`Stdlib`Num`"
 }];
+
+nnfConv::usage =
+  "nnfConv[holForm] — propositional NNF conversion: returns " <>
+  "⊢ holForm = nnfForm[holForm] via REWRCONV/DEPTHCONV through the 7 " <>
+  "propositional schemata (¬¬, De Morgan over ∧/∨, ⇒-elim, ¬⇒, ⇔-DNF, " <>
+  "¬⇔). Iterates to fixpoint. Quantifiers pass through structurally; " <>
+  "¬∀ / ¬∃ rewrites land in session 4. Distinct from " <>
+  "HOL`Auto`PropTaut`nnfThm which transforms theorems (Γ ⊢ P ↦ Γ ⊢ NNF P) " <>
+  "rather than producing the equation.";
 
 arithProve::usage =
   "arithProve[goalTm] — Presburger ℕ decision procedure. " <>
@@ -429,6 +439,103 @@ nnfFormQ[aFormOr[a_, b_]]  := nnfFormQ[a] && nnfFormQ[b];
 nnfFormQ[aFormForall[_, p_]] := nnfFormQ[p];
 nnfFormQ[aFormExists[_, p_]] := nnfFormQ[p];
 nnfFormQ[_] := False;
+
+(* ============================================================ *)
+(* nnfThm — propositional NNF certificate                        *)
+(*                                                              *)
+(* Given a HOL bool-typed term `t`, return ⊢ t = NNF(t) by        *)
+(* repeated kernel-checked rewrites with the 7 propositional      *)
+(* schemata. Quantifiers pass through structurally via DEPTHCONV  *)
+(* descending under abs (so quantifier bodies get NNF'd). The     *)
+(* deMorgan-for-quantifier rules (¬∀ ↔ ∃¬, ¬∃ ↔ ∀¬) require       *)
+(* kernel-level proofs at general α and are deferred to session 4.*)
+(* ============================================================ *)
+
+(* The 7 propositional schemata — built lazily on first use so we *)
+(* don't run propTaut at module load time. *)
+
+$arithNnfSchemata = Null;
+
+ensureNnfSchemata[] :=
+  If[$arithNnfSchemata === Null,
+    $arithNnfSchemata = buildNnfSchemata[]];
+
+(* Local bool-term builders to keep the schema definitions terse. *)
+ptBoolVar[name_String] := mkVar[name, boolTy];
+ptNotTm[a_] := mkComb[notOp[], a];
+ptAndTm[a_, b_] := mkComb[mkComb[andOp[], a], b];
+ptOrTm[a_, b_]  := mkComb[mkComb[orOp[], a], b];
+ptImpTm[a_, b_] := mkComb[mkComb[impOp[], a], b];
+
+buildNnfSchemata[] :=
+  Module[{p, q},
+    p = ptBoolVar["pNNF"];
+    q = ptBoolVar["qNNF"];
+    {
+      (* ¬¬p = p *)
+      propTaut[mkEq[ptNotTm[ptNotTm[p]], p]],
+      (* ¬(p ∧ q) = ¬p ∨ ¬q *)
+      propTaut[mkEq[ptNotTm[ptAndTm[p, q]],
+        ptOrTm[ptNotTm[p], ptNotTm[q]]]],
+      (* ¬(p ∨ q) = ¬p ∧ ¬q *)
+      propTaut[mkEq[ptNotTm[ptOrTm[p, q]],
+        ptAndTm[ptNotTm[p], ptNotTm[q]]]],
+      (* p ⇒ q = ¬p ∨ q *)
+      propTaut[mkEq[ptImpTm[p, q],
+        ptOrTm[ptNotTm[p], q]]],
+      (* ¬(p ⇒ q) = p ∧ ¬q *)
+      propTaut[mkEq[ptNotTm[ptImpTm[p, q]],
+        ptAndTm[p, ptNotTm[q]]]],
+      (* (p ⇔ q) = (p ∧ q) ∨ (¬p ∧ ¬q) — = at bool *)
+      propTaut[mkEq[mkEq[p, q],
+        ptOrTm[ptAndTm[p, q], ptAndTm[ptNotTm[p], ptNotTm[q]]]]],
+      (* ¬(p ⇔ q) = (p ∧ ¬q) ∨ (¬p ∧ q) *)
+      propTaut[mkEq[ptNotTm[mkEq[p, q]],
+        ptOrTm[ptAndTm[p, ptNotTm[q]], ptAndTm[ptNotTm[p], q]]]]
+    }
+  ];
+
+(* ===== combine + fixpoint helpers ===== *)
+
+combineConvsLocal[{c_}] := c;
+combineConvsLocal[{c_, rest__}] :=
+  HOL`Drule`ORELSEC[c, combineConvsLocal[{rest}]];
+
+(* Apply `conv` to `t` repeatedly via TRANS until the RHS is       *)
+(* stable (under aconv) or repeats. TRYCONV makes failure return    *)
+(* REFL, so the loop terminates cleanly on the first non-productive *)
+(* step.                                                           *)
+
+(* Extract the RHS of an equation theorem without going through the *)
+(* kernel-private destEq. concl[eqTh] = comb[comb[=, lhs], rhs];     *)
+(* its [[2]] slot is the rhs.                                         *)
+eqRhsOf[eqTh_] := concl[eqTh][[2]];
+
+fixpointConvLocal[conv_, t_] :=
+  Module[{cur, nextEq, rhs, newRhs, seen},
+    cur = HOL`Drule`TRYCONV[conv][t];
+    rhs = eqRhsOf[cur];
+    seen = <|rhs -> True|>;
+    While[True,
+      nextEq = HOL`Drule`TRYCONV[conv][rhs];
+      newRhs = eqRhsOf[nextEq];
+      If[HOL`Terms`aconv[rhs, newRhs], Break[]];
+      If[KeyExistsQ[seen, newRhs], Break[]];
+      seen[newRhs] = True;
+      cur = TRANS[cur, nextEq];
+      rhs = newRhs
+    ];
+    cur
+  ];
+
+HOL`Auto`Arith`nnfConv[holForm_] :=
+  Module[{conv},
+    ensureNnfSchemata[];
+    conv = HOL`Drule`DEPTHCONV[
+      combineConvsLocal[
+        Map[HOL`Drule`REWRCONV, $arithNnfSchemata]]];
+    fixpointConvLocal[conv, holForm]
+  ];
 
 (* ============================================================ *)
 (* Public stubs                                                  *)

@@ -390,3 +390,102 @@ HOLTest`runTests["arith: nnfForm output is always in NNF (nnfFormQ predicate)",
         "nnfFormQ holds on nnfForm[" <> ToString[f] <> "]"]
     ], cases]
   ]];
+
+(* ===== Session 3: nnfConv — propositional NNF certificate ===== *)
+
+nnfConv = HOL`Auto`Arith`nnfConv;
+
+(* Verify the theorem is well-formed and its LHS matches the input  *)
+(* term. The RHS shape is checked separately per case.               *)
+isEqThmFromTo[th_, lhsTm_, rhsTm_] :=
+  hyp[th] === {} &&
+  concl[th] === mkEq[lhsTm, rhsTm];
+
+HOLTest`runTests["arith: nnfConv on T returns ⊢ T = T (REFL)",
+  Module[{th},
+    th = nnfConv[trueTm[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], mkEq[trueTm[], trueTm[]],
+      "⊢ T = T"]
+  ]];
+
+eqLhsOf[th_] := concl[th][[1, 2]];
+eqRhsOf[th_] := concl[th][[2]];
+
+HOLTest`runTests["arith: nnfConv on ¬¬T returns ⊢ ¬¬T = T",
+  Module[{th, p, q},
+    th = nnfConv[notCT[notCT[trueTm[]]]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqLhsOf[th], notCT[notCT[trueTm[]]],
+      "LHS is ¬¬T"];
+    HOLTest`assertEq[eqRhsOf[th], trueTm[], "RHS is T"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on ¬(p ∧ q) returns ¬p ∨ ¬q",
+  Module[{th, p, q},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    th = nnfConv[notCT[andCT[p, q]]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqLhsOf[th], notCT[andCT[p, q]], "LHS"];
+    HOLTest`assertEq[eqRhsOf[th], orCT[notCT[p], notCT[q]],
+      "RHS = ¬p ∨ ¬q"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on p ⇒ q returns ¬p ∨ q",
+  Module[{th, p, q},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    th = nnfConv[impCT[p, q]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqRhsOf[th], orCT[notCT[p], q],
+      "RHS = ¬p ∨ q"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on ¬(¬p ∧ q) — multi-step fixpoint",
+  Module[{th, p, q},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    th = nnfConv[notCT[andCT[notCT[p], q]]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    (* Should reduce ¬(¬p ∧ q) → ¬¬p ∨ ¬q → p ∨ ¬q *)
+    HOLTest`assertEq[eqRhsOf[th], orCT[p, notCT[q]],
+      "RHS = p ∨ ¬q after multi-step fixpoint"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on (p ⇔ q) returns (p∧q) ∨ (¬p∧¬q)",
+  Module[{th, p, q},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    th = nnfConv[mkEq[p, q]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqRhsOf[th],
+      orCT[andCT[p, q], andCT[notCT[p], notCT[q]]],
+      "RHS = (p ∧ q) ∨ (¬p ∧ ¬q)"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on ¬(p ⇔ q) — bottom-up: inner ⇔ rewrites first, then ¬ De Morgans",
+  Module[{th, p, q, expectedRhs},
+    p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
+    th = nnfConv[notCT[mkEq[p, q]]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    (* DEPTHCONV rewrites the inner `p = q` to `(p ∧ q) ∨ (¬p ∧ ¬q)` *)
+    (* first, then ¬(…) deMorgans to (¬(p ∧ q)) ∧ (¬(¬p ∧ ¬q)), which *)
+    (* further reduces to (¬p ∨ ¬q) ∧ (p ∨ q). Different from AST-       *)
+    (* level nnfForm's DNF iff form but still in NNF.                    *)
+    expectedRhs = andCT[
+      orCT[notCT[p], notCT[q]],
+      orCT[p, q]];
+    HOLTest`assertEq[eqRhsOf[th], expectedRhs,
+      "RHS = (¬p ∨ ¬q) ∧ (p ∨ q) — CNF-style ¬iff"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv descends under ∀ (pass-through body)",
+  Module[{xV, p, body, th, expectedBody},
+    xV = mkVar["x", numTy];
+    p = mkVar["p", boolTy];
+    (* ∀x:num. ¬¬p — bound `x` unused, inner body has propositional ¬¬p. *)
+    body = forallNum[xV, notCT[notCT[p]]];
+    th = nnfConv[body];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    expectedBody = forallNum[xV, p];
+    HOLTest`assertTrue[
+      HOL`Terms`aconv[eqRhsOf[th], expectedBody],
+      "RHS aconv ∀x. p (inner ¬¬ stripped under ∀)"]
+  ]];
