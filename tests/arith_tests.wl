@@ -164,3 +164,229 @@ HOLTest`runTests["arith: arithProve throws holError tagged arith-stub",
   HOLTest`assertThrows[
     arithProve[mkEq[mkVar["x", numTy], mkVar["x", numTy]]],
     "arith-stub", "stub still firing"]];
+
+(* ===== Session 2: Atom / Formula AST + parse / build / NNF ===== *)
+
+parseAtom = HOL`Auto`Arith`Private`parseAtom;
+buildAtom = HOL`Auto`Arith`Private`buildAtom;
+parseForm = HOL`Auto`Arith`Private`parseForm;
+buildForm = HOL`Auto`Arith`Private`buildForm;
+nnfForm = HOL`Auto`Arith`Private`nnfForm;
+nnfFormQ = HOL`Auto`Arith`Private`nnfFormQ;
+
+aAtomEq = HOL`Auto`Arith`Private`aAtomEq;
+aAtomLeq = HOL`Auto`Arith`Private`aAtomLeq;
+aAtomLt = HOL`Auto`Arith`Private`aAtomLt;
+aAtomDivides = HOL`Auto`Arith`Private`aAtomDivides;
+aFormTrue = HOL`Auto`Arith`Private`aFormTrue;
+aFormFalse = HOL`Auto`Arith`Private`aFormFalse;
+aFormAtom = HOL`Auto`Arith`Private`aFormAtom;
+aFormNot = HOL`Auto`Arith`Private`aFormNot;
+aFormAnd = HOL`Auto`Arith`Private`aFormAnd;
+aFormOr = HOL`Auto`Arith`Private`aFormOr;
+aFormImp = HOL`Auto`Arith`Private`aFormImp;
+aFormIff = HOL`Auto`Arith`Private`aFormIff;
+aFormForall = HOL`Auto`Arith`Private`aFormForall;
+aFormExists = HOL`Auto`Arith`Private`aFormExists;
+
+trueTm[] := mkConst["T", boolTy];
+falseTm[] := mkConst["F", boolTy];
+andCT[a_, b_] :=
+  mkComb[mkComb[mkConst["\[And]", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+orCT[a_, b_] :=
+  mkComb[mkComb[mkConst["\[Or]", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+impCT[a_, b_] :=
+  mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]], a], b];
+notCT[a_] := mkComb[mkConst["\[Not]", tyFun[boolTy, boolTy]], a];
+forallNum[v_, body_] :=
+  mkComb[mkConst["\[ForAll]", tyFun[tyFun[numTy, boolTy], boolTy]],
+    mkAbs[v, body]];
+existsNum[v_, body_] :=
+  mkComb[mkConst["\[Exists]", tyFun[tyFun[numTy, boolTy], boolTy]],
+    mkAbs[v, body]];
+leqTm[a_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+ltTm[a_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`ltConst[], a], b];
+divTm[c_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`dividesConst[], c], b];
+
+(* ----- parseAtom ----- *)
+
+HOLTest`runTests["arith: parseAtom on x = y",
+  Module[{xV, yV},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    HOLTest`assertEq[parseAtom[mkEq[xV, yV]],
+      aAtomEq[HOL`Auto`Arith`Private`linVar["x"],
+              HOL`Auto`Arith`Private`linVar["y"]],
+      "x = y"]
+  ]];
+
+HOLTest`runTests["arith: parseAtom on x ≤ y + 1",
+  Module[{xV, yV},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    HOLTest`assertEq[parseAtom[leqTm[xV, mkPlus[yV, mkNum[1]]]],
+      aAtomLeq[HOL`Auto`Arith`Private`linVar["x"],
+        HOL`Auto`Arith`Private`linTerm[1, <|"y" -> 1|>]],
+      "x ≤ y + 1"]
+  ]];
+
+HOLTest`runTests["arith: parseAtom on x < y",
+  Module[{xV, yV},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    HOLTest`assertEq[parseAtom[ltTm[xV, yV]],
+      aAtomLt[HOL`Auto`Arith`Private`linVar["x"],
+              HOL`Auto`Arith`Private`linVar["y"]],
+      "x < y"]
+  ]];
+
+HOLTest`runTests["arith: parseAtom on divides 3 x",
+  Module[{xV},
+    xV = mkVar["x", numTy];
+    HOLTest`assertEq[parseAtom[divTm[mkNum[3], xV]],
+      aAtomDivides[3, HOL`Auto`Arith`Private`linVar["x"]],
+      "divides 3 x"]
+  ]];
+
+(* ----- parseForm ----- *)
+
+HOLTest`runTests["arith: parseForm on T",
+  HOLTest`assertEq[parseForm[trueTm[]], aFormTrue, "T"]];
+
+HOLTest`runTests["arith: parseForm on F",
+  HOLTest`assertEq[parseForm[falseTm[]], aFormFalse, "F"]];
+
+HOLTest`runTests["arith: parseForm on ¬ T",
+  HOLTest`assertEq[parseForm[notCT[trueTm[]]],
+    aFormNot[aFormTrue], "¬ T"]];
+
+HOLTest`runTests["arith: parseForm on T ∧ F",
+  HOLTest`assertEq[parseForm[andCT[trueTm[], falseTm[]]],
+    aFormAnd[aFormTrue, aFormFalse], "T ∧ F"]];
+
+HOLTest`runTests["arith: parseForm on T ⇒ F",
+  HOLTest`assertEq[parseForm[impCT[trueTm[], falseTm[]]],
+    aFormImp[aFormTrue, aFormFalse], "T ⇒ F"]];
+
+HOLTest`runTests["arith: parseForm on T = T routes to iff (bool =)",
+  HOLTest`assertEq[parseForm[mkEq[trueTm[], trueTm[]]],
+    aFormIff[aFormTrue, aFormTrue], "T = T → aFormIff"]];
+
+HOLTest`runTests["arith: parseForm on ∀x. x = x",
+  Module[{xV, t, expected},
+    xV = mkVar["x", numTy];
+    t = forallNum[xV, mkEq[xV, xV]];
+    expected = aFormForall["x",
+      aFormAtom[aAtomEq[HOL`Auto`Arith`Private`linVar["x"],
+        HOL`Auto`Arith`Private`linVar["x"]]]];
+    HOLTest`assertEq[parseForm[t], expected, "∀x. x = x"]
+  ]];
+
+HOLTest`runTests["arith: parseForm on ∀x. ∃y. x ≤ y",
+  Module[{xV, yV, t, expected},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    t = forallNum[xV, existsNum[yV, leqTm[xV, yV]]];
+    expected = aFormForall["x", aFormExists["y",
+      aFormAtom[aAtomLeq[HOL`Auto`Arith`Private`linVar["x"],
+        HOL`Auto`Arith`Private`linVar["y"]]]]];
+    HOLTest`assertEq[parseForm[t], expected, "∀x. ∃y. x ≤ y"]
+  ]];
+
+HOLTest`runTests["arith: parseForm fresh-renames nested same-named binders",
+  Module[{xV, t, parsed},
+    xV = mkVar["x", numTy];
+    t = forallNum[xV, forallNum[xV, mkEq[xV, xV]]];
+    parsed = parseForm[t];
+    HOLTest`assertEq[parsed,
+      aFormForall["x", aFormForall["x1",
+        aFormAtom[aAtomEq[HOL`Auto`Arith`Private`linVar["x1"],
+          HOL`Auto`Arith`Private`linVar["x1"]]]]],
+      "inner ∀x renamed to x1 because outer x is already bound"]
+  ]];
+
+(* ----- buildForm + round-trips ----- *)
+
+HOLTest`runTests["arith: build ∘ parse is aconv-id on ∀x. x = x",
+  Module[{xV, t},
+    xV = mkVar["x", numTy];
+    t = forallNum[xV, mkEq[xV, xV]];
+    HOLTest`assertTrue[HOL`Terms`aconv[buildForm[parseForm[t]], t],
+      "build ∘ parse aconv-id"]
+  ]];
+
+HOLTest`runTests["arith: build ∘ parse preserves aconv on ∀x. ∀x. x = x",
+  Module[{xV, t},
+    xV = mkVar["x", numTy];
+    t = forallNum[xV, forallNum[xV, mkEq[xV, xV]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[buildForm[parseForm[t]], t],
+      "build ∘ parse aconv-id even with nested same-named binder"]
+  ]];
+
+HOLTest`runTests["arith: build ∘ parse round-trips a mixed formula",
+  Module[{xV, yV, t},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    (* ∀x. ∃y. (x ≤ y) ∧ ¬(x = y) *)
+    t = forallNum[xV, existsNum[yV,
+      andCT[leqTm[xV, yV], notCT[mkEq[xV, yV]]]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[buildForm[parseForm[t]], t],
+      "round-trip preserves α-equivalence"]
+  ]];
+
+(* ----- nnfForm ----- *)
+
+HOLTest`runTests["arith: nnfForm strips double negation",
+  HOLTest`assertEq[
+    nnfForm[aFormNot[aFormNot[aFormTrue]]], aFormTrue,
+    "¬¬T → T"]];
+
+HOLTest`runTests["arith: nnfForm pushes ¬ through ∧",
+  HOLTest`assertEq[
+    nnfForm[aFormNot[aFormAnd[aFormTrue, aFormFalse]]],
+    aFormOr[aFormFalse, aFormTrue],
+    "¬(T ∧ F) → ¬T ∨ ¬F → F ∨ T"]];
+
+HOLTest`runTests["arith: nnfForm expands ⇒",
+  HOLTest`assertEq[
+    nnfForm[aFormImp[aFormTrue, aFormFalse]],
+    aFormOr[aFormFalse, aFormFalse],
+    "T ⇒ F → ¬T ∨ F → F ∨ F"]];
+
+HOLTest`runTests["arith: nnfForm pushes ¬ through ∀",
+  Module[{atom},
+    atom = aFormAtom[aAtomEq[HOL`Auto`Arith`Private`linVar["x"],
+      HOL`Auto`Arith`Private`linVar["x"]]];
+    HOLTest`assertEq[
+      nnfForm[aFormNot[aFormForall["x", atom]]],
+      aFormExists["x", aFormNot[atom]],
+      "¬(∀x. P) → ∃x. ¬P"]
+  ]];
+
+HOLTest`runTests["arith: nnfForm is idempotent on already-NNF input",
+  Module[{atom1, atom2, input},
+    atom1 = aFormAtom[aAtomEq[HOL`Auto`Arith`Private`linVar["x"],
+      HOL`Auto`Arith`Private`linVar["x"]]];
+    atom2 = aFormAtom[aAtomLeq[HOL`Auto`Arith`Private`linVar["x"],
+      HOL`Auto`Arith`Private`linVar["y"]]];
+    input = aFormForall["x", aFormExists["y",
+      aFormAnd[atom2, aFormNot[atom1]]]];
+    HOLTest`assertEq[nnfForm[input], input,
+      "nnf is identity on NNF input"]
+  ]];
+
+HOLTest`runTests["arith: nnfForm output is always in NNF (nnfFormQ predicate)",
+  Module[{cases},
+    cases = {
+      aFormNot[aFormAnd[aFormTrue, aFormFalse]],
+      aFormImp[aFormTrue, aFormFalse],
+      aFormIff[aFormTrue, aFormFalse],
+      aFormNot[aFormForall["x",
+        aFormImp[aFormAtom[aAtomLeq[
+          HOL`Auto`Arith`Private`linVar["x"],
+          HOL`Auto`Arith`Private`linVar["y"]]],
+          aFormFalse]]]
+    };
+    Scan[Function[f,
+      HOLTest`assertTrue[nnfFormQ[nnfForm[f]],
+        "nnfFormQ holds on nnfForm[" <> ToString[f] <> "]"]
+    ], cases]
+  ]];

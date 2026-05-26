@@ -198,6 +198,239 @@ buildLin[lt : linTerm[c_, vs_]] :=
   ];
 
 (* ============================================================ *)
+(* Atom + Formula AST                                            *)
+(*                                                              *)
+(* Atoms over ℕ are surface-form comparisons of two linear        *)
+(* terms (or divisibility of a linear term by an integer):         *)
+(*                                                              *)
+(*   aAtomEq[lt1, lt2]       — lt1 = lt2                          *)
+(*   aAtomLeq[lt1, lt2]      — lt1 ≤ lt2                          *)
+(*   aAtomLt[lt1, lt2]       — lt1 < lt2                          *)
+(*   aAtomDivides[c, lt]     — c | lt, c a positive Integer       *)
+(*                                                              *)
+(* Formulas are the standard NNF tree extended with implication,  *)
+(* iff, and the bool constants. nnfForm rewrites every            *)
+(* aFormImp / aFormIff / double-negation / De-Morgan junction so   *)
+(* that negation appears only at the atom layer.                  *)
+(* ============================================================ *)
+
+(* Binder names: we open ∀/∃ by replacing the bvar with a fresh    *)
+(* free var. The fresh name is derived from the binder origin and  *)
+(* the set of forbidden names (currently-bound + free in the body  *)
+(* + the existing forbidden list).                                  *)
+
+freshArithName[base_String, forbidden_List] :=
+  Module[{i = 0, cand = base},
+    While[MemberQ[forbidden, cand],
+      i++; cand = base <> ToString[i]];
+    cand
+  ];
+
+(* ===== parseAtom: HOL bool-atom → aAtom ===== *)
+
+(* Recognize SUC chain as a numeric literal in literal-coef       *)
+(* contexts for aAtomDivides. *)
+parseAtom[t_] :=
+  Which[
+    MatchQ[t, comb[comb[const["=", _], _], _]] && (
+      typeOf[t[[1, 2]]] === numTy),
+      aAtomEq[parseLin[t[[1, 2]]], parseLin[t[[2]]]],
+
+    MatchQ[t, comb[comb[const["≤", _], _], _]],
+      aAtomLeq[parseLin[t[[1, 2]]], parseLin[t[[2]]]],
+
+    MatchQ[t, comb[comb[const["<", _], _], _]],
+      aAtomLt[parseLin[t[[1, 2]]], parseLin[t[[2]]]],
+
+    MatchQ[t, comb[comb[const["divides", _], _], _]] &&
+        litNumQ[t[[1, 2]]],
+      aAtomDivides[parseLitNum[t[[1, 2]]], parseLin[t[[2]]]],
+
+    True,
+      HOL`Error`holError["arith-parse",
+        "term not recognized as a Presburger atom",
+        <|"got" -> t|>]
+  ];
+
+(* ===== parseForm: HOL bool formula → aForm ===== *)
+
+(* `forbidden` carries the set of variable names already used by  *)
+(* enclosing binders so a fresh peel name does not collide.        *)
+
+parseForm[t_] := parseFormCtx[t, {}];
+
+parseFormCtx[t_, forbidden_List] :=
+  Which[
+    MatchQ[t, const["T", _]], aFormTrue,
+    MatchQ[t, const["F", _]], aFormFalse,
+
+    MatchQ[t, comb[const["¬", _], _]],
+      aFormNot[parseFormCtx[t[[2]], forbidden]],
+
+    MatchQ[t, comb[comb[const["∧", _], _], _]],
+      aFormAnd[parseFormCtx[t[[1, 2]], forbidden],
+               parseFormCtx[t[[2]], forbidden]],
+
+    MatchQ[t, comb[comb[const["∨", _], _], _]],
+      aFormOr[parseFormCtx[t[[1, 2]], forbidden],
+              parseFormCtx[t[[2]], forbidden]],
+
+    MatchQ[t, comb[comb[const["⇒", _], _], _]],
+      aFormImp[parseFormCtx[t[[1, 2]], forbidden],
+               parseFormCtx[t[[2]], forbidden]],
+
+    (* `=` on bool means iff. Distinguish by type of the LHS.      *)
+    MatchQ[t, comb[comb[const["=", _], _], _]] &&
+        typeOf[t[[1, 2]]] === boolTy,
+      aFormIff[parseFormCtx[t[[1, 2]], forbidden],
+               parseFormCtx[t[[2]], forbidden]],
+
+    MatchQ[t, comb[const["∀", _],
+        abs[bvar[0, ty_], _, _String]]] && t[[2, 1, 2]] === numTy,
+      parseBinder["∀", t, forbidden],
+
+    MatchQ[t, comb[const["∃", _],
+        abs[bvar[0, ty_], _, _String]]] && t[[2, 1, 2]] === numTy,
+      parseBinder["∃", t, forbidden],
+
+    True,
+      (* Fall through: treat as atom. *)
+      aFormAtom[parseAtom[t]]
+  ];
+
+(* parseBinder: open the bvar, recurse into body, wrap as aForm-  *)
+(* quantifier with the chosen variable name.                       *)
+parseBinder[kind_String, comb[_, abs[bvar[0, _], body_, origin_]],
+            forbidden_List] :=
+  Module[{name, freeNames, opened, parsedBody, ctor},
+    freeNames = Map[First, freesIn[body]];
+    name = freshArithName[origin, Join[forbidden, freeNames]];
+    opened = openBvar0[body, name];
+    parsedBody = parseFormCtx[opened, Append[forbidden, name]];
+    ctor = If[kind === "\[ForAll]", aFormForall, aFormExists];
+    ctor[name, parsedBody]
+  ];
+
+(* openBvar0[body, varName]: replace every bvar[0, num] reference  *)
+(* in `body` with `var[varName, num]`. Inner abs-bodies bump their *)
+(* indices, so we have to walk depth-aware.                        *)
+openBvar0[t_, name_String] := openBvarAt[t, 0, name];
+
+openBvarAt[bvar[k_, ty_], k_, name_] /; ty === numTy :=
+  var[name, numTy];
+openBvarAt[t : bvar[_, _], _, _] := t;
+openBvarAt[t : var[_, _], _, _] := t;
+openBvarAt[t : const[_, _], _, _] := t;
+openBvarAt[comb[f_, x_], k_, name_] :=
+  comb[openBvarAt[f, k, name], openBvarAt[x, k, name]];
+openBvarAt[abs[bv_, body_, origin_], k_, name_] :=
+  abs[bv, openBvarAt[body, k + 1, name], origin];
+
+(* ===== buildAtom: aAtom → HOL bool-atom ===== *)
+
+buildAtom[aAtomEq[lt1_, lt2_]] :=
+  mkEq[buildLin[lt1], buildLin[lt2]];
+
+buildAtom[aAtomLeq[lt1_, lt2_]] :=
+  mkComb[mkComb[HOL`Stdlib`Num`leqConst[], buildLin[lt1]],
+         buildLin[lt2]];
+
+buildAtom[aAtomLt[lt1_, lt2_]] :=
+  mkComb[mkComb[HOL`Stdlib`Num`ltConst[], buildLin[lt1]],
+         buildLin[lt2]];
+
+buildAtom[aAtomDivides[c_Integer, lt_]] :=
+  mkComb[mkComb[HOL`Stdlib`Num`dividesConst[], buildLitNum[c]],
+         buildLin[lt]];
+
+(* ===== buildForm: aForm → HOL bool formula ===== *)
+
+trueTm[] := mkConst["T", boolTy];
+falseTm[] := mkConst["F", boolTy];
+
+andOp[]  := mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+orOp[]   := mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+impOp[]  := mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+notOp[]  := mkConst["¬", tyFun[boolTy, boolTy]];
+forallOp[ty_] := mkConst["∀", tyFun[tyFun[ty, boolTy], boolTy]];
+existsOp[ty_] := mkConst["∃", tyFun[tyFun[ty, boolTy], boolTy]];
+
+buildForm[aFormTrue]  := trueTm[];
+buildForm[aFormFalse] := falseTm[];
+buildForm[aFormAtom[atom_]] := buildAtom[atom];
+buildForm[aFormNot[f_]] := mkComb[notOp[], buildForm[f]];
+buildForm[aFormAnd[a_, b_]] :=
+  mkComb[mkComb[andOp[], buildForm[a]], buildForm[b]];
+buildForm[aFormOr[a_, b_]] :=
+  mkComb[mkComb[orOp[], buildForm[a]], buildForm[b]];
+buildForm[aFormImp[a_, b_]] :=
+  mkComb[mkComb[impOp[], buildForm[a]], buildForm[b]];
+buildForm[aFormIff[a_, b_]] :=
+  mkEq[buildForm[a], buildForm[b]];
+buildForm[aFormForall[name_String, body_]] :=
+  mkComb[forallOp[numTy],
+    mkAbs[mkVar[name, numTy], buildForm[body]]];
+buildForm[aFormExists[name_String, body_]] :=
+  mkComb[existsOp[numTy],
+    mkAbs[mkVar[name, numTy], buildForm[body]]];
+
+(* ============================================================ *)
+(* nnfForm: push negation to the atom layer                      *)
+(*                                                              *)
+(* Algorithm only — no HOL theorem produced. The full QE engine  *)
+(* will instead manufacture each rewrite as a HOL equivalence    *)
+(* and chain them via TRANS.                                     *)
+(* ============================================================ *)
+
+nnfForm[aFormTrue]  := aFormTrue;
+nnfForm[aFormFalse] := aFormFalse;
+nnfForm[a : aFormAtom[_]] := a;
+
+nnfForm[aFormAnd[a_, b_]] := aFormAnd[nnfForm[a], nnfForm[b]];
+nnfForm[aFormOr[a_, b_]]  := aFormOr[nnfForm[a], nnfForm[b]];
+nnfForm[aFormImp[a_, b_]] := aFormOr[nnfForm[aFormNot[a]], nnfForm[b]];
+nnfForm[aFormIff[a_, b_]] :=
+  aFormOr[
+    aFormAnd[nnfForm[a], nnfForm[b]],
+    aFormAnd[nnfForm[aFormNot[a]], nnfForm[aFormNot[b]]]];
+nnfForm[aFormForall[n_, p_]] := aFormForall[n, nnfForm[p]];
+nnfForm[aFormExists[n_, p_]] := aFormExists[n, nnfForm[p]];
+
+(* Negation: push inwards. *)
+nnfForm[aFormNot[aFormTrue]]  := aFormFalse;
+nnfForm[aFormNot[aFormFalse]] := aFormTrue;
+nnfForm[aFormNot[aFormAtom[atom_]]] := aFormNot[aFormAtom[atom]];
+nnfForm[aFormNot[aFormNot[p_]]] := nnfForm[p];
+nnfForm[aFormNot[aFormAnd[a_, b_]]] :=
+  aFormOr[nnfForm[aFormNot[a]], nnfForm[aFormNot[b]]];
+nnfForm[aFormNot[aFormOr[a_, b_]]] :=
+  aFormAnd[nnfForm[aFormNot[a]], nnfForm[aFormNot[b]]];
+nnfForm[aFormNot[aFormImp[a_, b_]]] :=
+  aFormAnd[nnfForm[a], nnfForm[aFormNot[b]]];
+nnfForm[aFormNot[aFormIff[a_, b_]]] :=
+  aFormOr[
+    aFormAnd[nnfForm[a], nnfForm[aFormNot[b]]],
+    aFormAnd[nnfForm[aFormNot[a]], nnfForm[b]]];
+nnfForm[aFormNot[aFormForall[n_, p_]]] :=
+  aFormExists[n, nnfForm[aFormNot[p]]];
+nnfForm[aFormNot[aFormExists[n_, p_]]] :=
+  aFormForall[n, nnfForm[aFormNot[p]]];
+
+(* Predicate: aForm is in NNF (negation appears only at the atom  *)
+(* layer, no aFormImp / aFormIff anywhere). Useful as a test      *)
+(* oracle for the round-trip nnfForm ∘ buildForm.                  *)
+
+nnfFormQ[aFormTrue]  := True;
+nnfFormQ[aFormFalse] := True;
+nnfFormQ[aFormAtom[_]] := True;
+nnfFormQ[aFormNot[aFormAtom[_]]] := True;
+nnfFormQ[aFormAnd[a_, b_]] := nnfFormQ[a] && nnfFormQ[b];
+nnfFormQ[aFormOr[a_, b_]]  := nnfFormQ[a] && nnfFormQ[b];
+nnfFormQ[aFormForall[_, p_]] := nnfFormQ[p];
+nnfFormQ[aFormExists[_, p_]] := nnfFormQ[p];
+nnfFormQ[_] := False;
+
+(* ============================================================ *)
 (* Public stubs                                                  *)
 (* ============================================================ *)
 
