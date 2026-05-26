@@ -575,3 +575,144 @@ HOLTest`runTests["arith: nnfConv on ¬(p ⇒ (∀x:num. x ≤ y)) — mixed prop
     HOLTest`assertTrue[HOL`Terms`aconv[eqRhsOf[th], expected],
       "RHS aconv p ∧ ∃x. ¬(x ≤ y)"]
   ]];
+
+(* ===== Session 5: Cooper QE building blocks (AST-level) ===== *)
+
+normalizeAtom = HOL`Auto`Arith`Private`normalizeAtom;
+normalizeAtomsForm = HOL`Auto`Arith`Private`normalizeAtomsForm;
+linCoefOf = HOL`Auto`Arith`Private`linCoefOf;
+linSub = HOL`Auto`Arith`Private`linSub;
+atomCoefOnX = HOL`Auto`Arith`Private`atomCoefOnX;
+formAtomsInvolvingX = HOL`Auto`Arith`Private`formAtomsInvolvingX;
+deltaOnX = HOL`Auto`Arith`Private`deltaOnX;
+phiMinusInfOnX = HOL`Auto`Arith`Private`phiMinusInfOnX;
+
+HOLTest`runTests["arith: normalizeAtom rewrites x ≤ 5 as (x - 5) ≤ 0",
+  HOLTest`assertEq[
+    normalizeAtom[aAtomLeq[linVar["x"], HOL`Auto`Arith`Private`linConst[5]]],
+    aAtomLeq[linTerm[-5, <|"x" -> 1|>], HOL`Auto`Arith`Private`linZero[]],
+    "x ≤ 5  ↦  (x - 5) ≤ 0"]];
+
+HOLTest`runTests["arith: normalizeAtom preserves aAtomDivides",
+  Module[{atom},
+    atom = aAtomDivides[3, linVar["x"]];
+    HOLTest`assertEq[normalizeAtom[atom], atom,
+      "divides atoms pass through normalization"]
+  ]];
+
+HOLTest`runTests["arith: linCoefOf — present and absent variables",
+  Module[{lt},
+    lt = linTerm[7, <|"x" -> 3, "y" -> -2|>];
+    HOLTest`assertEq[linCoefOf[lt, "x"], 3, "x → 3"];
+    HOLTest`assertEq[linCoefOf[lt, "y"], -2, "y → -2"];
+    HOLTest`assertEq[linCoefOf[lt, "z"], 0, "absent z → 0"]
+  ]];
+
+HOLTest`runTests["arith: atomCoefOnX on each atom flavor",
+  Module[{lt},
+    lt = linTerm[1, <|"x" -> 4|>];
+    HOLTest`assertEq[atomCoefOnX[aAtomEq[lt, HOL`Auto`Arith`Private`linZero[]], "x"],
+      4, "Eq: 4"];
+    HOLTest`assertEq[atomCoefOnX[aAtomLeq[lt, HOL`Auto`Arith`Private`linZero[]], "x"],
+      4, "Leq: 4"];
+    HOLTest`assertEq[atomCoefOnX[aAtomLt[lt, HOL`Auto`Arith`Private`linZero[]], "x"],
+      4, "Lt: 4"];
+    HOLTest`assertEq[atomCoefOnX[aAtomDivides[5, lt], "x"],
+      4, "Divides: 4"]
+  ]];
+
+HOLTest`runTests["arith: formAtomsInvolvingX flattens & flags negation",
+  Module[{ltX, ltY, atomXleq, atomXeq, atomY, form, atoms},
+    ltX = linVar["x"];
+    ltY = linVar["y"];
+    atomXleq = aAtomLeq[ltX, HOL`Auto`Arith`Private`linConst[5]];
+    atomXeq = aAtomEq[ltX, HOL`Auto`Arith`Private`linConst[3]];
+    atomY = aAtomLeq[ltY, HOL`Auto`Arith`Private`linConst[10]];
+    form = aFormAnd[
+      aFormAtom[atomXleq],
+      aFormAnd[aFormNot[aFormAtom[atomXeq]], aFormAtom[atomY]]];
+    atoms = formAtomsInvolvingX[form, "x"];
+    HOLTest`assertEq[Length[atoms], 2,
+      "two atoms involve x (the y-atom is filtered out)"];
+    HOLTest`assertEq[atoms[[1]], {False, atomXleq}, "first: positive x ≤ 5"];
+    HOLTest`assertEq[atoms[[2]], {True, atomXeq}, "second: negated x = 3"]
+  ]];
+
+HOLTest`runTests["arith: deltaOnX — empty → 1, single → modulus, multiple → LCM",
+  Module[{ltX},
+    ltX = linVar["x"];
+    HOLTest`assertEq[deltaOnX[aFormAtom[aAtomLeq[ltX,
+      HOL`Auto`Arith`Private`linConst[5]]], "x"], 1,
+      "no divisibility → 1"];
+    HOLTest`assertEq[deltaOnX[aFormAtom[aAtomDivides[3, ltX]], "x"], 3,
+      "single 3 | x → 3"];
+    HOLTest`assertEq[deltaOnX[aFormAnd[
+      aFormAtom[aAtomDivides[4, ltX]],
+      aFormAtom[aAtomDivides[6, ltX]]], "x"], 12,
+      "4 | x ∧ 6 | x → LCM 12"]
+  ]];
+
+HOLTest`runTests["arith: deltaOnX ignores divisibility on other variables",
+  Module[{ltX, ltY, form},
+    ltX = linVar["x"]; ltY = linVar["y"];
+    form = aFormAnd[
+      aFormAtom[aAtomDivides[5, ltY]],
+      aFormAtom[aAtomDivides[7, ltX]]];
+    HOLTest`assertEq[deltaOnX[form, "x"], 7,
+      "ignore 5 | y when computing δ for x"]
+  ]];
+
+HOLTest`runTests["arith: phiMinusInfOnX — x ≤ 5 (coef +1) → T",
+  Module[{ltX, normalized},
+    ltX = linVar["x"];
+    normalized = normalizeAtom[aAtomLeq[ltX, HOL`Auto`Arith`Private`linConst[5]]];
+    HOLTest`assertEq[phiMinusInfOnX[aFormAtom[normalized], "x"],
+      aFormTrue, "x → -∞ makes x ≤ 5 true"]
+  ]];
+
+HOLTest`runTests["arith: phiMinusInfOnX — ¬(x ≤ 5) (i.e. x > 5) → F",
+  Module[{ltX, normalized},
+    ltX = linVar["x"];
+    normalized = normalizeAtom[aAtomLeq[ltX, HOL`Auto`Arith`Private`linConst[5]]];
+    HOLTest`assertEq[
+      phiMinusInfOnX[aFormNot[aFormAtom[normalized]], "x"],
+      aFormFalse, "x → -∞ falsifies x > 5"]
+  ]];
+
+HOLTest`runTests["arith: phiMinusInfOnX — x = 3 → F (equality misses at -∞)",
+  Module[{ltX, normalized},
+    ltX = linVar["x"];
+    normalized = normalizeAtom[aAtomEq[ltX, HOL`Auto`Arith`Private`linConst[3]]];
+    HOLTest`assertEq[phiMinusInfOnX[aFormAtom[normalized], "x"],
+      aFormFalse, "x → -∞ falsifies x = 3"]
+  ]];
+
+HOLTest`runTests["arith: phiMinusInfOnX — divisibility atom is preserved",
+  Module[{ltX, divAtom},
+    ltX = linVar["x"];
+    divAtom = aAtomDivides[3, ltX];
+    HOLTest`assertEq[phiMinusInfOnX[aFormAtom[divAtom], "x"],
+      aFormAtom[divAtom], "3 | x is periodic, kept for plug-in"]
+  ]];
+
+HOLTest`runTests["arith: phiMinusInfOnX — atoms not involving x pass through",
+  Module[{ltY, atomY},
+    ltY = linVar["y"];
+    atomY = aAtomLeq[ltY, HOL`Auto`Arith`Private`linConst[10]];
+    HOLTest`assertEq[phiMinusInfOnX[aFormAtom[atomY], "x"],
+      aFormAtom[atomY], "y ≤ 10 doesn't depend on x"]
+  ]];
+
+HOLTest`runTests["arith: phiMinusInfOnX — full body x ≤ 5 ∧ 3 | x",
+  Module[{ltX, body, normalized, result},
+    ltX = linVar["x"];
+    body = aFormAnd[
+      aFormAtom[aAtomLeq[ltX, HOL`Auto`Arith`Private`linConst[5]]],
+      aFormAtom[aAtomDivides[3, ltX]]];
+    normalized = normalizeAtomsForm[body];
+    result = phiMinusInfOnX[normalized, "x"];
+    (* φ_{-∞} of (x ≤ 5 ∧ 3 | x) = T ∧ (3 | x). *)
+    HOLTest`assertEq[result,
+      aFormAnd[aFormTrue, aFormAtom[aAtomDivides[3, ltX]]],
+      "x≤5 → T, 3|x kept; ∧ structure preserved"]
+  ]];

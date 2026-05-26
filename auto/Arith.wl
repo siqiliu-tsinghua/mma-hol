@@ -675,6 +675,142 @@ HOL`Auto`Arith`nnfConv[holForm_] :=
   ];
 
 (* ============================================================ *)
+(* Cooper QE — AST-level building blocks                         *)
+(*                                                              *)
+(* These functions operate on aForm/aAtom (AST), not on HOL      *)
+(* terms. They prepare the data structures that the eventual     *)
+(* HOL-proof Cooper engine (session 6+) will consume:            *)
+(*                                                              *)
+(*   normalizeAtomsForm[f]   : rewrite every aAtomEq/Leq/Lt[a,b] *)
+(*                             to […, b]→0 form via linSub.       *)
+(*   linCoefOf[lt, x]        : coefficient of x in a linTerm.    *)
+(*   atomCoefOnX[atom, x]    : coefficient of x in atom's lt.    *)
+(*   formAtomsInvolvingX[f, x] : flat list of atoms whose        *)
+(*                              x-coefficient is nonzero, with    *)
+(*                              their negation flag.              *)
+(*   deltaOnX[f, x]          : LCM of divisibility moduli where  *)
+(*                             x appears (default 1).             *)
+(*   phiMinusInfOnX[f, x]    : AST with atoms involving x        *)
+(*                             replaced by their (x → -∞) limits  *)
+(*                             (T / F / divisibility kept).      *)
+(*                                                              *)
+(* All assume the input formula is already in NNF (so ¬ appears   *)
+(* only at the atom layer) and has been run through                *)
+(* normalizeAtomsForm so each non-divisibility atom is `lt op 0`.  *)
+(* B-set extraction, the big-disjunction assembly, and the HOL    *)
+(* certificates are queued for session 6+.                         *)
+(* ============================================================ *)
+
+normalizeAtom[aAtomEq[a_, b_]]  := aAtomEq[linSub[a, b], linZero[]];
+normalizeAtom[aAtomLeq[a_, b_]] := aAtomLeq[linSub[a, b], linZero[]];
+normalizeAtom[aAtomLt[a_, b_]]  := aAtomLt[linSub[a, b], linZero[]];
+normalizeAtom[a : aAtomDivides[_, _]] := a;
+
+normalizeAtomsForm[aFormTrue]  := aFormTrue;
+normalizeAtomsForm[aFormFalse] := aFormFalse;
+normalizeAtomsForm[aFormAtom[atom_]] := aFormAtom[normalizeAtom[atom]];
+normalizeAtomsForm[aFormNot[f_]] := aFormNot[normalizeAtomsForm[f]];
+normalizeAtomsForm[aFormAnd[a_, b_]] :=
+  aFormAnd[normalizeAtomsForm[a], normalizeAtomsForm[b]];
+normalizeAtomsForm[aFormOr[a_, b_]] :=
+  aFormOr[normalizeAtomsForm[a], normalizeAtomsForm[b]];
+normalizeAtomsForm[aFormImp[a_, b_]] :=
+  aFormImp[normalizeAtomsForm[a], normalizeAtomsForm[b]];
+normalizeAtomsForm[aFormIff[a_, b_]] :=
+  aFormIff[normalizeAtomsForm[a], normalizeAtomsForm[b]];
+normalizeAtomsForm[aFormForall[v_, body_]] :=
+  aFormForall[v, normalizeAtomsForm[body]];
+normalizeAtomsForm[aFormExists[v_, body_]] :=
+  aFormExists[v, normalizeAtomsForm[body]];
+
+(* ===== Coefficient extraction ===== *)
+
+linCoefOf[linTerm[_, vs_Association], x_String] := Lookup[vs, x, 0];
+
+atomCoefOnX[aAtomEq[lt_, _], x_String]      := linCoefOf[lt, x];
+atomCoefOnX[aAtomLeq[lt_, _], x_String]     := linCoefOf[lt, x];
+atomCoefOnX[aAtomLt[lt_, _], x_String]      := linCoefOf[lt, x];
+atomCoefOnX[aAtomDivides[_, lt_], x_String] := linCoefOf[lt, x];
+
+(* ===== Collect atoms involving x ===== *)
+
+(* Returns a flat list of pairs {negated?, atom} where atom is the *)
+(* underlying aAtom*, and negated? is True iff the atom appeared    *)
+(* inside aFormNot (after NNF, negation lives only at atoms).       *)
+
+collectAtoms[aFormAtom[atom_], negated_:False] := {{negated, atom}};
+collectAtoms[aFormNot[aFormAtom[atom_]], negated_:False] :=
+  {{Not[negated], atom}};
+collectAtoms[aFormAnd[a_, b_], negated_:False] :=
+  Join[collectAtoms[a, negated], collectAtoms[b, negated]];
+collectAtoms[aFormOr[a_, b_], negated_:False] :=
+  Join[collectAtoms[a, negated], collectAtoms[b, negated]];
+collectAtoms[aFormForall[_, body_], negated_:False] :=
+  collectAtoms[body, negated];
+collectAtoms[aFormExists[_, body_], negated_:False] :=
+  collectAtoms[body, negated];
+collectAtoms[_, _:False] := {};
+
+formAtomsInvolvingX[f_, x_String] :=
+  Select[collectAtoms[f, False],
+    atomCoefOnX[#[[2]], x] =!= 0 &];
+
+(* ===== δ : LCM of divisibility moduli touching x ===== *)
+
+deltaOnX[f_, x_String] :=
+  Module[{divPairs, moduli},
+    divPairs = Select[collectAtoms[f, False],
+      MatchQ[#[[2]], aAtomDivides[_, _]] &&
+        atomCoefOnX[#[[2]], x] =!= 0 &];
+    moduli = Map[#[[2, 1]] &, divPairs];
+    If[moduli === {}, 1, LCM @@ moduli]
+  ];
+
+(* ===== φ_{-∞} on x — replace x-atoms with their limits ===== *)
+
+phiMinusInfAtom[atom_, x_String, negated_] :=
+  Module[{coef = atomCoefOnX[atom, x]},
+    If[coef === 0,
+      (* Atom doesn't involve x; keep as-is. *)
+      If[negated, aFormNot[aFormAtom[atom]], aFormAtom[atom]],
+      Switch[Head[atom],
+        aAtomEq,
+          (* c·x + t = 0 has at most one solution; as x → -∞, false. *)
+          If[negated, aFormTrue, aFormFalse],
+        aAtomLeq,
+          If[coef > 0, If[negated, aFormFalse, aFormTrue],
+                       If[negated, aFormTrue, aFormFalse]],
+        aAtomLt,
+          If[coef > 0, If[negated, aFormFalse, aFormTrue],
+                       If[negated, aFormTrue, aFormFalse]],
+        aAtomDivides,
+          (* Periodic in x; keep as-is (will be evaluated at x := j). *)
+          If[negated, aFormNot[aFormAtom[atom]], aFormAtom[atom]],
+        _,
+          If[negated, aFormNot[aFormAtom[atom]], aFormAtom[atom]]
+      ]
+    ]
+  ];
+
+phiMinusInfOnX[aFormTrue, _]  := aFormTrue;
+phiMinusInfOnX[aFormFalse, _] := aFormFalse;
+phiMinusInfOnX[aFormAtom[atom_], x_String] :=
+  phiMinusInfAtom[atom, x, False];
+phiMinusInfOnX[aFormNot[aFormAtom[atom_]], x_String] :=
+  phiMinusInfAtom[atom, x, True];
+phiMinusInfOnX[aFormAnd[a_, b_], x_String] :=
+  aFormAnd[phiMinusInfOnX[a, x], phiMinusInfOnX[b, x]];
+phiMinusInfOnX[aFormOr[a_, b_], x_String] :=
+  aFormOr[phiMinusInfOnX[a, x], phiMinusInfOnX[b, x]];
+(* Quantifiers shouldn't appear in a QF Cooper body, but keep      *)
+(* pass-through semantics for robustness.                          *)
+phiMinusInfOnX[aFormForall[v_, body_], x_String] :=
+  aFormForall[v, phiMinusInfOnX[body, x]];
+phiMinusInfOnX[aFormExists[v_, body_], x_String] :=
+  aFormExists[v, phiMinusInfOnX[body, x]];
+phiMinusInfOnX[other_, _] := other;
+
+(* ============================================================ *)
 (* Public stubs                                                  *)
 (* ============================================================ *)
 
