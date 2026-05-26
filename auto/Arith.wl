@@ -43,13 +43,22 @@ BeginPackage["HOL`Auto`Arith`", {
 }];
 
 nnfConv::usage =
-  "nnfConv[holForm] — propositional NNF conversion: returns " <>
-  "⊢ holForm = nnfForm[holForm] via REWRCONV/DEPTHCONV through the 7 " <>
-  "propositional schemata (¬¬, De Morgan over ∧/∨, ⇒-elim, ¬⇒, ⇔-DNF, " <>
-  "¬⇔). Iterates to fixpoint. Quantifiers pass through structurally; " <>
-  "¬∀ / ¬∃ rewrites land in session 4. Distinct from " <>
+  "nnfConv[holForm] — NNF conversion over Presburger ℕ: returns " <>
+  "⊢ holForm = nnfForm[holForm] via REWRCONV/DEPTHCONV through the 9 " <>
+  "schemata (¬¬, De Morgan over ∧/∨, ⇒-elim, ¬⇒, ⇔-DNF, ¬⇔, ¬∀-num, " <>
+  "¬∃-num). Iterates to fixpoint. Distinct from " <>
   "HOL`Auto`PropTaut`nnfThm which transforms theorems (Γ ⊢ P ↦ Γ ⊢ NNF P) " <>
   "rather than producing the equation.";
+
+notExistsNumThm::usage =
+  "notExistsNumThm — ⊢ ∀P. ¬(∃x:num. P x) = (∀x:num. ¬P x). " <>
+  "Quantifier deMorgan (constructive direction). Used as a " <>
+  "rewrite schema for nnfConv via Miller HO matching.";
+
+notForallNumThm::usage =
+  "notForallNumThm — ⊢ ∀P. ¬(∀x:num. P x) = (∃x:num. ¬P x). " <>
+  "Quantifier deMorgan (classical direction; forward uses CCONTR). " <>
+  "Used as a rewrite schema for nnfConv via Miller HO matching.";
 
 arithProve::usage =
   "arithProve[goalTm] — Presburger ℕ decision procedure. " <>
@@ -441,14 +450,137 @@ nnfFormQ[aFormExists[_, p_]] := nnfFormQ[p];
 nnfFormQ[_] := False;
 
 (* ============================================================ *)
-(* nnfThm — propositional NNF certificate                        *)
+(* Quantifier deMorgan theorems (at numTy)                       *)
+(*                                                              *)
+(*   notExistsNumThm : ⊢ ∀P. ¬(∃x:num. P x) = (∀x:num. ¬P x)     *)
+(*   notForallNumThm : ⊢ ∀P. ¬(∀x:num. P x) = (∃x:num. ¬P x)     *)
+(*                                                              *)
+(* The ∃-version is constructive; the ∀-version needs CCONTR     *)
+(* (intuitionistically not provable). Both are then used by      *)
+(* nnfConv as Miller-pattern rewrites so that nnfForm-style       *)
+(* normalization handles full Presburger formulas.                *)
+(* ============================================================ *)
+
+notTm[p_] := mkComb[notOp[], p];
+
+notExistsNumThm =
+  Module[{pV, xV, pAtX, existsPx, notExistsPx, forallNotPx,
+          forwardDir, backwardDir, eqThm},
+    pV = mkVar["P", tyFun[numTy, boolTy]];
+    xV = mkVar["xQD", numTy];
+
+    pAtX = mkComb[pV, xV];
+    existsPx = mkComb[existsOp[numTy], mkAbs[xV, pAtX]];
+    notExistsPx = notTm[existsPx];
+    forallNotPx = mkComb[forallOp[numTy], mkAbs[xV, notTm[pAtX]]];
+
+    (* Forward: (¬∃x. P x) ⊢ ∀x. ¬P x. *)
+    forwardDir = Module[{notExHyp, pxHyp, existsFromX, contradInner,
+                         notPxDerived, gen},
+      notExHyp = ASSUME[notExistsPx];
+      pxHyp = ASSUME[pAtX];
+      existsFromX = HOL`Bool`EXISTS[existsPx, xV, pxHyp];
+      (* (P x) ⊢ ∃x. P x *)
+      contradInner = HOL`Bool`MP[
+        HOL`Bool`NOTELIM[notExHyp], existsFromX];
+      (* (¬∃x. P x, P x) ⊢ F *)
+      notPxDerived = HOL`Bool`NOTINTRO[
+        HOL`Bool`DISCH[pAtX, contradInner]];
+      (* (¬∃x. P x) ⊢ ¬P x *)
+      gen = HOL`Bool`GEN[xV, notPxDerived];
+      (* (¬∃x. P x) ⊢ ∀x. ¬P x *)
+      gen
+    ];
+
+    (* Backward: (∀x. ¬P x) ⊢ ¬(∃x. P x). *)
+    backwardDir = Module[{allNotHyp, exHyp, pxChosen, notPxSpec,
+                         contradInner, chosenContrad, notExFinal},
+      allNotHyp = ASSUME[forallNotPx];
+      exHyp = ASSUME[existsPx];
+      pxChosen = ASSUME[pAtX];
+      notPxSpec = HOL`Bool`SPEC[xV, allNotHyp];
+      contradInner = HOL`Bool`MP[
+        HOL`Bool`NOTELIM[notPxSpec], pxChosen];
+      (* (∀x. ¬P x, P x) ⊢ F *)
+      chosenContrad = HOL`Bool`CHOOSE[xV, exHyp, contradInner];
+      (* (∀x. ¬P x, ∃x. P x) ⊢ F *)
+      notExFinal = HOL`Bool`NOTINTRO[
+        HOL`Bool`DISCH[existsPx, chosenContrad]];
+      (* (∀x. ¬P x) ⊢ ¬(∃x. P x) *)
+      notExFinal
+    ];
+
+    eqThm = HOL`Kernel`DEDUCTANTISYM[backwardDir, forwardDir];
+    (* ⊢ ¬(∃x. P x) = ∀x. ¬P x *)
+    HOL`Bool`GEN[pV, eqThm]
+  ];
+
+notForallNumThm =
+  Module[{pV, xV, pAtX, forallPx, notForallPx, notPxTm, existsNotPx,
+          forwardDir, backwardDir, eqThm},
+    pV = mkVar["P", tyFun[numTy, boolTy]];
+    xV = mkVar["xQD", numTy];
+
+    pAtX = mkComb[pV, xV];
+    forallPx = mkComb[forallOp[numTy], mkAbs[xV, pAtX]];
+    notForallPx = notTm[forallPx];
+    notPxTm = notTm[pAtX];
+    existsNotPx = mkComb[existsOp[numTy], mkAbs[xV, notPxTm]];
+
+    (* Forward: (¬∀x. P x) ⊢ ∃x. ¬P x. Classical reasoning. *)
+    forwardDir = Module[{notForHyp, notExNotHyp, notPxHyp, existsFromX,
+                         contradInner, pxFromCCONTR, forallPxDerived,
+                         contradOuter, existsNotFromCCONTR},
+      notForHyp = ASSUME[notForallPx];
+      notExNotHyp = ASSUME[notTm[existsNotPx]];
+      notPxHyp = ASSUME[notPxTm];
+      (* Goal: derive F from notForHyp + notExNotHyp. *)
+      existsFromX = HOL`Bool`EXISTS[existsNotPx, xV, notPxHyp];
+      (* (¬P x) ⊢ ∃x. ¬P x *)
+      contradInner = HOL`Bool`MP[
+        HOL`Bool`NOTELIM[notExNotHyp], existsFromX];
+      (* (¬∃x. ¬P x, ¬P x) ⊢ F *)
+      pxFromCCONTR = HOL`Bool`CCONTR[pAtX, contradInner];
+      (* (¬∃x. ¬P x) ⊢ P x  (CCONTR removes ¬P x from hyps) *)
+      forallPxDerived = HOL`Bool`GEN[xV, pxFromCCONTR];
+      (* (¬∃x. ¬P x) ⊢ ∀x. P x *)
+      contradOuter = HOL`Bool`MP[
+        HOL`Bool`NOTELIM[notForHyp], forallPxDerived];
+      (* (¬∀x. P x, ¬∃x. ¬P x) ⊢ F *)
+      existsNotFromCCONTR = HOL`Bool`CCONTR[existsNotPx, contradOuter];
+      (* (¬∀x. P x) ⊢ ∃x. ¬P x *)
+      existsNotFromCCONTR
+    ];
+
+    (* Backward: (∃x. ¬P x) ⊢ ¬(∀x. P x). *)
+    backwardDir = Module[{exNotHyp, forallHyp, notPxChosen, pxSpec,
+                         contradInner, chosenContrad, notForFinal},
+      exNotHyp = ASSUME[existsNotPx];
+      forallHyp = ASSUME[forallPx];
+      notPxChosen = ASSUME[notPxTm];
+      pxSpec = HOL`Bool`SPEC[xV, forallHyp];
+      contradInner = HOL`Bool`MP[
+        HOL`Bool`NOTELIM[notPxChosen], pxSpec];
+      (* (∀x. P x, ¬P x) ⊢ F *)
+      chosenContrad = HOL`Bool`CHOOSE[xV, exNotHyp, contradInner];
+      (* (∃x. ¬P x, ∀x. P x) ⊢ F *)
+      notForFinal = HOL`Bool`NOTINTRO[
+        HOL`Bool`DISCH[forallPx, chosenContrad]];
+      (* (∃x. ¬P x) ⊢ ¬(∀x. P x) *)
+      notForFinal
+    ];
+
+    eqThm = HOL`Kernel`DEDUCTANTISYM[backwardDir, forwardDir];
+    (* ⊢ ¬(∀x. P x) = ∃x. ¬P x *)
+    HOL`Bool`GEN[pV, eqThm]
+  ];
+
+(* ============================================================ *)
+(* nnfConv — propositional + quantifier NNF certificate          *)
 (*                                                              *)
 (* Given a HOL bool-typed term `t`, return ⊢ t = NNF(t) by        *)
-(* repeated kernel-checked rewrites with the 7 propositional      *)
-(* schemata. Quantifiers pass through structurally via DEPTHCONV  *)
-(* descending under abs (so quantifier bodies get NNF'd). The     *)
-(* deMorgan-for-quantifier rules (¬∀ ↔ ∃¬, ¬∃ ↔ ∀¬) require       *)
-(* kernel-level proofs at general α and are deferred to session 4.*)
+(* repeated kernel-checked rewrites with the 7 propositional +    *)
+(* 2 quantifier deMorgan schemata.                                *)
 (* ============================================================ *)
 
 (* The 7 propositional schemata — built lazily on first use so we *)
@@ -468,9 +600,10 @@ ptOrTm[a_, b_]  := mkComb[mkComb[orOp[], a], b];
 ptImpTm[a_, b_] := mkComb[mkComb[impOp[], a], b];
 
 buildNnfSchemata[] :=
-  Module[{p, q},
+  Module[{p, q, pPred},
     p = ptBoolVar["pNNF"];
     q = ptBoolVar["qNNF"];
+    pPred = mkVar["P", tyFun[numTy, boolTy]];
     {
       (* ¬¬p = p *)
       propTaut[mkEq[ptNotTm[ptNotTm[p]], p]],
@@ -491,7 +624,11 @@ buildNnfSchemata[] :=
         ptOrTm[ptAndTm[p, q], ptAndTm[ptNotTm[p], ptNotTm[q]]]]],
       (* ¬(p ⇔ q) = (p ∧ ¬q) ∨ (¬p ∧ q) *)
       propTaut[mkEq[ptNotTm[mkEq[p, q]],
-        ptOrTm[ptAndTm[p, ptNotTm[q]], ptAndTm[ptNotTm[p], q]]]]
+        ptOrTm[ptAndTm[p, ptNotTm[q]], ptAndTm[ptNotTm[p], q]]]],
+      (* ¬(∀x:num. P x) = ∃x:num. ¬P x  — SPEC away the outer ∀P *)
+      HOL`Bool`SPEC[pPred, notForallNumThm],
+      (* ¬(∃x:num. P x) = ∀x:num. ¬P x *)
+      HOL`Bool`SPEC[pPred, notExistsNumThm]
     }
   ];
 

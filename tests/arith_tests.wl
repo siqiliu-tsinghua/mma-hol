@@ -489,3 +489,89 @@ HOLTest`runTests["arith: nnfConv descends under ∀ (pass-through body)",
       HOL`Terms`aconv[eqRhsOf[th], expectedBody],
       "RHS aconv ∀x. p (inner ¬¬ stripped under ∀)"]
   ]];
+
+(* ===== Session 4: quantifier deMorgan ===== *)
+
+HOLTest`runTests["arith: notExistsNumThm — ⊢ ∀P. ¬(∃x. P x) = ∀x. ¬P x",
+  Module[{th, c},
+    th = HOL`Auto`Arith`notExistsNumThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["=", _],
+          comb[const["¬", _], comb[const["∃", _], _]]],
+          comb[const["∀", _], _]], _]]],
+      "shape: ∀P. ¬(∃…) = ∀(¬…)"]
+  ]];
+
+HOLTest`runTests["arith: notForallNumThm — ⊢ ∀P. ¬(∀x. P x) = ∃x. ¬P x",
+  Module[{th, c},
+    th = HOL`Auto`Arith`notForallNumThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["=", _],
+          comb[const["¬", _], comb[const["∀", _], _]]],
+          comb[const["∃", _], _]], _]]],
+      "shape: ∀P. ¬(∀…) = ∃(¬…)"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on ¬(∀x:num. x = x) — pushes ¬ inside ∀",
+  Module[{xV, t, th, rhs, expected},
+    xV = mkVar["x", numTy];
+    t = notCT[forallNum[xV, mkEq[xV, xV]]];
+    th = nnfConv[t];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqLhsOf[th], t, "LHS preserved"];
+    (* RHS: ∃y:num. ¬(y = y) (binder name from the theorem's proof). *)
+    expected = existsNum[xV, notCT[mkEq[xV, xV]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[eqRhsOf[th], expected],
+      "RHS aconv ∃x. ¬(x = x)"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on ¬(∃x:num. x ≤ 0) — pushes ¬ inside ∃",
+  Module[{xV, t, th, expected, leqZ},
+    xV = mkVar["x", numTy];
+    leqZ = mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV],
+      HOL`Stdlib`Num`zeroConst[]];
+    t = notCT[existsNum[xV, leqZ]];
+    th = nnfConv[t];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqLhsOf[th], t, "LHS preserved"];
+    expected = forallNum[xV, notCT[leqZ]];
+    HOLTest`assertTrue[HOL`Terms`aconv[eqRhsOf[th], expected],
+      "RHS aconv ∀x. ¬(x ≤ 0)"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on ¬(∀x. ∃y. x ≤ y) — nested quantifier deMorgan",
+  Module[{xV, yV, leqXY, inner, t, th, expected},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    leqXY = mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], yV];
+    inner = existsNum[yV, leqXY];
+    t = notCT[forallNum[xV, inner]];
+    th = nnfConv[t];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqLhsOf[th], t, "LHS preserved"];
+    (* Expected after NNF: ∃x. ∀y. ¬(x ≤ y) *)
+    expected = existsNum[xV, forallNum[yV, notCT[leqXY]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[eqRhsOf[th], expected],
+      "RHS aconv ∃x. ∀y. ¬(x ≤ y)"]
+  ]];
+
+HOLTest`runTests["arith: nnfConv on ¬(p ⇒ (∀x:num. x ≤ y)) — mixed prop + quantifier",
+  Module[{xV, yV, p, leqXY, inner, t, th, expected},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    p = mkVar["pq", boolTy];
+    leqXY = mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], yV];
+    inner = forallNum[xV, leqXY];
+    t = notCT[impCT[p, inner]];
+    th = nnfConv[t];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[eqLhsOf[th], t, "LHS preserved"];
+    (* Expected: ¬(p ⇒ ∀x. x ≤ y) → p ∧ ¬(∀x. x ≤ y) → p ∧ ∃x. ¬(x ≤ y) *)
+    expected = andCT[p, existsNum[xV, notCT[leqXY]]];
+    HOLTest`assertTrue[HOL`Terms`aconv[eqRhsOf[th], expected],
+      "RHS aconv p ∧ ∃x. ¬(x ≤ y)"]
+  ]];
