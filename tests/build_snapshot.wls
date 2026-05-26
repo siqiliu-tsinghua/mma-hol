@@ -39,7 +39,8 @@ Module[{repoRoot, snapshotFile, allHolSyms, holContexts,
     {"stdlib", "Num.wl"},
     {"stdlib", "List.wl"},
     {"stdlib", "Finite.wl"},
-    {"stdlib", "FTA.wl"}
+    {"stdlib", "FTA.wl"},
+    {"auto", "Arith.wl"}
   };
 
   Print["[snapshot] mode: Stable; loading ", Length[libs], " libraries..."];
