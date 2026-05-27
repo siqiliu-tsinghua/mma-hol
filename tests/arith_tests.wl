@@ -1193,3 +1193,71 @@ HOLTest`runTests["arith: arithProveExists fails on UNSAT goal",
     HOLTest`assertThrows[arithProveExists[goal], "arith-prove-exists",
       "no witness for 10 ≤ x ∧ x ≤ 3"]
   ]];
+
+(* ===== Session 10: proveGroundReduceTm + compound atom in arithProveExists ===== *)
+
+proveGroundReduceTm = HOL`Auto`Arith`Private`proveGroundReduceTm;
+
+HOLTest`runTests["arith: proveGroundReduceTm — leaf 0 and SUC^k 0",
+  Module[{},
+    HOLTest`assertEq[concl[proveGroundReduceTm[buildLitNum[0]]],
+      mkEq[buildLitNum[0], buildLitNum[0]],
+      "⊢ 0 = 0 via REFL"];
+    HOLTest`assertEq[concl[proveGroundReduceTm[buildLitNum[5]]],
+      mkEq[buildLitNum[5], buildLitNum[5]], "⊢ 5 = 5 via REFL"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundReduceTm — 0 + 3 = 3",
+  HOLTest`assertEq[
+    concl[proveGroundReduceTm[plusN[buildLitNum[0], buildLitNum[3]]]],
+    mkEq[plusN[buildLitNum[0], buildLitNum[3]], buildLitNum[3]],
+    "⊢ 0 + 3 = 3"]];
+
+HOLTest`runTests["arith: proveGroundReduceTm — 2 * 3 + 1 = 7",
+  Module[{tm, th},
+    tm = plusN[timesN[buildLitNum[2], buildLitNum[3]], buildLitNum[1]];
+    th = proveGroundReduceTm[tm];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], mkEq[tm, buildLitNum[7]],
+      "⊢ 2*3 + 1 = 7"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundReduceTm — nested (1+2) + (3+4) = 10",
+  Module[{tm, th},
+    tm = plusN[plusN[buildLitNum[1], buildLitNum[2]],
+      plusN[buildLitNum[3], buildLitNum[4]]];
+    th = proveGroundReduceTm[tm];
+    HOLTest`assertEq[concl[th], mkEq[tm, buildLitNum[10]],
+      "⊢ (1+2) + (3+4) = 10"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists on ∃x. x + 3 ≤ 5 (compound LHS atom)",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV, mkComb[mkComb[HOL`Stdlib`Num`leqConst[],
+      plusN[xV, buildLitNum[3]]], buildLitNum[5]]];
+    th = arithProveExists[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "⊢ ∃x. x + 3 ≤ 5"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists on ∃x. (x + 1) = 4 (compound LHS in =)",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV,
+      mkEq[plusN[xV, buildLitNum[1]], buildLitNum[4]]];
+    th = arithProveExists[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∃x. (x + 1) = 4"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists on ∃x. x + 2 ≤ x + 5 (both compound)",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV, mkComb[mkComb[HOL`Stdlib`Num`leqConst[],
+      plusN[xV, buildLitNum[2]]], plusN[xV, buildLitNum[5]]]];
+    th = arithProveExists[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∃x. x + 2 ≤ x + 5"]
+  ]];

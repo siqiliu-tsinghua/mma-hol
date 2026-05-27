@@ -1242,6 +1242,67 @@ proveGroundDivides[d_Integer, n_Integer] :=
   ];
 
 (* ============================================================ *)
+(* proveGroundReduceTm — reduce a closed ℕ arithmetic term         *)
+(* to its SUC-stacked literal form.                                *)
+(*                                                              *)
+(*   Input:  HOL term built from 0, SUC, +, * with all leaves    *)
+(*           being literals (no free vars).                       *)
+(*   Output: ⊢ t = (concreteValue)̄                                *)
+(*                                                              *)
+(* The output's RHS is `buildLitNum[concreteValue]`. This lets    *)
+(* the atom prover handle compound arithmetic atoms like           *)
+(* `2 * x + 1 ≤ 10` after substituting x with a literal: the LHS  *)
+(* `2 * w + 1` reduces to the value, and the simplified atom       *)
+(* matches the ground prover's literal-only contract.              *)
+(* ============================================================ *)
+
+proveGroundReduceTm[t_] :=
+  Which[
+    litNumQ[t], REFL[t],
+
+    MatchQ[t, comb[const["SUC", _], _]],
+      Module[{n, recTh},
+        n = t[[2]];
+        recTh = proveGroundReduceTm[n];
+        (* ⊢ n = nLit ⇒ ⊢ SUC n = SUC nLit *)
+        HOL`Equal`APTERM[HOL`Stdlib`Num`sucConst[], recTh]
+      ],
+
+    MatchQ[t, comb[comb[const["+", _], _], _]],
+      Module[{a, b, aRed, bRed, aLit, bLit, congEq, addEq},
+        a = t[[1, 2]]; b = t[[2]];
+        aRed = proveGroundReduceTm[a];
+        bRed = proveGroundReduceTm[b];
+        aLit = concl[aRed][[2]];
+        bLit = concl[bRed][[2]];
+        (* ⊢ a + b = aLit + bLit (congruence on +) *)
+        congEq = HOL`Kernel`MKCOMB[
+          HOL`Equal`APTERM[HOL`Stdlib`Num`plusConst[], aRed], bRed];
+        (* ⊢ aLit + bLit = (a+b)̄ *)
+        addEq = proveGroundAddEq[parseLitNum[aLit], parseLitNum[bLit]];
+        TRANS[congEq, addEq]
+      ],
+
+    MatchQ[t, comb[comb[const["*", _], _], _]],
+      Module[{a, b, aRed, bRed, aLit, bLit, congEq, multEq},
+        a = t[[1, 2]]; b = t[[2]];
+        aRed = proveGroundReduceTm[a];
+        bRed = proveGroundReduceTm[b];
+        aLit = concl[aRed][[2]];
+        bLit = concl[bRed][[2]];
+        congEq = HOL`Kernel`MKCOMB[
+          HOL`Equal`APTERM[HOL`Stdlib`Num`timesConst[], aRed], bRed];
+        multEq = proveGroundMultEq[parseLitNum[aLit], parseLitNum[bLit]];
+        TRANS[congEq, multEq]
+      ],
+
+    True,
+      HOL`Error`holError["arith-reduce",
+        "proveGroundReduceTm: term has non-literal leaf",
+        <|"term" -> t|>]
+  ];
+
+(* ============================================================ *)
 (* findSatWitness — concrete Integer witness for ∃x. body         *)
 (*                                                              *)
 (* For closed Presburger over ℕ, every satisfying x lies in       *)
@@ -1283,66 +1344,90 @@ findSatWitness[xName_String, body_] :=
 (* `arith-ground-fmla`.                                            *)
 (* ============================================================ *)
 
+(* reduceAtomSides[t]: returns {aRed, bRed, aLit, bLit} for the    *)
+(* atom's two ℕ-typed arguments. aRed / bRed are ⊢ a = aLit etc.   *)
+(* Used by proveGroundAtomTm to handle compound arithmetic atoms.  *)
+reduceAtomSides[t_] :=
+  Module[{a, b, aRed, bRed},
+    a = t[[1, 2]]; b = t[[2]];
+    aRed = proveGroundReduceTm[a];
+    bRed = proveGroundReduceTm[b];
+    {aRed, bRed, concl[aRed][[2]], concl[bRed][[2]]}
+  ];
+
+(* Given a proof `⊢ aLit op bLit` and side-reductions               *)
+(*   aRed : ⊢ a = aLit                                              *)
+(*   bRed : ⊢ b = bLit                                              *)
+(* recover `⊢ a op b` by MKCOMB-ing the symmetric equations to       *)
+(* build `⊢ aLit op bLit = a op b`, then EQMP. Using SUBS here was   *)
+(* unsafe because it rewrites every syntactic occurrence of aLit —   *)
+(* including aLit-as-sub-pattern inside bLit (e.g. a literal 3       *)
+(* inside SUC SUC SUC 0 = 5).                                        *)
+liftReducedAtomProof[reducedThm_, opConst_, aRed_, bRed_] :=
+  Module[{eqLifted},
+    eqLifted = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[opConst, HOL`Equal`SYM[aRed]],
+      HOL`Equal`SYM[bRed]];
+    (* ⊢ opConst aLit bLit = opConst a b *)
+    EQMP[eqLifted, reducedThm]
+  ];
+
 proveGroundAtomTm[t_] :=
   Which[
-    (* a = b : both SUC chains, equal *)
+    (* a = b *)
     MatchQ[t, comb[comb[const["=", _], _], _]],
-      Module[{a, b},
-        a = t[[1, 2]]; b = t[[2]];
-        If[litNumQ[a] && litNumQ[b] &&
-           parseLitNum[a] === parseLitNum[b],
-          REFL[a],
+      Module[{opConst, aRed, bRed, aLit, bLit, am, bm, reducedThm},
+        opConst = t[[1, 1]];
+        {aRed, bRed, aLit, bLit} = reduceAtomSides[t];
+        am = parseLitNum[aLit]; bm = parseLitNum[bLit];
+        If[am =!= bm,
           HOL`Error`holError["arith-ground-fmla",
-            "proveGroundAtomTm: eq atom not provable",
-            <|"term" -> t|>]]
+            "proveGroundAtomTm: eq atom is false",
+            <|"term" -> t, "lhs" -> am, "rhs" -> bm|>]];
+        reducedThm = REFL[aLit];   (* ⊢ aLit = aLit ≡ aLit = bLit *)
+        liftReducedAtomProof[reducedThm, opConst, aRed, bRed]
       ],
 
     (* a ≤ b *)
     MatchQ[t, comb[comb[const["≤", _], _], _]],
-      Module[{a, b, am, bm},
-        a = t[[1, 2]]; b = t[[2]];
-        If[litNumQ[a] && litNumQ[b],
-          am = parseLitNum[a]; bm = parseLitNum[b];
-          If[am <= bm,
-            proveGroundLeq[am, bm],
-            HOL`Error`holError["arith-ground-fmla",
-              "proveGroundAtomTm: ≤ atom is false",
-              <|"term" -> t|>]],
+      Module[{opConst, aRed, bRed, aLit, bLit, am, bm, reducedThm},
+        opConst = t[[1, 1]];
+        {aRed, bRed, aLit, bLit} = reduceAtomSides[t];
+        am = parseLitNum[aLit]; bm = parseLitNum[bLit];
+        If[am > bm,
           HOL`Error`holError["arith-ground-fmla",
-            "proveGroundAtomTm: ≤ atom not in literal form",
-            <|"term" -> t|>]]
+            "proveGroundAtomTm: ≤ atom is false",
+            <|"term" -> t, "lhs" -> am, "rhs" -> bm|>]];
+        reducedThm = proveGroundLeq[am, bm];
+        liftReducedAtomProof[reducedThm, opConst, aRed, bRed]
       ],
 
     (* a < b *)
     MatchQ[t, comb[comb[const["<", _], _], _]],
-      Module[{a, b, am, bm},
-        a = t[[1, 2]]; b = t[[2]];
-        If[litNumQ[a] && litNumQ[b],
-          am = parseLitNum[a]; bm = parseLitNum[b];
-          If[am < bm,
-            proveGroundLt[am, bm],
-            HOL`Error`holError["arith-ground-fmla",
-              "proveGroundAtomTm: < atom is false",
-              <|"term" -> t|>]],
+      Module[{opConst, aRed, bRed, aLit, bLit, am, bm, reducedThm},
+        opConst = t[[1, 1]];
+        {aRed, bRed, aLit, bLit} = reduceAtomSides[t];
+        am = parseLitNum[aLit]; bm = parseLitNum[bLit];
+        If[am >= bm,
           HOL`Error`holError["arith-ground-fmla",
-            "proveGroundAtomTm: < atom not in literal form",
-            <|"term" -> t|>]]
+            "proveGroundAtomTm: < atom is false",
+            <|"term" -> t, "lhs" -> am, "rhs" -> bm|>]];
+        reducedThm = proveGroundLt[am, bm];
+        liftReducedAtomProof[reducedThm, opConst, aRed, bRed]
       ],
 
     (* divides d n *)
     MatchQ[t, comb[comb[const["divides", _], _], _]],
-      Module[{d, n, dv, nv},
-        d = t[[1, 2]]; n = t[[2]];
-        If[litNumQ[d] && litNumQ[n],
-          dv = parseLitNum[d]; nv = parseLitNum[n];
-          If[dv > 0 && Mod[nv, dv] === 0,
-            proveGroundDivides[dv, nv],
-            HOL`Error`holError["arith-ground-fmla",
-              "proveGroundAtomTm: divides atom is false",
-              <|"term" -> t|>]],
+      Module[{opConst, dRed, nRed, dLit, nLit, dv, nv, reducedThm},
+        opConst = t[[1, 1]];
+        {dRed, nRed, dLit, nLit} = reduceAtomSides[t];
+        dv = parseLitNum[dLit]; nv = parseLitNum[nLit];
+        If[! (dv > 0 && Mod[nv, dv] === 0),
           HOL`Error`holError["arith-ground-fmla",
-            "proveGroundAtomTm: divides atom not in literal form",
-            <|"term" -> t|>]]
+            "proveGroundAtomTm: divides atom is false",
+            <|"term" -> t, "d" -> dv, "n" -> nv|>]];
+        reducedThm = proveGroundDivides[dv, nv];
+        liftReducedAtomProof[reducedThm, opConst, dRed, nRed]
       ],
 
     True,
