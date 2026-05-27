@@ -716,3 +716,151 @@ HOLTest`runTests["arith: phiMinusInfOnX — full body x ≤ 5 ∧ 3 | x",
       aFormAnd[aFormTrue, aFormAtom[aAtomDivides[3, ltX]]],
       "x≤5 → T, 3|x kept; ∧ structure preserved"]
   ]];
+
+(* ===== Session 6: substitution, B-set, cooperExistsStep ===== *)
+
+substVarInLin = HOL`Auto`Arith`Private`substVarInLin;
+substVarInAtom = HOL`Auto`Arith`Private`substVarInAtom;
+substVarInForm = HOL`Auto`Arith`Private`substVarInForm;
+bSetOnX = HOL`Auto`Arith`Private`bSetOnX;
+cooperExistsStep = HOL`Auto`Arith`Private`cooperExistsStep;
+
+HOLTest`runTests["arith: substVarInLin replaces x by a constant in (x + 3)",
+  HOLTest`assertEq[
+    substVarInLin[linTerm[3, <|"x" -> 1|>], "x",
+      HOL`Auto`Arith`Private`linConst[7]],
+    linTerm[10, <||>],
+    "(1·x + 3)[x ↦ 7] = 10"]];
+
+HOLTest`runTests["arith: substVarInLin replaces x by another linTerm",
+  HOLTest`assertEq[
+    substVarInLin[linTerm[0, <|"x" -> 2, "y" -> 1|>], "x",
+      linTerm[1, <|"z" -> 1|>]],
+    linTerm[2, <|"y" -> 1, "z" -> 2|>],
+    "(2·x + y)[x ↦ (z + 1)] = 2(z+1) + y = 2 + y + 2z"]];
+
+HOLTest`runTests["arith: substVarInLin on a linTerm without x is identity",
+  Module[{lt},
+    lt = linTerm[5, <|"y" -> 2|>];
+    HOLTest`assertEq[substVarInLin[lt, "x",
+      HOL`Auto`Arith`Private`linConst[100]],
+      lt, "y + 5 doesn't mention x"]
+  ]];
+
+HOLTest`runTests["arith: substVarInForm respects binder shadowing on ∃",
+  Module[{xV, body, t, result},
+    xV = linVar["x"];
+    body = aFormExists["x",
+      aFormAtom[aAtomEq[linVar["x"],
+        HOL`Auto`Arith`Private`linConst[5]]]];
+    t = HOL`Auto`Arith`Private`linConst[42];
+    result = substVarInForm[body, "x", t];
+    HOLTest`assertEq[result, body,
+      "the inner ∃x shadows; substitution leaves the body untouched"]
+  ]];
+
+HOLTest`runTests["arith: bSetOnX — x = 5 contributes b = 4",
+  Module[{eqAtom, form},
+    eqAtom = HOL`Auto`Arith`Private`normalizeAtom[
+      aAtomEq[linVar["x"], HOL`Auto`Arith`Private`linConst[5]]];
+    form = aFormAtom[eqAtom];
+    HOLTest`assertEq[bSetOnX[form, "x"],
+      {linTerm[4, <||>]},
+      "x = 5 → witness 4 (so b + 1 = 5)"]
+  ]];
+
+HOLTest`runTests["arith: bSetOnX — x ≤ 5 contributes no witness (upper bound)",
+  Module[{leqAtom, form},
+    leqAtom = HOL`Auto`Arith`Private`normalizeAtom[
+      aAtomLeq[linVar["x"], HOL`Auto`Arith`Private`linConst[5]]];
+    form = aFormAtom[leqAtom];
+    HOLTest`assertEq[bSetOnX[form, "x"], {},
+      "x ≤ 5 is an upper bound; not in B"]
+  ]];
+
+HOLTest`runTests["arith: bSetOnX — 3 ≤ x contributes b = 2 (lower bound)",
+  Module[{leqAtom, form},
+    leqAtom = HOL`Auto`Arith`Private`normalizeAtom[
+      aAtomLeq[HOL`Auto`Arith`Private`linConst[3], linVar["x"]]];
+    form = aFormAtom[leqAtom];
+    HOLTest`assertEq[bSetOnX[form, "x"],
+      {linTerm[2, <||>]},
+      "3 ≤ x → witness 2 (so b + 1 = 3)"]
+  ]];
+
+HOLTest`runTests["arith: bSetOnX — 3 < x (strict) contributes b = 3",
+  Module[{ltAtom, form},
+    ltAtom = HOL`Auto`Arith`Private`normalizeAtom[
+      aAtomLt[HOL`Auto`Arith`Private`linConst[3], linVar["x"]]];
+    form = aFormAtom[ltAtom];
+    HOLTest`assertEq[bSetOnX[form, "x"],
+      {linTerm[3, <||>]},
+      "3 < x → witness 3 (so b + 1 = 4)"]
+  ]];
+
+HOLTest`runTests["arith: bSetOnX — divisibility atoms don't contribute",
+  Module[{divAtom, form},
+    divAtom = aAtomDivides[7, linVar["x"]];
+    form = aFormAtom[divAtom];
+    HOLTest`assertEq[bSetOnX[form, "x"], {},
+      "3 | x is periodic; not in B"]
+  ]];
+
+HOLTest`runTests["arith: bSetOnX — multiple atoms collect all witnesses",
+  Module[{ltX, atomLow, atomEq, form},
+    ltX = linVar["x"];
+    (* 3 ≤ x  ∧  x = 5  ∧  x ≤ 7  *)
+    atomLow = HOL`Auto`Arith`Private`normalizeAtom[
+      aAtomLeq[HOL`Auto`Arith`Private`linConst[3], ltX]];
+    atomEq = HOL`Auto`Arith`Private`normalizeAtom[
+      aAtomEq[ltX, HOL`Auto`Arith`Private`linConst[5]]];
+    form = aFormAnd[aFormAtom[atomLow],
+      aFormAnd[aFormAtom[atomEq],
+        aFormAtom[HOL`Auto`Arith`Private`normalizeAtom[
+          aAtomLeq[ltX, HOL`Auto`Arith`Private`linConst[7]]]]]];
+    HOLTest`assertEq[bSetOnX[form, "x"],
+      {linTerm[2, <||>], linTerm[4, <||>]},
+      "{2 from 3≤x, 4 from x=5}; x≤7 is upper bound, skipped"]
+  ]];
+
+HOLTest`runTests["arith: cooperExistsStep on ∃x. x = 5 produces 0=0 disjunct",
+  Module[{eqAtom, form, result, expected},
+    eqAtom = aAtomEq[linVar["x"], HOL`Auto`Arith`Private`linConst[5]];
+    form = aFormAtom[eqAtom];
+    result = cooperExistsStep["x", form];
+    (* φ_{-∞} = F (eq atom limit). δ = 1. B = {4}. *)
+    (* body[x ↦ 4 + 1 = 5] = (5 = 5) normalized = (0 = 0). *)
+    expected = aFormOr[aFormFalse,
+      aFormAtom[aAtomEq[linTerm[0, <||>], linTerm[0, <||>]]]];
+    HOLTest`assertEq[result, expected,
+      "∃x. x=5 → F ∨ (0=0)"]
+  ]];
+
+HOLTest`runTests["arith: cooperExistsStep on ∃x. 3 ≤ x ∧ x ≤ 7",
+  Module[{ltX, form, result},
+    ltX = linVar["x"];
+    form = aFormAnd[
+      aFormAtom[aAtomLeq[HOL`Auto`Arith`Private`linConst[3], ltX]],
+      aFormAtom[aAtomLeq[ltX, HOL`Auto`Arith`Private`linConst[7]]]];
+    result = cooperExistsStep["x", form];
+    (* δ = 1. B = {2}. φ_{-∞} of (3≤x ∧ x≤7) = F ∧ T = F (effectively). *)
+    (* body[x ↦ 2 + 1 = 3] normalized = (3 - 3 ≤ 0) ∧ (3 - 7 ≤ 0)        *)
+    (*                                = (0 ≤ 0) ∧ (-4 ≤ 0).               *)
+    HOLTest`assertEq[result,
+      aFormOr[
+        aFormAnd[aFormFalse, aFormTrue],     (* φ_{-∞}[x ↦ 1] *)
+        aFormAnd[
+          aFormAtom[aAtomLeq[linTerm[0, <||>], linTerm[0, <||>]]],
+          aFormAtom[aAtomLeq[linTerm[-4, <||>], linTerm[0, <||>]]]]],
+      "QE result is the F∨T disjunct + the witness-substituted body"]
+  ]];
+
+HOLTest`runTests["arith: cooperExistsStep on empty B-set (e.g. ∃x. x ≤ 5)",
+  Module[{leqAtom, form, result},
+    leqAtom = aAtomLeq[linVar["x"], HOL`Auto`Arith`Private`linConst[5]];
+    form = aFormAtom[leqAtom];
+    result = cooperExistsStep["x", form];
+    (* δ = 1, B = {}, φ_{-∞} = T. So minfDisjunct = T, bDisjunct = F. *)
+    HOLTest`assertEq[result, aFormOr[aFormTrue, aFormFalse],
+      "∃x. x ≤ 5 ⇒ φ_{-∞} carries the day (T at -∞)"]
+  ]];

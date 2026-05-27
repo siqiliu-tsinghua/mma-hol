@@ -811,6 +811,193 @@ phiMinusInfOnX[aFormExists[v_, body_], x_String] :=
 phiMinusInfOnX[other_, _] := other;
 
 (* ============================================================ *)
+(* Substitution: replace a variable in a linTerm / atom / form    *)
+(* by another linTerm.                                            *)
+(*                                                              *)
+(* Used for the Cooper QE plug-in step: φ[x ↦ b + j] and          *)
+(* φ_{-∞}[x ↦ j]. AST-level only; no HOL theorem.                 *)
+(* ============================================================ *)
+
+substVarInLin[linTerm[c_, vs_Association], x_String, rep_] :=
+  If[KeyExistsQ[vs, x],
+    Module[{coef = vs[x], restVars, scaled},
+      restVars = KeyDrop[vs, x];
+      scaled = linScale[coef, rep];
+      linAdd[linTerm[c, restVars], scaled]
+    ],
+    linTerm[c, vs]
+  ];
+
+substVarInAtom[aAtomEq[a_, b_], x_, rep_] :=
+  aAtomEq[substVarInLin[a, x, rep], substVarInLin[b, x, rep]];
+substVarInAtom[aAtomLeq[a_, b_], x_, rep_] :=
+  aAtomLeq[substVarInLin[a, x, rep], substVarInLin[b, x, rep]];
+substVarInAtom[aAtomLt[a_, b_], x_, rep_] :=
+  aAtomLt[substVarInLin[a, x, rep], substVarInLin[b, x, rep]];
+substVarInAtom[aAtomDivides[c_, lt_], x_, rep_] :=
+  aAtomDivides[c, substVarInLin[lt, x, rep]];
+
+substVarInForm[aFormTrue, _, _]  := aFormTrue;
+substVarInForm[aFormFalse, _, _] := aFormFalse;
+substVarInForm[aFormAtom[atom_], x_, rep_] :=
+  aFormAtom[substVarInAtom[atom, x, rep]];
+substVarInForm[aFormNot[f_], x_, rep_] :=
+  aFormNot[substVarInForm[f, x, rep]];
+substVarInForm[aFormAnd[a_, b_], x_, rep_] :=
+  aFormAnd[substVarInForm[a, x, rep], substVarInForm[b, x, rep]];
+substVarInForm[aFormOr[a_, b_], x_, rep_] :=
+  aFormOr[substVarInForm[a, x, rep], substVarInForm[b, x, rep]];
+substVarInForm[aFormImp[a_, b_], x_, rep_] :=
+  aFormImp[substVarInForm[a, x, rep], substVarInForm[b, x, rep]];
+substVarInForm[aFormIff[a_, b_], x_, rep_] :=
+  aFormIff[substVarInForm[a, x, rep], substVarInForm[b, x, rep]];
+(* Don't substitute through a binder of the same name (shadowing). *)
+substVarInForm[aFormForall[v_, body_], x_, rep_] :=
+  If[v === x, aFormForall[v, body],
+     aFormForall[v, substVarInForm[body, x, rep]]];
+substVarInForm[aFormExists[v_, body_], x_, rep_] :=
+  If[v === x, aFormExists[v, body],
+     aFormExists[v, substVarInForm[body, x, rep]]];
+
+(* ============================================================ *)
+(* B-set: left-bound witnesses                                    *)
+(*                                                              *)
+(* For ∃x. φ in NNF + normalized form, each atom involving x      *)
+(* contributes (at most) one witness term b such that             *)
+(*   ⋃_{j=1..δ} φ[x ↦ b + j]                                      *)
+(* covers the cases where x is "just above" a lower bound.        *)
+(*                                                              *)
+(* We restrict to |coef-x| = 1 for now (Cooper's general          *)
+(* algorithm normalizes higher coefficients via the multiply-     *)
+(* through trick; that handling is deferred to a later session).  *)
+(* Inputs with |coef-x| > 1 throw `arith-cooper`.                  *)
+(*                                                              *)
+(* Cases by atom shape (lt = c·x + t, op 0):                       *)
+(*   Eq, c = +1   :  x = -t.   Witness  -t - 1.                    *)
+(*   Eq, c = -1   :  x =  t.   Witness   t - 1.                    *)
+(*   Leq, c = +1  :  x ≤ -t.   Upper bound — no witness.            *)
+(*   Leq, c = -1  :  x ≥  t.   Witness  t - 1.                     *)
+(*   Lt,  c = +1  :  x < -t.   Upper bound — no witness.            *)
+(*   Lt,  c = -1  :  x >  t.   Witness   t.                         *)
+(*                                                              *)
+(* Negated (= lt op 0 flipped):                                    *)
+(*   ¬Eq          :  x ≠ -t (or t). Two-sided; skipped for now.    *)
+(*   ¬Leq, c = +1 :  x > -t.   Witness  -t.                         *)
+(*   ¬Leq, c = -1 :  x <  t.   Upper bound — no witness.            *)
+(*   ¬Lt,  c = +1 :  x ≥ -t.   Witness  -t - 1.                     *)
+(*   ¬Lt,  c = -1 :  x ≤  t.   Upper bound — no witness.            *)
+(*                                                              *)
+(* Divisibility atoms don't contribute to B (periodic; handled by *)
+(* φ_{-∞}'s evaluation at j ∈ {1..δ}).                             *)
+(* ============================================================ *)
+
+(* atomConstPartOnX: lt with x's coefficient zeroed out. *)
+atomConstPartOnX[linTerm[c_, vs_Association], x_String] :=
+  linTerm[c, KeyDrop[vs, x]];
+
+(* bWitnessOfAtom: returns Missing[] (no contribution) or a       *)
+(* linTerm witness.                                                *)
+bWitnessOfAtom[negated_, atom_, x_String] :=
+  Module[{coef, t},
+    coef = atomCoefOnX[atom, x];
+    If[coef === 0, Return[Missing[]]];
+    t = atomConstPartOnX[
+      Switch[Head[atom],
+        aAtomDivides, atom[[2]],
+        _, atom[[1]]],
+      x];
+    Switch[Head[atom],
+      aAtomEq,
+        If[negated, Missing[],  (* ≠ skipped for session 6 *)
+          Switch[coef,
+             1, linSub[linNeg[t], linConst[1]],   (* x = -t,   b = -t - 1 *)
+            -1, linSub[t, linConst[1]],            (* x =  t,   b =  t - 1 *)
+            _, HOL`Error`holError["arith-cooper",
+               "B-set: |coef-x| > 1 unsupported in session 6",
+               <|"atom" -> atom, "coef" -> coef|>]]],
+      aAtomLeq,
+        If[negated,
+          Switch[coef,
+             1, linNeg[t],                         (* ¬(x ≤ -t) ⇒ x > -t, b = -t *)
+            -1, Missing[],                         (* ¬(x ≥ t) ⇒ x < t, upper bound *)
+            _, HOL`Error`holError["arith-cooper",
+               "B-set: |coef-x| > 1 unsupported",
+               <|"atom" -> atom, "coef" -> coef|>]],
+          Switch[coef,
+             1, Missing[],                         (* x ≤ -t, upper bound *)
+            -1, linSub[t, linConst[1]],            (* x ≥ t,  b = t - 1 *)
+            _, HOL`Error`holError["arith-cooper",
+               "B-set: |coef-x| > 1 unsupported",
+               <|"atom" -> atom, "coef" -> coef|>]]],
+      aAtomLt,
+        If[negated,
+          Switch[coef,
+             1, linSub[linNeg[t], linConst[1]],    (* ¬(x < -t) ⇒ x ≥ -t, b = -t-1 *)
+            -1, Missing[],                         (* ¬(x > t)  ⇒ x ≤ t,  upper *)
+            _, HOL`Error`holError["arith-cooper",
+               "B-set: |coef-x| > 1 unsupported",
+               <|"atom" -> atom, "coef" -> coef|>]],
+          Switch[coef,
+             1, Missing[],                         (* x < -t,  upper bound *)
+            -1, t,                                 (* x > t,   b = t      *)
+            _, HOL`Error`holError["arith-cooper",
+               "B-set: |coef-x| > 1 unsupported",
+               <|"atom" -> atom, "coef" -> coef|>]]],
+      aAtomDivides,
+        Missing[]   (* periodic; never a B-witness *)
+    ]
+  ];
+
+bSetOnX[f_, x_String] :=
+  Module[{pairs, witnesses},
+    pairs = collectAtoms[f, False];
+    witnesses = Map[bWitnessOfAtom[#[[1]], #[[2]], x] &, pairs];
+    Select[witnesses, ! MissingQ[#] &]
+  ];
+
+(* ============================================================ *)
+(* cooperExistsStep — assemble the final QE AST                  *)
+(*                                                              *)
+(*   ∃x. body  ⇔   (⋁_{j=1..δ} φ_{-∞}[x ↦ j])                    *)
+(*            ∨   (⋁_{j=1..δ} ⋁_{b ∈ B} body[x ↦ b + j])           *)
+(*                                                              *)
+(* Inputs: variable name x and a QF NNF body. Returns an AST     *)
+(* aForm. Empty B-set means the right disjunct is aFormFalse;    *)
+(* δ = 1 with no divisibility is the typical "no modulus" case.   *)
+(* Output may still contain ⊤ / ⊥ leaves and unsimplified atoms;  *)
+(* propositional simplification is a separate later pass.         *)
+(* ============================================================ *)
+
+bigOr[{}] := aFormFalse;
+bigOr[{f_}] := f;
+bigOr[fs_List] := Fold[aFormOr[#1, #2] &, First[fs], Rest[fs]];
+
+cooperExistsStep[xName_String, body_] :=
+  Module[{normBody, delta, bSet, phiMinf, jRange,
+          minfDisjunct, bDisjunct},
+    normBody = normalizeAtomsForm[body];
+    delta    = deltaOnX[normBody, xName];
+    bSet     = bSetOnX[normBody, xName];
+    phiMinf  = phiMinusInfOnX[normBody, xName];
+    jRange   = Range[1, delta];
+
+    minfDisjunct = bigOr[
+      Map[Function[j,
+        substVarInForm[phiMinf, xName, linConst[j]]],
+        jRange]];
+
+    bDisjunct = bigOr[Flatten[
+      Map[Function[b,
+        Map[Function[j,
+          substVarInForm[normBody, xName,
+            linAdd[b, linConst[j]]]],
+          jRange]],
+        bSet], 1]];
+
+    aFormOr[minfDisjunct, bDisjunct]
+  ];
+
+(* ============================================================ *)
 (* Public stubs                                                  *)
 (* ============================================================ *)
 
