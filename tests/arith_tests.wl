@@ -160,10 +160,10 @@ HOLTest`runTests["arith: linScale by 2 doubles everything",
 
 (* ===== stub behavior ===== *)
 
-HOLTest`runTests["arith: arithProve throws holError tagged arith-stub",
+HOLTest`runTests["arith: arithProve rejects non-∃ goal shape",
   HOLTest`assertThrows[
     arithProve[mkEq[mkVar["x", numTy], mkVar["x", numTy]]],
-    "arith-stub", "stub still firing"]];
+    "arith-not-supported", "x = x is not an ∃-goal"]];
 
 (* ===== Session 2: Atom / Formula AST + parse / build / NNF ===== *)
 
@@ -1260,4 +1260,73 @@ HOLTest`runTests["arith: arithProveExists on ∃x. x + 2 ≤ x + 5 (both compoun
     th = arithProveExists[goal];
     HOLTest`assertEq[hyp[th], {}, "no hyps"];
     HOLTest`assertEq[concl[th], goal, "⊢ ∃x. x + 2 ≤ x + 5"]
+  ]];
+
+(* ===== Session 11: arithProve public wrap + nested ∃ + ARITH tactic ===== *)
+
+arithProve = HOL`Auto`Arith`arithProve;
+ARITH = HOL`Auto`Arith`ARITH;
+
+HOLTest`runTests["arith: arithProve on single ∃ (same as arithProveExists)",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV, mkEq[xV, buildLitNum[5]]];
+    th = arithProve[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∃x. x = 5"]
+  ]];
+
+HOLTest`runTests["arith: arithProve on nested ∃x. ∃y. x ≤ y",
+  Module[{xV, yV, goal, th},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    goal = existsNumTm[xV, existsNumTm[yV,
+      mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], yV]]];
+    th = arithProve[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "⊢ ∃x. ∃y. x ≤ y (recursion picks (0, 0))"]
+  ]];
+
+HOLTest`runTests["arith: arithProve on nested ∃ with constraint",
+  Module[{xV, yV, goal, th},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    goal = existsNumTm[xV, existsNumTm[yV, mkComb[mkComb[
+      mkConst["\[And]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkEq[xV, buildLitNum[3]]],
+      mkEq[yV, buildLitNum[7]]]]];
+    th = arithProve[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "⊢ ∃x. ∃y. x = 3 ∧ y = 7"]
+  ]];
+
+HOLTest`runTests["arith: arithProve rejects ∀-goal with arith-not-supported",
+  Module[{xV, goal},
+    xV = mkVar["x", numTy];
+    goal = mkComb[mkConst["\[ForAll]",
+      tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[xV, mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], xV]]];
+    HOLTest`assertThrows[arithProve[goal], "arith-not-supported",
+      "∀ goals need Cooper main theorem (queued)"]
+  ]];
+
+HOLTest`runTests["arith: ARITH tactic closes ∃-SAT goal via prove[]",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV, mkEq[xV, buildLitNum[5]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "ARITH tactic via prove[] yields ⊢ ∃x. x = 5"]
+  ]];
+
+HOLTest`runTests["arith: ARITH tactic on nested ∃ via prove[]",
+  Module[{xV, yV, goal, th},
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    goal = existsNumTm[xV, existsNumTm[yV,
+      mkEq[plusN[xV, buildLitNum[1]], yV]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "ARITH tactic closes ⊢ ∃x. ∃y. x + 1 = y"]
   ]];

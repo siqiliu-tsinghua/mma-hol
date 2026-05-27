@@ -37,6 +37,7 @@
 BeginPackage["HOL`Auto`Arith`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
+  "HOL`Tactics`",
   "HOL`Auto`PropTaut`",
   "HOL`Auto`Simp`",
   "HOL`Stdlib`Num`"
@@ -1477,9 +1478,26 @@ proveGroundFormulaTm[t_] :=
 (* 5. Apply HOL`Bool`EXISTS at w_lit.                              *)
 (* ============================================================ *)
 
+(* Candidate Integer witnesses for ∃x:num. body. Uses Cooper's     *)
+(* B-set + 0..δ from the AST view of the body. Filters to ℕ. The   *)
+(* result is a list of Integer w to try; we substitute and prove    *)
+(* in order until one succeeds.                                     *)
+
+inferCandidatesForGoal[xName_String, goalTm_] :=
+  Module[{astExists, astBody, normBody, candidates},
+    astExists = parseForm[goalTm];        (* aFormExists[name, body] *)
+    astBody   = astExists[[2]];
+    normBody  = normalizeAtomsForm[astBody];
+    candidates = candidateIntegers[xName, normBody];
+    Select[candidates, # >= 0 &]
+  ];
+
+(* arithProveExists handles one outer ∃x:num. body. If body itself  *)
+(* is another ∃-quantifier (or has nested ∃ structure), we recurse  *)
+(* via arithProve.                                                  *)
+
 arithProveExists[goalTm_] :=
-  Module[{absTm, bodyHol, witnessInt, witnessLit, appTm, betaTh,
-          substBody, bodyThm, finalThm, astBody, xName},
+  Module[{absTm, xName, candidates, hit},
     If[! MatchQ[goalTm, comb[const["∃", _],
         abs[bvar[0, ty_], _, _String]]] ||
         goalTm[[2, 1, 2]] =!= numTy,
@@ -1487,39 +1505,74 @@ arithProveExists[goalTm_] :=
         "expected ⊢ ∃x:num. body",
         <|"got" -> goalTm|>]];
     absTm = goalTm[[2]];
-    xName = absTm[[3]];                       (* binder origin name *)
-    astBody = parseForm[goalTm][[2]];          (* AST body, x replaced by free var *)
-    (* parseForm returns aFormExists[name, body]; we take its body. *)
-    witnessInt = findSatWitness[xName, astBody];
-    If[MissingQ[witnessInt],
+    xName = absTm[[3]];
+    candidates = inferCandidatesForGoal[xName, goalTm];
+    hit = Missing[];
+    Scan[Function[w,
+      If[MissingQ[hit],
+        Module[{wLit, appTm, betaTh, substBody, bodyThm},
+          wLit = buildLitNum[w];
+          appTm = mkComb[absTm, wLit];
+          betaTh = BETACONV[appTm];
+          substBody = concl[betaTh][[2]];
+          bodyThm = Catch[
+            arithProveBody[substBody],
+            HOL`Error`holErrorTag, Function[err, $Failed]];
+          If[bodyThm =!= $Failed,
+            hit = HOL`Bool`EXISTS[goalTm, wLit, bodyThm]]
+        ]
+      ]], candidates];
+    If[MissingQ[hit],
       HOL`Error`holError["arith-prove-exists",
-        "no witness found (formula may be UNSAT or non-Presburger)",
+        "no witness found for ⊢ ∃x:num. body",
         <|"goal" -> goalTm|>]];
-    witnessLit = buildLitNum[witnessInt];
-    appTm = mkComb[absTm, witnessLit];
-    betaTh = BETACONV[appTm];
-    (* ⊢ (λx. body) witnessLit = body[x ↦ witnessLit] *)
-    substBody = concl[betaTh][[2]];
-    bodyThm = proveGroundFormulaTm[substBody];
-    (* ⊢ body[x ↦ witnessLit] *)
-    finalThm = HOL`Bool`EXISTS[goalTm, witnessLit, bodyThm];
-    (* ⊢ ∃x:num. body *)
-    finalThm
+    hit
+  ];
+
+(* arithProveBody dispatches: if the term is another ∃-quantifier,  *)
+(* recurse via arithProveExists; otherwise treat as a ground         *)
+(* propositional formula.                                            *)
+
+arithProveBody[t_] :=
+  If[MatchQ[t, comb[const["∃", _], abs[bvar[0, ty_], _, _String]]] &&
+       t[[2, 1, 2]] === numTy,
+    arithProveExists[t],
+    proveGroundFormulaTm[t]
   ];
 
 (* ============================================================ *)
-(* Public stubs                                                  *)
+(* Public entry points                                           *)
+(*                                                              *)
+(* arithProve[goalTm]   — closes ∃-SAT Presburger ℕ goals via    *)
+(*                        Cooper QE + witness search + the       *)
+(*                        ground-arithmetic provers. Other       *)
+(*                        goal shapes (∀, mixed, non-Presburger) *)
+(*                        throw `arith-not-supported` for now —  *)
+(*                        ∀ requires the Cooper main theorem      *)
+(*                        which is queued.                         *)
+(*                                                              *)
+(* ARITH[][goal]        — tactic wrapper. Calls arithProve on    *)
+(*                        the goal's conclusion and closes the    *)
+(*                        goal via tacResult.                     *)
 (* ============================================================ *)
 
-arithProve[goalTm_] :=
-  HOL`Error`holError["arith-stub",
-    "Cooper QE not yet implemented — call from a future session",
-    <|"goal" -> goalTm|>];
+HOL`Auto`Arith`arithProve[goalTm_] :=
+  Which[
+    MatchQ[goalTm, comb[const["∃", _],
+        abs[bvar[0, ty_], _, _String]]] &&
+        goalTm[[2, 1, 2]] === numTy,
+      arithProveExists[goalTm],
+    True,
+      HOL`Error`holError["arith-not-supported",
+        "arithProve: only ∃x:num. body goals are currently supported",
+        <|"goal" -> goalTm|>]
+  ];
 
-ARITH[][goal_] :=
-  HOL`Error`holError["arith-stub",
-    "ARITH tactic not yet implemented",
-    <|"goal" -> goal|>];
+HOL`Auto`Arith`ARITH[][g : HOL`Tactics`goal[asms_, conclTm_]] :=
+  Module[{th},
+    th = HOL`Auto`Arith`arithProve[conclTm];
+    HOL`Tactics`tacResult[{}, Function[{thList}, th]]
+  ];
 
 End[];
 EndPackage[];
