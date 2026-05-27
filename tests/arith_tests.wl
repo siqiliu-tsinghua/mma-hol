@@ -1076,3 +1076,120 @@ HOLTest`runTests["arith: proveGroundDivides rejects non-divisible",
   HOLTest`assertThrows[
     proveGroundDivides[3, 10], "arith-ground",
     "3 does not divide 10"]];
+
+(* ===== Session 9: arithProveExists — ∃-SAT → HOL theorem ===== *)
+
+findSatWitness = HOL`Auto`Arith`Private`findSatWitness;
+proveGroundAtomTm = HOL`Auto`Arith`Private`proveGroundAtomTm;
+proveGroundFormulaTm = HOL`Auto`Arith`Private`proveGroundFormulaTm;
+arithProveExists = HOL`Auto`Arith`Private`arithProveExists;
+
+existsNumTm[v_, body_] :=
+  mkComb[mkConst["\[Exists]", tyFun[tyFun[numTy, boolTy], boolTy]],
+    mkAbs[v, body]];
+
+HOLTest`runTests["arith: findSatWitness on ∃x. x = 5",
+  Module[{xV, body},
+    xV = linVar["x"];
+    body = aFormAtom[aAtomEq[xV, HOL`Auto`Arith`Private`linConst[5]]];
+    HOLTest`assertEq[findSatWitness["x", body], 5,
+      "witness is 5"]
+  ]];
+
+HOLTest`runTests["arith: findSatWitness on ∃x. 3 ≤ x ∧ x ≤ 7",
+  Module[{xV, body, w},
+    xV = linVar["x"];
+    body = aFormAnd[
+      aFormAtom[aAtomLeq[HOL`Auto`Arith`Private`linConst[3], xV]],
+      aFormAtom[aAtomLeq[xV, HOL`Auto`Arith`Private`linConst[7]]]];
+    w = findSatWitness["x", body];
+    HOLTest`assertTrue[IntegerQ[w] && 3 <= w <= 7,
+      "witness is in [3, 7], got " <> ToString[w]]
+  ]];
+
+HOLTest`runTests["arith: findSatWitness returns Missing on UNSAT",
+  Module[{xV, body},
+    xV = linVar["x"];
+    body = aFormAnd[
+      aFormAtom[aAtomLeq[HOL`Auto`Arith`Private`linConst[10], xV]],
+      aFormAtom[aAtomLeq[xV, HOL`Auto`Arith`Private`linConst[3]]]];
+    HOLTest`assertTrue[MissingQ[findSatWitness["x", body]],
+      "no x satisfies 10 ≤ x ∧ x ≤ 3"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundAtomTm — 0 = 0 via REFL",
+  Module[{th},
+    th = proveGroundAtomTm[mkEq[buildLitNum[0], buildLitNum[0]]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], mkEq[buildLitNum[0], buildLitNum[0]],
+      "⊢ 0 = 0"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundFormulaTm on (3 ≤ 5) ∧ (5 ≤ 7)",
+  Module[{tm, th, leq35, leq57},
+    leq35 = mkComb[mkComb[HOL`Stdlib`Num`leqConst[], buildLitNum[3]],
+      buildLitNum[5]];
+    leq57 = mkComb[mkComb[HOL`Stdlib`Num`leqConst[], buildLitNum[5]],
+      buildLitNum[7]];
+    tm = mkComb[mkComb[mkConst["\[And]",
+      tyFun[boolTy, tyFun[boolTy, boolTy]]], leq35], leq57];
+    th = proveGroundFormulaTm[tm];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], tm, "⊢ (3 ≤ 5) ∧ (5 ≤ 7)"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists on ∃x. x = 5",
+  Module[{goal, th},
+    goal = existsNumTm[mkVar["x", numTy],
+      mkEq[mkVar["x", numTy], buildLitNum[5]]];
+    th = arithProveExists[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∃x. x = 5"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists on ∃x. 3 ≤ x ∧ x ≤ 7",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV, mkComb[mkComb[
+      mkConst["\[And]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkComb[mkComb[HOL`Stdlib`Num`leqConst[], buildLitNum[3]], xV]],
+      mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], buildLitNum[7]]]];
+    th = arithProveExists[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "⊢ ∃x. 3 ≤ x ∧ x ≤ 7"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists on ∃x. x = 6 ∧ divides 3 x",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV, mkComb[mkComb[
+      mkConst["\[And]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkEq[xV, buildLitNum[6]]],
+      mkComb[mkComb[HOL`Stdlib`Num`dividesConst[], buildLitNum[3]], xV]]];
+    th = arithProveExists[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "⊢ ∃x. x = 6 ∧ divides 3 x"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists on ∃x. divides 4 x",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV,
+      mkComb[mkComb[HOL`Stdlib`Num`dividesConst[], buildLitNum[4]], xV]];
+    th = arithProveExists[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∃x. divides 4 x"]
+  ]];
+
+HOLTest`runTests["arith: arithProveExists fails on UNSAT goal",
+  Module[{xV, goal},
+    xV = mkVar["x", numTy];
+    goal = existsNumTm[xV, mkComb[mkComb[
+      mkConst["\[And]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+      mkComb[mkComb[HOL`Stdlib`Num`leqConst[], buildLitNum[10]], xV]],
+      mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], buildLitNum[3]]]];
+    HOLTest`assertThrows[arithProveExists[goal], "arith-prove-exists",
+      "no witness for 10 ≤ x ∧ x ≤ 3"]
+  ]];

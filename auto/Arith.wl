@@ -1242,6 +1242,187 @@ proveGroundDivides[d_Integer, n_Integer] :=
   ];
 
 (* ============================================================ *)
+(* findSatWitness — concrete Integer witness for ∃x. body         *)
+(*                                                              *)
+(* For closed Presburger over ℕ, every satisfying x lies in       *)
+(* {b + j : b ∈ B-set, j ∈ [1..δ]} ∪ {j : j ∈ [1..δ]} ∪ {0}.       *)
+(* We search these candidates; the first w for which              *)
+(*   simpForm[substVarInForm[normBody, xName, linConst[w]]]       *)
+(* reduces to aFormTrue is returned as an Integer (or Missing[]).  *)
+(* ============================================================ *)
+
+candidateIntegers[xName_String, normBody_] :=
+  Module[{delta, bSet, bConsts, baseCandidates, minfCandidates},
+    delta = deltaOnX[normBody, xName];
+    bSet  = bSetOnX[normBody, xName];
+    bConsts = Select[bSet, linIsGround];
+    baseCandidates = Flatten[Map[Function[b,
+      Module[{bc = linConstValue1[b]},
+        Map[bc + # &, Range[1, delta]]]], bConsts]];
+    minfCandidates = Range[0, delta];
+    DeleteDuplicates[Join[baseCandidates, minfCandidates]]
+  ];
+
+findSatWitness[xName_String, body_] :=
+  Module[{normBody, candidates, hits},
+    normBody = normalizeAtomsForm[body];
+    candidates = candidateIntegers[xName, normBody];
+    candidates = Select[candidates, # >= 0 &];   (* ℕ-only *)
+    hits = Select[candidates, Function[w,
+      simpForm[substVarInForm[normBody, xName,
+        linConst[w]]] === aFormTrue]];
+    If[hits === {}, Missing[], First[hits]]
+  ];
+
+(* ============================================================ *)
+(* proveGroundFormulaTm — HOL proof of a closed propositional     *)
+(* formula over ground arithmetic atoms                           *)
+(*                                                              *)
+(* Restricted to atoms of the form lit op lit (eq/leq/lt/divides) *)
+(* and combinations via ∧, ∨, ¬, T, F. Other shapes throw         *)
+(* `arith-ground-fmla`.                                            *)
+(* ============================================================ *)
+
+proveGroundAtomTm[t_] :=
+  Which[
+    (* a = b : both SUC chains, equal *)
+    MatchQ[t, comb[comb[const["=", _], _], _]],
+      Module[{a, b},
+        a = t[[1, 2]]; b = t[[2]];
+        If[litNumQ[a] && litNumQ[b] &&
+           parseLitNum[a] === parseLitNum[b],
+          REFL[a],
+          HOL`Error`holError["arith-ground-fmla",
+            "proveGroundAtomTm: eq atom not provable",
+            <|"term" -> t|>]]
+      ],
+
+    (* a ≤ b *)
+    MatchQ[t, comb[comb[const["≤", _], _], _]],
+      Module[{a, b, am, bm},
+        a = t[[1, 2]]; b = t[[2]];
+        If[litNumQ[a] && litNumQ[b],
+          am = parseLitNum[a]; bm = parseLitNum[b];
+          If[am <= bm,
+            proveGroundLeq[am, bm],
+            HOL`Error`holError["arith-ground-fmla",
+              "proveGroundAtomTm: ≤ atom is false",
+              <|"term" -> t|>]],
+          HOL`Error`holError["arith-ground-fmla",
+            "proveGroundAtomTm: ≤ atom not in literal form",
+            <|"term" -> t|>]]
+      ],
+
+    (* a < b *)
+    MatchQ[t, comb[comb[const["<", _], _], _]],
+      Module[{a, b, am, bm},
+        a = t[[1, 2]]; b = t[[2]];
+        If[litNumQ[a] && litNumQ[b],
+          am = parseLitNum[a]; bm = parseLitNum[b];
+          If[am < bm,
+            proveGroundLt[am, bm],
+            HOL`Error`holError["arith-ground-fmla",
+              "proveGroundAtomTm: < atom is false",
+              <|"term" -> t|>]],
+          HOL`Error`holError["arith-ground-fmla",
+            "proveGroundAtomTm: < atom not in literal form",
+            <|"term" -> t|>]]
+      ],
+
+    (* divides d n *)
+    MatchQ[t, comb[comb[const["divides", _], _], _]],
+      Module[{d, n, dv, nv},
+        d = t[[1, 2]]; n = t[[2]];
+        If[litNumQ[d] && litNumQ[n],
+          dv = parseLitNum[d]; nv = parseLitNum[n];
+          If[dv > 0 && Mod[nv, dv] === 0,
+            proveGroundDivides[dv, nv],
+            HOL`Error`holError["arith-ground-fmla",
+              "proveGroundAtomTm: divides atom is false",
+              <|"term" -> t|>]],
+          HOL`Error`holError["arith-ground-fmla",
+            "proveGroundAtomTm: divides atom not in literal form",
+            <|"term" -> t|>]]
+      ],
+
+    True,
+      HOL`Error`holError["arith-ground-fmla",
+        "proveGroundAtomTm: atom shape not recognized",
+        <|"term" -> t|>]
+  ];
+
+proveGroundFormulaTm[t_] :=
+  Which[
+    t === mkConst["T", boolTy], HOL`Bool`TRUTH,
+
+    MatchQ[t, comb[comb[const["∧", _], _], _]],
+      Module[{a, b, aThm, bThm},
+        a = t[[1, 2]]; b = t[[2]];
+        aThm = proveGroundFormulaTm[a];
+        bThm = proveGroundFormulaTm[b];
+        HOL`Bool`CONJ[aThm, bThm]
+      ],
+
+    MatchQ[t, comb[comb[const["∨", _], _], _]],
+      Module[{a, b, aThm},
+        a = t[[1, 2]]; b = t[[2]];
+        (* Try the left first; if it fails, try the right. *)
+        aThm = Catch[proveGroundFormulaTm[a], HOL`Error`holErrorTag,
+          Function[err, $Failed]];
+        If[aThm =!= $Failed,
+          HOL`Bool`DISJ1[aThm, b],
+          HOL`Bool`DISJ2[proveGroundFormulaTm[b], a]]
+      ],
+
+    True,
+      (* Treat as a leaf atom. *)
+      proveGroundAtomTm[t]
+  ];
+
+(* ============================================================ *)
+(* arithProveExists — orchestrate ∃-SAT proof                    *)
+(*                                                              *)
+(*   Goal:  ⊢ ∃x:num. body                                       *)
+(*                                                              *)
+(* 1. Parse the HOL goal; check shape ∃x:num. (…).                *)
+(* 2. Use findSatWitness on the AST to extract w ∈ ℕ.              *)
+(* 3. Compute body[x ↦ buildLitNum[w]] via BETACONV.               *)
+(* 4. Prove the resulting closed ground formula via                *)
+(*    proveGroundFormulaTm.                                        *)
+(* 5. Apply HOL`Bool`EXISTS at w_lit.                              *)
+(* ============================================================ *)
+
+arithProveExists[goalTm_] :=
+  Module[{absTm, bodyHol, witnessInt, witnessLit, appTm, betaTh,
+          substBody, bodyThm, finalThm, astBody, xName},
+    If[! MatchQ[goalTm, comb[const["∃", _],
+        abs[bvar[0, ty_], _, _String]]] ||
+        goalTm[[2, 1, 2]] =!= numTy,
+      HOL`Error`holError["arith-prove-exists",
+        "expected ⊢ ∃x:num. body",
+        <|"got" -> goalTm|>]];
+    absTm = goalTm[[2]];
+    xName = absTm[[3]];                       (* binder origin name *)
+    astBody = parseForm[goalTm][[2]];          (* AST body, x replaced by free var *)
+    (* parseForm returns aFormExists[name, body]; we take its body. *)
+    witnessInt = findSatWitness[xName, astBody];
+    If[MissingQ[witnessInt],
+      HOL`Error`holError["arith-prove-exists",
+        "no witness found (formula may be UNSAT or non-Presburger)",
+        <|"goal" -> goalTm|>]];
+    witnessLit = buildLitNum[witnessInt];
+    appTm = mkComb[absTm, witnessLit];
+    betaTh = BETACONV[appTm];
+    (* ⊢ (λx. body) witnessLit = body[x ↦ witnessLit] *)
+    substBody = concl[betaTh][[2]];
+    bodyThm = proveGroundFormulaTm[substBody];
+    (* ⊢ body[x ↦ witnessLit] *)
+    finalThm = HOL`Bool`EXISTS[goalTm, witnessLit, bodyThm];
+    (* ⊢ ∃x:num. body *)
+    finalThm
+  ];
+
+(* ============================================================ *)
 (* Public stubs                                                  *)
 (* ============================================================ *)
 
