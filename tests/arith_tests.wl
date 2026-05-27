@@ -518,6 +518,57 @@ HOLTest`runTests["arith: notForallNumThm — ⊢ ∀P. ¬(∀x. P x) = ∃x. ¬P
       "shape: ∀P. ¬(∀…) = ∃(¬…)"]
   ]];
 
+(* ===== Session 12: Cooper-instance theorems ===== *)
+
+HOLTest`runTests["arith: existsEqThm — ⊢ ∀a. (∃x. x = a) = T",
+  Module[{th, c},
+    th = HOL`Auto`Arith`existsEqThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["=", _], comb[const["∃", _], _]],
+          const["T", _]], _]]],
+      "shape: ∀a. (∃x. …) = T"]
+  ]];
+
+HOLTest`runTests["arith: existsLeqUbThm — ⊢ ∀a. (∃x. x ≤ a) = T",
+  Module[{th, c},
+    th = HOL`Auto`Arith`existsLeqUbThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["=", _], comb[const["∃", _], _]],
+          const["T", _]], _]]],
+      "shape: ∀a. (∃x. …) = T"]
+  ]];
+
+HOLTest`runTests["arith: existsLowerBoundThm — ⊢ ∀a. (∃x. a ≤ x) = T",
+  Module[{th, c},
+    th = HOL`Auto`Arith`existsLowerBoundThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[comb[const["=", _], comb[const["∃", _], _]],
+          const["T", _]], _]]],
+      "shape: ∀a. (∃x. …) = T"]
+  ]];
+
+HOLTest`runTests["arith: existsBoundedThm — ⊢ ∀a b. (∃x. a ≤ x ∧ x ≤ b) = (a ≤ b)",
+  Module[{th, c},
+    th = HOL`Auto`Arith`existsBoundedThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[comb[const["=", _],
+            comb[const["∃", _], _]], _], _]], _]]],
+      "shape: ∀a. ∀b. (∃x. …) = (…)"]
+  ]];
+
 HOLTest`runTests["arith: nnfConv on ¬(∀x:num. x = x) — pushes ¬ inside ∀",
   Module[{xV, t, th, rhs, expected},
     xV = mkVar["x", numTy];

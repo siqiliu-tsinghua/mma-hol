@@ -61,6 +61,22 @@ notForallNumThm::usage =
   "Quantifier deMorgan (classical direction; forward uses CCONTR). " <>
   "Used as a rewrite schema for nnfConv via Miller HO matching.";
 
+existsEqThm::usage =
+  "existsEqThm — ⊢ ∀a:num. (∃x:num. x = a) = T. Trivial ∃-witness: x = a. " <>
+  "First Cooper-instance theorem.";
+
+existsLeqUbThm::usage =
+  "existsLeqUbThm — ⊢ ∀a:num. (∃x:num. x ≤ a) = T. Witness via x = 0 + leqZero.";
+
+existsLowerBoundThm::usage =
+  "existsLowerBoundThm — ⊢ ∀a:num. (∃x:num. a ≤ x) = T. Witness via x = a + leqRefl.";
+
+existsBoundedThm::usage =
+  "existsBoundedThm — ⊢ ∀a b:num. (∃x:num. a ≤ x ∧ x ≤ b) = (a ≤ b). " <>
+  "Cooper's interval-satisfiability theorem: an interval [a,b] is " <>
+  "nonempty iff a ≤ b. Forward via CHOOSE+leqTrans, backward via " <>
+  "EXISTS at a + leqRefl.";
+
 arithProve::usage =
   "arithProve[goalTm] — Presburger ℕ decision procedure. " <>
   "*Skeleton*: in the current session this is a stub that always " <>
@@ -574,6 +590,101 @@ notForallNumThm =
     eqThm = HOL`Kernel`DEDUCTANTISYM[backwardDir, forwardDir];
     (* ⊢ ¬(∀x. P x) = ∃x. ¬P x *)
     HOL`Bool`GEN[pV, eqThm]
+  ];
+
+(* ============================================================ *)
+(* Cooper-instance theorems — first stage of the Cooper main     *)
+(* theorem. Each fixes a specific atom shape and proves the       *)
+(* ∃-equivalence directly via kernel rules.                       *)
+(* ============================================================ *)
+
+existsEqThm =
+  Module[{aV, xV, body, existsTm, witnessRefl, existsProved, eqTThm},
+    aV = mkVar["a", numTy];
+    xV = mkVar["xEx", numTy];
+    body = mkEq[xV, aV];
+    existsTm = mkComb[existsOp[numTy], mkAbs[xV, body]];
+    witnessRefl = HOL`Kernel`REFL[aV];
+    (* ⊢ a = a *)
+    existsProved = HOL`Bool`EXISTS[existsTm, aV, witnessRefl];
+    (* ⊢ ∃x. x = a *)
+    eqTThm = HOL`Bool`EQTINTRO[existsProved];
+    HOL`Bool`GEN[aV, eqTThm]
+  ];
+
+existsLeqUbThm =
+  Module[{aV, xV, zeroN, body, existsTm, leqZeroA, existsProved, eqTThm},
+    aV = mkVar["a", numTy];
+    xV = mkVar["xEx", numTy];
+    zeroN = HOL`Stdlib`Num`zeroConst[];
+    body = mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], aV];
+    existsTm = mkComb[existsOp[numTy], mkAbs[xV, body]];
+    leqZeroA = HOL`Bool`SPEC[aV, HOL`Stdlib`Num`leqZeroThm];
+    (* ⊢ 0 ≤ a *)
+    existsProved = HOL`Bool`EXISTS[existsTm, zeroN, leqZeroA];
+    (* ⊢ ∃x. x ≤ a *)
+    eqTThm = HOL`Bool`EQTINTRO[existsProved];
+    HOL`Bool`GEN[aV, eqTThm]
+  ];
+
+existsLowerBoundThm =
+  Module[{aV, xV, body, existsTm, leqReflA, existsProved, eqTThm},
+    aV = mkVar["a", numTy];
+    xV = mkVar["xEx", numTy];
+    body = mkComb[mkComb[HOL`Stdlib`Num`leqConst[], aV], xV];
+    existsTm = mkComb[existsOp[numTy], mkAbs[xV, body]];
+    leqReflA = HOL`Bool`SPEC[aV, HOL`Stdlib`Num`leqReflThm];
+    (* ⊢ a ≤ a; body[x↦a] = a ≤ a matches *)
+    existsProved = HOL`Bool`EXISTS[existsTm, aV, leqReflA];
+    eqTThm = HOL`Bool`EQTINTRO[existsProved];
+    HOL`Bool`GEN[aV, eqTThm]
+  ];
+
+existsBoundedThm =
+  Module[{aV, bV, xV, leqOp, leqAX, leqXB, leqAB, conjBody, existsTm,
+          forwardDir, backwardDir, eqThm},
+    aV = mkVar["a", numTy];
+    bV = mkVar["b", numTy];
+    xV = mkVar["xEx", numTy];
+    leqOp = HOL`Stdlib`Num`leqConst[];
+    leqAX = mkComb[mkComb[leqOp, aV], xV];
+    leqXB = mkComb[mkComb[leqOp, xV], bV];
+    leqAB = mkComb[mkComb[leqOp, aV], bV];
+    conjBody = mkComb[mkComb[andOp[], leqAX], leqXB];
+    existsTm = mkComb[existsOp[numTy], mkAbs[xV, conjBody]];
+
+    forwardDir = Module[{exHyp, conjHyp, aLeqX, xLeqB, transSpec,
+                         step1, step2, chosenAB},
+      exHyp = ASSUME[existsTm];
+      conjHyp = ASSUME[conjBody];
+      aLeqX = HOL`Bool`CONJUNCT1[conjHyp];
+      xLeqB = HOL`Bool`CONJUNCT2[conjHyp];
+      transSpec = HOL`Bool`SPEC[bV,
+        HOL`Bool`SPEC[xV,
+          HOL`Bool`SPEC[aV, HOL`Stdlib`Num`leqTransThm]]];
+      (* ⊢ a ≤ x ⇒ x ≤ b ⇒ a ≤ b *)
+      step1 = HOL`Bool`MP[transSpec, aLeqX];
+      step2 = HOL`Bool`MP[step1, xLeqB];
+      (* {conjBody} ⊢ a ≤ b *)
+      chosenAB = HOL`Bool`CHOOSE[xV, exHyp, step2];
+      (* {existsTm} ⊢ a ≤ b *)
+      chosenAB
+    ];
+
+    backwardDir = Module[{abHyp, leqReflA, conjAtA, existsProved},
+      abHyp = ASSUME[leqAB];
+      leqReflA = HOL`Bool`SPEC[aV, HOL`Stdlib`Num`leqReflThm];
+      (* ⊢ a ≤ a *)
+      conjAtA = HOL`Bool`CONJ[leqReflA, abHyp];
+      (* {a ≤ b} ⊢ a ≤ a ∧ a ≤ b — matches body[x↦a] *)
+      existsProved = HOL`Bool`EXISTS[existsTm, aV, conjAtA];
+      (* {a ≤ b} ⊢ ∃x. a ≤ x ∧ x ≤ b *)
+      existsProved
+    ];
+
+    eqThm = HOL`Kernel`DEDUCTANTISYM[backwardDir, forwardDir];
+    (* ⊢ (∃x. a ≤ x ∧ x ≤ b) = (a ≤ b) *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, eqThm]]
   ];
 
 (* ============================================================ *)
