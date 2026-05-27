@@ -984,3 +984,95 @@ HOLTest`runTests["arith: simpForm ∘ cooperExistsStep — ∃x. x = 6 ∧ 3 | x
     HOLTest`assertEq[result, aFormTrue,
       "decision: x = 6 satisfies both x=6 and 3|x"]
   ]];
+
+(* ===== Session 8: ground arithmetic provers ===== *)
+
+proveGroundAddEq = HOL`Auto`Arith`Private`proveGroundAddEq;
+proveGroundMultEq = HOL`Auto`Arith`Private`proveGroundMultEq;
+proveGroundLeq = HOL`Auto`Arith`Private`proveGroundLeq;
+proveGroundLt = HOL`Auto`Arith`Private`proveGroundLt;
+proveGroundDivides = HOL`Auto`Arith`Private`proveGroundDivides;
+buildLitNum = HOL`Auto`Arith`Private`buildLitNum;
+
+plusN[a_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`plusConst[], a], b];
+timesN[a_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`timesConst[], a], b];
+leqN[a_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+ltN[a_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`ltConst[], a], b];
+divN[a_, b_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`dividesConst[], a], b];
+
+HOLTest`runTests["arith: proveGroundAddEq[2,3] ⊢ 2 + 3 = 5",
+  Module[{th},
+    th = proveGroundAddEq[2, 3];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th],
+      mkEq[plusN[buildLitNum[2], buildLitNum[3]], buildLitNum[5]],
+      "⊢ 2 + 3 = 5"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundAddEq edge cases (0 + n, n + 0)",
+  Module[{},
+    HOLTest`assertEq[concl[proveGroundAddEq[0, 5]],
+      mkEq[plusN[buildLitNum[0], buildLitNum[5]], buildLitNum[5]],
+      "⊢ 0 + 5 = 5"];
+    HOLTest`assertEq[concl[proveGroundAddEq[7, 0]],
+      mkEq[plusN[buildLitNum[7], buildLitNum[0]], buildLitNum[7]],
+      "⊢ 7 + 0 = 7"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundMultEq[3,4] ⊢ 3 * 4 = 12",
+  Module[{th},
+    th = proveGroundMultEq[3, 4];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th],
+      mkEq[timesN[buildLitNum[3], buildLitNum[4]], buildLitNum[12]],
+      "⊢ 3 * 4 = 12"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundMultEq edge cases (m * 0)",
+  HOLTest`assertEq[concl[proveGroundMultEq[5, 0]],
+    mkEq[timesN[buildLitNum[5], buildLitNum[0]], buildLitNum[0]],
+    "⊢ 5 * 0 = 0"]];
+
+HOLTest`runTests["arith: proveGroundLeq[2,5] ⊢ 2 ≤ 5",
+  Module[{th},
+    th = proveGroundLeq[2, 5];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], leqN[buildLitNum[2], buildLitNum[5]],
+      "⊢ 2 ≤ 5"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundLeq[3,3] ⊢ 3 ≤ 3 (reflexive)",
+  HOLTest`assertEq[concl[proveGroundLeq[3, 3]],
+    leqN[buildLitNum[3], buildLitNum[3]],
+    "⊢ 3 ≤ 3"]];
+
+HOLTest`runTests["arith: proveGroundLt[2,5] ⊢ 2 < 5",
+  Module[{th},
+    th = proveGroundLt[2, 5];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], ltN[buildLitNum[2], buildLitNum[5]],
+      "⊢ 2 < 5"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundDivides[3,12] ⊢ divides 3 12",
+  Module[{th},
+    th = proveGroundDivides[3, 12];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], divN[buildLitNum[3], buildLitNum[12]],
+      "⊢ divides 3 12"]
+  ]];
+
+HOLTest`runTests["arith: proveGroundDivides[7, 49] ⊢ divides 7 49",
+  HOLTest`assertEq[concl[proveGroundDivides[7, 49]],
+    divN[buildLitNum[7], buildLitNum[49]],
+    "⊢ divides 7 49"]];
+
+HOLTest`runTests["arith: proveGroundDivides rejects non-divisible",
+  HOLTest`assertThrows[
+    proveGroundDivides[3, 10], "arith-ground",
+    "3 does not divide 10"]];

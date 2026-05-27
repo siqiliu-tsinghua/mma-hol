@@ -1080,6 +1080,168 @@ simpForm[aFormExists[v_, body_]] := aFormExists[v, simpForm[body]];
 simpForm[other_] := other;
 
 (* ============================================================ *)
+(* Ground arithmetic provers (HOL theorems for concrete ℕ)        *)
+(*                                                              *)
+(* Each takes Wolfram Integers and returns a kernel-checked      *)
+(* HOL theorem on the corresponding SUC-stacked literal terms.    *)
+(* These are the building blocks for verifying Cooper witnesses  *)
+(* in HOL: when the Cooper algorithm reports "yes" with witness   *)
+(* w, we still need to PROVE in HOL that the body holds at w.     *)
+(* That proof is composed of these concrete-arithmetic steps.    *)
+(* ============================================================ *)
+
+(* Local def-unfolders (parallel to the ones in stdlib/FTA.wl;    *)
+(* private contexts don't cross files, so we inline here).         *)
+
+unfoldLeq[a_, b_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[HOL`Stdlib`Num`leqDefThm, a];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, b];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+unfoldLt[a_, b_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[HOL`Stdlib`Num`ltDefThm, a];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, b];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+unfoldDivides[a_, b_] :=
+  Module[{ap1, e1, ap2},
+    ap1 = HOL`Equal`APTHM[HOL`Stdlib`Num`dividesDefThm, a];
+    e1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[e1, b];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* proveGroundAddEq[m, n] for m, n ≥ 0:                           *)
+(*   ⊢ buildLitNum[m] + buildLitNum[n] = buildLitNum[m + n]       *)
+(* by recursion on m (left side):                                  *)
+(*   m = 0:    addLeftZeroThm at n.                                *)
+(*   m = SUC k: addLeftSucThm at (k, n); recurse on k; APTERM SUC. *)
+
+proveGroundAddEq[0, n_Integer] :=
+  HOL`Bool`SPEC[buildLitNum[n], HOL`Stdlib`Num`addLeftZeroThm];
+
+proveGroundAddEq[m_Integer, n_Integer] /; m > 0 :=
+  Module[{mPred, kLit, nLit, leftSucEq, recEq, apSucEq},
+    mPred = m - 1;
+    kLit  = buildLitNum[mPred];
+    nLit  = buildLitNum[n];
+    leftSucEq = HOL`Bool`SPEC[nLit, HOL`Bool`SPEC[kLit,
+      HOL`Stdlib`Num`addLeftSucThm]];
+    (* ⊢ SUC k + n = SUC (k + n) *)
+    recEq = proveGroundAddEq[mPred, n];
+    (* ⊢ k + n = (k + n) *)
+    apSucEq = HOL`Equal`APTERM[HOL`Stdlib`Num`sucConst[], recEq];
+    (* ⊢ SUC (k + n) = SUC ((k + n)) *)
+    TRANS[leftSucEq, apSucEq]
+    (* ⊢ SUC k + n = SUC ((k + n)) = buildLitNum[m + n] *)
+  ];
+
+(* proveGroundMultEq[m, n] for m, n ≥ 0:                          *)
+(*   ⊢ m * n = (m * n)                                            *)
+(* by recursion on n (right side):                                 *)
+(*   n = 0:   timesZeroEqThm at m.                                 *)
+(*   n = SUC k: timesSucEqThm at (m, k) → m * SUC k = m * k + m;   *)
+(*              recurse on k; APTERM(+ m); chain with groundAdd.   *)
+
+proveGroundMultEq[m_Integer, 0] :=
+  HOL`Bool`SPEC[buildLitNum[m], HOL`Stdlib`Num`timesZeroEqThm];
+
+proveGroundMultEq[m_Integer, n_Integer] /; n > 0 :=
+  Module[{nPred, mLit, kLit, sucEq, recEq, apPlusMEq, addEq, chain},
+    nPred = n - 1;
+    mLit  = buildLitNum[m];
+    kLit  = buildLitNum[nPred];
+    sucEq = HOL`Bool`SPEC[kLit, HOL`Bool`SPEC[mLit,
+      HOL`Stdlib`Num`timesSucEqThm]];
+    (* ⊢ m * SUC k = m * k + m *)
+    recEq = proveGroundMultEq[m, nPred];
+    (* ⊢ m * k = (m * k) *)
+    apPlusMEq = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[HOL`Stdlib`Num`plusConst[], recEq], mLit];
+    (* ⊢ m * k + m = (m * k) + m *)
+    addEq = proveGroundAddEq[m * nPred, m];
+    (* ⊢ (m * k) + m = (m * k + m) *)
+    chain = TRANS[sucEq, TRANS[apPlusMEq, addEq]];
+    chain
+  ];
+
+(* proveGroundLeq[m, n] for m ≤ n, both ≥ 0:                       *)
+(*   ⊢ buildLitNum[m] ≤ buildLitNum[n]                             *)
+(* Witness in leqDefThm: k = n - m so m + k = n.                   *)
+
+proveGroundLeq[m_Integer, n_Integer] /; m <= n :=
+  Module[{mLit, nLit, k, kLit, addEq, existsBody, existsTm,
+          existsThm, unfEq},
+    mLit = buildLitNum[m]; nLit = buildLitNum[n];
+    k = n - m;
+    kLit = buildLitNum[k];
+    addEq = proveGroundAddEq[m, k];
+    (* ⊢ m + k = n *)
+    existsBody = mkEq[mkComb[mkComb[HOL`Stdlib`Num`plusConst[], mLit],
+      mkVar["kGL", numTy]], nLit];
+    existsTm = mkComb[mkConst["\[Exists]",
+      tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mkVar["kGL", numTy], existsBody]];
+    existsThm = HOL`Bool`EXISTS[existsTm, kLit, addEq];
+    (* ⊢ ∃k. m + k = n *)
+    unfEq = unfoldLeq[mLit, nLit];
+    (* ⊢ m ≤ n = ∃k. m + k = n *)
+    EQMP[HOL`Equal`SYM[unfEq], existsThm]
+    (* ⊢ m ≤ n *)
+  ];
+
+(* proveGroundLt[m, n] for m < n:                                 *)
+(*   ⊢ buildLitNum[m] < buildLitNum[n]                            *)
+(* Reduce via ltDefThm: m < n  ⇔  SUC m ≤ n.                       *)
+
+proveGroundLt[m_Integer, n_Integer] /; m < n :=
+  Module[{mLit, nLit, sucMLit, sucLeqN, unfEq},
+    mLit = buildLitNum[m]; nLit = buildLitNum[n];
+    sucMLit = buildLitNum[m + 1];
+    sucLeqN = proveGroundLeq[m + 1, n];
+    (* ⊢ SUC m ≤ n *)
+    unfEq = unfoldLt[mLit, nLit];
+    (* ⊢ m < n = SUC m ≤ n *)
+    EQMP[HOL`Equal`SYM[unfEq], sucLeqN]
+  ];
+
+(* proveGroundDivides[d, n] for d > 0 and d | n:                  *)
+(*   ⊢ divides buildLitNum[d] buildLitNum[n]                       *)
+(* Witness in dividesDefThm: c = n / d so n = d * c.               *)
+
+proveGroundDivides[d_Integer, n_Integer] :=
+  Module[{dLit, nLit, c, cLit, multEq, nEqDC, existsBody,
+          existsTm, existsThm, unfEq},
+    If[! (d > 0 && Mod[n, d] === 0),
+      HOL`Error`holError["arith-ground",
+        "proveGroundDivides: need d > 0 and d | n",
+        <|"d" -> d, "n" -> n|>]];
+    dLit = buildLitNum[d]; nLit = buildLitNum[n];
+    c = Quotient[n, d];
+    cLit = buildLitNum[c];
+    multEq = proveGroundMultEq[d, c];
+    (* ⊢ d * c = n *)
+    nEqDC = HOL`Equal`SYM[multEq];
+    (* ⊢ n = d * c *)
+    existsBody = mkEq[nLit, mkComb[mkComb[HOL`Stdlib`Num`timesConst[],
+      dLit], mkVar["cGD", numTy]]];
+    existsTm = mkComb[mkConst["\[Exists]",
+      tyFun[tyFun[numTy, boolTy], boolTy]],
+      mkAbs[mkVar["cGD", numTy], existsBody]];
+    existsThm = HOL`Bool`EXISTS[existsTm, cLit, nEqDC];
+    (* ⊢ ∃c. n = d * c *)
+    unfEq = unfoldDivides[dLit, nLit];
+    (* ⊢ divides d n = ∃c. n = d * c *)
+    EQMP[HOL`Equal`SYM[unfEq], existsThm]
+  ];
+
+(* ============================================================ *)
 (* Public stubs                                                  *)
 (* ============================================================ *)
 
