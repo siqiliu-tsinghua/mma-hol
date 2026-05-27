@@ -998,6 +998,88 @@ cooperExistsStep[xName_String, body_] :=
   ];
 
 (* ============================================================ *)
+(* simpForm — AST-level propositional simplification              *)
+(*                                                              *)
+(*   - Evaluate ground atoms (linTerm with empty vars):           *)
+(*       Eq[c1, c2]      → T iff c1 == c2                          *)
+(*       Leq[c1, c2]     → T iff c1 ≤ c2                           *)
+(*       Lt[c1, c2]      → T iff c1 < c2                           *)
+(*       Divides[d, c]   → T iff d | c                              *)
+(*     (linZero[] counts as ground with value 0.)                  *)
+(*   - Fold ∧/∨/¬ when one operand is T or F:                      *)
+(*       T ∧ x → x ; F ∧ x → F ; T ∨ x → T ; F ∨ x → x.           *)
+(*       ¬T → F ; ¬F → T ; ¬¬p → p.                                *)
+(*   - Recurse into ⇒/⇔/∀/∃ but don't simplify their inner form    *)
+(*     beyond propagating bool constants (which mostly don't       *)
+(*     happen for ⇒/⇔ in a NNF-then-Cooper pipeline).               *)
+(*                                                              *)
+(* Composed with cooperExistsStep, this turns a closed Presburger  *)
+(* formula's QE output into a ground T/F.                          *)
+(* ============================================================ *)
+
+linIsGround[linTerm[_, vs_Association]] := Length[vs] === 0;
+
+linConstValue1[linTerm[c_, vs_Association]] /; Length[vs] === 0 := c;
+
+evalGroundAtom[aAtomEq[lt1_, lt2_]] /;
+    linIsGround[lt1] && linIsGround[lt2] :=
+  If[linConstValue1[lt1] === linConstValue1[lt2], aFormTrue, aFormFalse];
+
+evalGroundAtom[aAtomLeq[lt1_, lt2_]] /;
+    linIsGround[lt1] && linIsGround[lt2] :=
+  If[linConstValue1[lt1] <= linConstValue1[lt2], aFormTrue, aFormFalse];
+
+evalGroundAtom[aAtomLt[lt1_, lt2_]] /;
+    linIsGround[lt1] && linIsGround[lt2] :=
+  If[linConstValue1[lt1] < linConstValue1[lt2], aFormTrue, aFormFalse];
+
+evalGroundAtom[aAtomDivides[d_Integer, lt_]] /; linIsGround[lt] :=
+  If[Mod[linConstValue1[lt], d] === 0, aFormTrue, aFormFalse];
+
+evalGroundAtom[other_] := aFormAtom[other];
+
+simpNeg[aFormTrue]  := aFormFalse;
+simpNeg[aFormFalse] := aFormTrue;
+simpNeg[aFormNot[f_]] := f;
+simpNeg[f_] := aFormNot[f];
+
+simpAnd[aFormTrue, b_]  := b;
+simpAnd[a_, aFormTrue]  := a;
+simpAnd[aFormFalse, _]  := aFormFalse;
+simpAnd[_, aFormFalse]  := aFormFalse;
+simpAnd[a_, b_]         := aFormAnd[a, b];
+
+simpOr[aFormTrue, _]   := aFormTrue;
+simpOr[_, aFormTrue]   := aFormTrue;
+simpOr[aFormFalse, b_] := b;
+simpOr[a_, aFormFalse] := a;
+simpOr[a_, b_]         := aFormOr[a, b];
+
+simpImp[aFormFalse, _] := aFormTrue;
+simpImp[_, aFormTrue]  := aFormTrue;
+simpImp[aFormTrue, b_] := b;
+simpImp[a_, aFormFalse] := simpNeg[a];
+simpImp[a_, b_]        := aFormImp[a, b];
+
+simpIff[aFormTrue, b_]  := b;
+simpIff[a_, aFormTrue]  := a;
+simpIff[aFormFalse, b_] := simpNeg[b];
+simpIff[a_, aFormFalse] := simpNeg[a];
+simpIff[a_, b_]         := aFormIff[a, b];
+
+simpForm[aFormTrue]  := aFormTrue;
+simpForm[aFormFalse] := aFormFalse;
+simpForm[aFormAtom[atom_]] := evalGroundAtom[atom];
+simpForm[aFormNot[f_]] := simpNeg[simpForm[f]];
+simpForm[aFormAnd[a_, b_]] := simpAnd[simpForm[a], simpForm[b]];
+simpForm[aFormOr[a_, b_]]  := simpOr[simpForm[a], simpForm[b]];
+simpForm[aFormImp[a_, b_]] := simpImp[simpForm[a], simpForm[b]];
+simpForm[aFormIff[a_, b_]] := simpIff[simpForm[a], simpForm[b]];
+simpForm[aFormForall[v_, body_]] := aFormForall[v, simpForm[body]];
+simpForm[aFormExists[v_, body_]] := aFormExists[v, simpForm[body]];
+simpForm[other_] := other;
+
+(* ============================================================ *)
 (* Public stubs                                                  *)
 (* ============================================================ *)
 

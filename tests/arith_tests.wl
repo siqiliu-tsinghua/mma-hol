@@ -864,3 +864,123 @@ HOLTest`runTests["arith: cooperExistsStep on empty B-set (e.g. ∃x. x ≤ 5)",
     HOLTest`assertEq[result, aFormOr[aFormTrue, aFormFalse],
       "∃x. x ≤ 5 ⇒ φ_{-∞} carries the day (T at -∞)"]
   ]];
+
+(* ===== Session 7: simpForm — propositional simplification ===== *)
+
+simpForm = HOL`Auto`Arith`Private`simpForm;
+
+HOLTest`runTests["arith: simpForm evaluates ground equality (0 = 0 → T, 5 = 3 → F)",
+  Module[{lin0, lin5, lin3},
+    lin0 = HOL`Auto`Arith`Private`linConst[0];
+    lin5 = HOL`Auto`Arith`Private`linConst[5];
+    lin3 = HOL`Auto`Arith`Private`linConst[3];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomEq[lin0, lin0]]],
+      aFormTrue, "0 = 0 → T"];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomEq[lin5, lin3]]],
+      aFormFalse, "5 = 3 → F"]
+  ]];
+
+HOLTest`runTests["arith: simpForm evaluates ground ≤ and <",
+  Module[{lin0, lin5, linNeg4},
+    lin0 = HOL`Auto`Arith`Private`linConst[0];
+    lin5 = HOL`Auto`Arith`Private`linConst[5];
+    linNeg4 = linTerm[-4, <||>];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomLeq[linNeg4, lin0]]],
+      aFormTrue, "-4 ≤ 0 → T"];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomLeq[lin5, lin0]]],
+      aFormFalse, "5 ≤ 0 → F"];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomLt[lin0, lin5]]],
+      aFormTrue, "0 < 5 → T"];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomLt[lin5, lin5]]],
+      aFormFalse, "5 < 5 → F"]
+  ]];
+
+HOLTest`runTests["arith: simpForm evaluates ground divisibility (3 | 6 → T, 3 | 7 → F)",
+  Module[{lin6, lin7},
+    lin6 = HOL`Auto`Arith`Private`linConst[6];
+    lin7 = HOL`Auto`Arith`Private`linConst[7];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomDivides[3, lin6]]],
+      aFormTrue, "3 | 6 → T"];
+    HOLTest`assertEq[simpForm[aFormAtom[aAtomDivides[3, lin7]]],
+      aFormFalse, "3 | 7 → F"]
+  ]];
+
+HOLTest`runTests["arith: simpForm leaves non-ground atoms alone",
+  Module[{xV, atomNonGround, wrapped},
+    xV = linVar["x"];
+    atomNonGround = aAtomEq[xV, HOL`Auto`Arith`Private`linConst[5]];
+    wrapped = aFormAtom[atomNonGround];
+    HOLTest`assertEq[simpForm[wrapped], wrapped,
+      "x = 5 stays as-is (x is free)"]
+  ]];
+
+HOLTest`runTests["arith: simpForm folds T/F through ∧ ∨ ¬",
+  Module[{xV, atomX},
+    xV = linVar["x"];
+    atomX = aFormAtom[aAtomEq[xV, HOL`Auto`Arith`Private`linConst[1]]];
+    HOLTest`assertEq[simpForm[aFormAnd[aFormTrue, atomX]],
+      atomX, "T ∧ x → x"];
+    HOLTest`assertEq[simpForm[aFormAnd[aFormFalse, atomX]],
+      aFormFalse, "F ∧ x → F"];
+    HOLTest`assertEq[simpForm[aFormOr[aFormFalse, atomX]],
+      atomX, "F ∨ x → x"];
+    HOLTest`assertEq[simpForm[aFormOr[aFormTrue, atomX]],
+      aFormTrue, "T ∨ x → T"];
+    HOLTest`assertEq[simpForm[aFormNot[aFormTrue]],
+      aFormFalse, "¬T → F"];
+    HOLTest`assertEq[simpForm[aFormNot[aFormNot[atomX]]],
+      atomX, "¬¬x → x"]
+  ]];
+
+HOLTest`runTests["arith: simpForm ∘ cooperExistsStep — ∃x. x = 5 → T",
+  Module[{form, result},
+    form = aFormAtom[aAtomEq[linVar["x"],
+      HOL`Auto`Arith`Private`linConst[5]]];
+    result = simpForm[cooperExistsStep["x", form]];
+    HOLTest`assertEq[result, aFormTrue,
+      "decision: ∃x. x = 5 is satisfiable (witness x=5)"]
+  ]];
+
+HOLTest`runTests["arith: simpForm ∘ cooperExistsStep — ∃x. 3 ≤ x ∧ x ≤ 7 → T",
+  Module[{xV, form, result},
+    xV = linVar["x"];
+    form = aFormAnd[
+      aFormAtom[aAtomLeq[HOL`Auto`Arith`Private`linConst[3], xV]],
+      aFormAtom[aAtomLeq[xV, HOL`Auto`Arith`Private`linConst[7]]]];
+    result = simpForm[cooperExistsStep["x", form]];
+    HOLTest`assertEq[result, aFormTrue,
+      "decision: ∃x. 3 ≤ x ∧ x ≤ 7 is satisfiable"]
+  ]];
+
+HOLTest`runTests["arith: simpForm ∘ cooperExistsStep — ∃x. 10 ≤ x ∧ x ≤ 3 → F",
+  Module[{xV, form, result},
+    xV = linVar["x"];
+    form = aFormAnd[
+      aFormAtom[aAtomLeq[HOL`Auto`Arith`Private`linConst[10], xV]],
+      aFormAtom[aAtomLeq[xV, HOL`Auto`Arith`Private`linConst[3]]]];
+    result = simpForm[cooperExistsStep["x", form]];
+    HOLTest`assertEq[result, aFormFalse,
+      "decision: ∃x. 10 ≤ x ∧ x ≤ 3 is unsatisfiable"]
+  ]];
+
+HOLTest`runTests["arith: simpForm ∘ cooperExistsStep — ∃x. x = 5 ∧ 3 | x → F (5 not divisible by 3)",
+  Module[{xV, form, result},
+    xV = linVar["x"];
+    form = aFormAnd[
+      aFormAtom[aAtomEq[xV, HOL`Auto`Arith`Private`linConst[5]]],
+      aFormAtom[aAtomDivides[3, xV]]];
+    result = simpForm[cooperExistsStep["x", form]];
+    HOLTest`assertEq[result, aFormFalse,
+      "decision: no x with x=5 and 3|x"]
+  ]];
+
+HOLTest`runTests["arith: simpForm ∘ cooperExistsStep — ∃x. x = 6 ∧ 3 | x → T",
+  Module[{xV, form, result},
+    xV = linVar["x"];
+    form = aFormAnd[
+      aFormAtom[aAtomEq[xV, HOL`Auto`Arith`Private`linConst[6]]],
+      aFormAtom[aAtomDivides[3, xV]]];
+    result = simpForm[cooperExistsStep["x", form]];
+    HOLTest`assertEq[result, aFormTrue,
+      "decision: x = 6 satisfies both x=6 and 3|x"]
+  ]];
