@@ -76,7 +76,9 @@ M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeB
 
 **Kept from S1-S14 (reusable):** linTerm/parseLin/parseAtom, `nnfConv`, ground provers (S8), `existsBoundedThm` (S12), divides-periodicity `dividesAddEqThm`/`dividesShiftThm` (S13-14). **Dropped:** phiMinusInfOnX/bSetOnX/cooperExistsStep + the old S15-S18 Cooper roadmap.
 
-**Next**: M7-δ verifier lemma set in stdlib/Num.wl — additive monotonicity (`leqAddRightMonoThm` = capstone, `leqAddLeftMonoThm`, `leqAddMonoThm`), then scaling (`leqMultLeftThm`), left-cancellation (`leqAddLeftCancelThm`), `<`/mixed analogues, ground `¬(m≤n)` for m>n. Then the Farkas reconstruction engine + WL-LP oracle in auto/Arith.wl. Other deferred: M7-5 `stdlib/Int.wl`. **Audit issues parked in `TODO.md`.**
+**M7-δ verifier lemma set DONE (stdlib/Num.wl).** Batch 1 additive monotonicity: `leqAddRightMonoThm` (= capstone `∀m n p. m≤n ⇒ m+p≤n+p`), `leqAddLeftMonoThm`, `leqAddMonoThm`. Batch 2: scaling `leqMultLeftThm` (`a≤b ⇒ k*a≤k*b`), left-cancel `leqAddLeftCancelThm` (`v+a≤v+b ⇒ a≤b`). Batch 3 order-negation: `notLeqEqLtThm` (`¬(m≤n)=(n<m)`), `notLtEqLeqThm` (`¬(m<n)=(n≤m)`). Strict-monotonicity lemmas deferred — engine converts `<` to `SUC·≤` and combines in ≤-land.
+
+**Next**: M7-δ Farkas reconstruction engine + WL-LP oracle in `auto/Arith.wl`. Engine: parse goal (reuse linTerm/parseAtom) → negate via notLeqEqLt/notLtEqLeq → oracle (`LinearProgramming`) returns nonneg multipliers → verifier scales each hyp (leqMultLeft), sums (leqAddMono), strips shared var part (leqAddLeftCancel), hits ground ≤-contradiction (notLeqEqLt + proveGroundLt) → CCONTR/DISCH/GEN. Other deferred: M7-5 `stdlib/Int.wl`. **Audit issues parked in `TODO.md`.**
 
 Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 
