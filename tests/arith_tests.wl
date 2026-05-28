@@ -1361,13 +1361,32 @@ HOLTest`runTests["arith: arithProve closes ∀x. x ≤ x via Farkas",
     HOLTest`assertEq[concl[th], goal, "⊢ ∀x. x ≤ x"]
   ]];
 
-HOLTest`runTests["arith: ARITH throws arith-norm-merge on a merge goal",
+HOLTest`runTests["arith: ARITH closes ∀x. x + x ≤ x + x (merge)",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = forallNum[xV, leqN[plusN[xV, xV], plusN[xV, xV]]];
+    th = arithProve[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀x. x + x ≤ x + x"]
+  ]];
+
+HOLTest`runTests["arith: ARITH closes ∀x. 2·x ≤ 2·x (literal coef)",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = forallNum[xV, leqN[timesN[mkNum[2], xV], timesN[mkNum[2], xV]]];
+    th = arithProve[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀x. 2·x ≤ 2·x"]
+  ]];
+
+HOLTest`runTests["arith: ARITH throws arith-norm on deferred k·(a+b)",
   Module[{xV, goal},
     xV = mkVar["x", numTy];
     goal = forallNum[xV,
-      leqN[plusN[xV, xV], plusN[xV, xV]]];
-    HOLTest`assertThrows[arithProve[goal], "arith-norm-merge",
-      "coefficient merge (x + x) not yet supported"]
+      leqN[timesN[mkNum[2], plusN[xV, xV]],
+           timesN[mkNum[2], plusN[xV, xV]]]];
+    HOLTest`assertThrows[arithProve[goal], "arith-norm",
+      "literal·(a+b) distribution still deferred"]
   ]];
 
 HOLTest`runTests["arith: ARITH tactic closes ∃-SAT goal via prove[]",
@@ -1426,6 +1445,22 @@ With[{mV = mkVar["m", numTy], nV = mkVar["n", numTy],
     mkPlus[nV, mkPlus[mV, pV]]];
   normInvariant["constant fold 2 + (m + 3)",
     mkPlus[mkNum[2], mkPlus[mV, mkNum[3]]]];
+  normInvariant["merge m + m → 2·m", mkPlus[mV, mV]];
+  normInvariant["merge m + (m + n) → 2·m + n",
+    mkPlus[mV, mkPlus[mV, nV]]];
+  normInvariant["merge m + (2 + m) → 2 + 2·m",
+    mkPlus[mV, mkPlus[mkNum[2], mV]]];
+  normInvariant["merge n + m + m → m·2 + n (sort + merge)",
+    mkPlus[nV, mkPlus[mV, mV]]];
+  normInvariant["double merge (m+n) + (m+n) → 2·m + 2·n",
+    mkPlus[mkPlus[mV, nV], mkPlus[mV, nV]]];
+  normInvariant["merge to coef 3: m + (m + m)",
+    mkPlus[mV, mkPlus[mV, mV]]];
+  normInvariant["monomial 2·m is canonical", mkTimes[mkNum[2], mV]];
+  normInvariant["monomial 1·m → m", mkTimes[mkNum[1], mV]];
+  normInvariant["monomial 0·m → 0", mkTimes[mkNum[0], mV]];
+  normInvariant["merge 2·m + 3·m → 5·m",
+    mkPlus[mkTimes[mkNum[2], mV], mkTimes[mkNum[3], mV]]];
 ];
 
 (* ===== ARITH on ∀ goals via Farkas refutation ===== *)

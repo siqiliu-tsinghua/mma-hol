@@ -1770,20 +1770,47 @@ caInsertConst[c_Integer, linTerm[cM_, vsM_Association]] :=
 
 (* ===== caInsertVar: insert a variable monomial into canonical M ===== *)
 
-caInsertVar[x_String, k_Integer, linTerm[cM_, vsM_Association]] :=
-  Module[{monoTerm},
-    If[KeyExistsQ[vsM, x],
-      HOL`Error`holError["arith-norm-merge",
-        "linNormConv: coefficient merge not yet supported",
-        <|"var" -> x|>]];
-    monoTerm = If[k === 1, var[x, numTy],
-      nTimes[buildLitNum[k], var[x, numTy]]];
-    caInsertVarInto[monoTerm, x, buildLin[linTerm[cM, vsM]]]
+(* coefficient of a variable monomial term (bare x is 1·x). *)
+monoCoef[var[_, _]] := 1;
+monoCoef[comb[comb[const["*", _], lit_], var[_, _]]] := parseLitNum[lit];
+
+(* ⊢ t = (buildLitNum[c])·x, coercing bare x (c=1) to SUC 0·x. *)
+coerceMonoEq[_, 1, xV_] :=
+  HOL`Equal`SYM[HOL`Bool`SPEC[xV, HOL`Stdlib`Num`oneTimesEqThm]];
+coerceMonoEq[t_, c_Integer, _] := REFL[t];
+
+(* ⊢ klit·x + cxlit·x = (k+cx)lit·x via timesDistribRight reversed. *)
+mergeMonoEq[k_Integer, cx_Integer, xV_] :=
+  Module[{klit, cxlit, symD, gAdd, coefRw},
+    klit = buildLitNum[k]; cxlit = buildLitNum[cx];
+    symD = HOL`Equal`SYM[HOL`Bool`SPEC[xV, HOL`Bool`SPEC[cxlit,
+      HOL`Bool`SPEC[klit, HOL`Stdlib`Num`timesDistribRightThm]]]];
+    gAdd = proveGroundAddEq[k, cx];
+    coefRw = HOL`Equal`APTHM[HOL`Equal`APTERM[timesConst[], gAdd], xV];
+    TRANS[symD, coefRw]
   ];
 
-(* ⊢ monoTerm + BM = (canonical insertion of monoTerm into BM) *)
-caInsertVarInto[monoTerm_, x_String, BM_] :=
-  Module[{head, rest, hasRest, hkName, lc, sub, cong},
+(* ⊢ monoTerm + headTerm = (k+cx)lit·x (both for the same variable x). *)
+mergeTwoMonos[monoTerm_, k_Integer, headTerm_, cx_Integer, xV_] :=
+  Module[{cong},
+    cong = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[plusConst[], coerceMonoEq[monoTerm, k, xV]],
+      coerceMonoEq[headTerm, cx, xV]];
+    TRANS[cong, mergeMonoEq[k, cx, xV]]
+  ];
+
+caInsertVar[x_String, k_Integer, linTerm[cM_, vsM_Association]] :=
+  Module[{monoTerm},
+    monoTerm = If[k === 1, var[x, numTy],
+      nTimes[buildLitNum[k], var[x, numTy]]];
+    caInsertVarInto[monoTerm, x, k, buildLin[linTerm[cM, vsM]]]
+  ];
+
+(* ⊢ monoTerm + BM = (canonical insertion of monoTerm into BM); k is
+   monoTerm's coefficient, used when it merges with a like variable. *)
+caInsertVarInto[monoTerm_, x_String, k_Integer, BM_] :=
+  Module[{head, rest, hasRest, hkName, lc, sub, cong, xV, mergeEq, assoc},
+    xV = var[x, numTy];
     If[MatchQ[BM, comb[comb[const["+", _], _], _]],
       head = BM[[1, 2]]; rest = BM[[2]]; hasRest = True,
       head = BM; hasRest = False
@@ -1794,28 +1821,26 @@ caInsertVarInto[monoTerm_, x_String, BM_] :=
         hkName = summandVarName[head];
         Which[
           x === hkName,
-            HOL`Error`holError["arith-norm-merge",
-              "linNormConv: coefficient merge not yet supported",
-              <|"var" -> x|>],
+            mergeTwoMonos[monoTerm, k, head, monoCoef[head], xV],
           varOrderedBefore[x, hkName], REFL[nPlus[monoTerm, head]],
           True, addCommInst[monoTerm, head]
         ]
       ],
       If[summandIsConst[head],
         lc = addLeftCommInst[monoTerm, head, rest];
-        sub = caInsertVarInto[monoTerm, x, rest];
+        sub = caInsertVarInto[monoTerm, x, k, rest];
         cong = plusRightCong[head, sub];
         TRANS[lc, cong],
         hkName = summandVarName[head];
         Which[
           x === hkName,
-            HOL`Error`holError["arith-norm-merge",
-              "linNormConv: coefficient merge not yet supported",
-              <|"var" -> x|>],
+            mergeEq = mergeTwoMonos[monoTerm, k, head, monoCoef[head], xV];
+            assoc = HOL`Equal`SYM[addAssocInst[monoTerm, head, rest]];
+            TRANS[assoc, plusLeftCong[mergeEq, rest]],
           varOrderedBefore[x, hkName], REFL[nPlus[monoTerm, BM]],
           True,
             lc = addLeftCommInst[monoTerm, head, rest];
-            sub = caInsertVarInto[monoTerm, x, rest];
+            sub = caInsertVarInto[monoTerm, x, k, rest];
             cong = plusRightCong[head, sub];
             TRANS[lc, cong]
         ]
@@ -1913,6 +1938,17 @@ normLinAux[comb[comb[const["+", _], a_], b_]] :=
     add = caAdd[La, Lb];
     TRANS[cong, add]
   ];
+
+(* canonical monomial klit·x (literal coefficient on the left): for
+   k≥2 it is already canonical; k=1 / k=0 fold via oneTimes / leftZero.
+   Full k·(a+b) distribution stays deferred (falls through below). *)
+normLinAux[t : comb[comb[const["*", _], a_], b_] /;
+    litNumQ[a] && MatchQ[b, var[_, numTy]]] :=
+  With[{k = parseLitNum[a]},
+    Which[
+      k === 0, HOL`Bool`SPEC[b, HOL`Stdlib`Num`timesLeftZeroThm],
+      k === 1, HOL`Bool`SPEC[b, HOL`Stdlib`Num`oneTimesEqThm],
+      True, REFL[t]]];
 
 normLinAux[t_] :=
   HOL`Error`holError["arith-norm",
