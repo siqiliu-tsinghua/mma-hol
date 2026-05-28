@@ -1390,6 +1390,40 @@ HOLTest`runTests["arith: ARITH rejects the false goal ∀x. x ≤ 0",
       "x ≤ 0 is false; nonnegativity cannot rescue it"]
   ]];
 
+(* ===== atom abstraction: nonlinear m·n generalized to a variable ===== *)
+(* m·n is opaque to linear arithmetic, so ARITH abstracts it to a fresh *)
+(* atom and reasons about that atom; GEN then binds m,n inside it.       *)
+
+HOLTest`runTests["arith: ARITH ∀m n. m·n ≤ m·n + 1 (nonlinear atom)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV,
+      leqN[timesN[mV, nV], plusN[timesN[mV, nV], mkNum[1]]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m·n ≤ m·n + 1"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀m n. m·n ≤ m·n (reflexive atom)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV,
+      leqN[timesN[mV, nV], timesN[mV, nV]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m·n ≤ m·n"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀m n. m·n ≤ m·n + m·n (atom merge + 0≤atom)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV,
+      leqN[timesN[mV, nV], plusN[timesN[mV, nV], timesN[mV, nV]]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m·n ≤ m·n + m·n"]
+  ]];
+
 (* ===== Phase B: Fourier–Motzkin oracle (farkasFM, untrusted) ===== *)
 (* diffs are linTerm[const, vars] standing for `≤ 0` constraints.    *)
 (* farkasFM returns an Association origIdx→integer λ (Farkas cert)    *)

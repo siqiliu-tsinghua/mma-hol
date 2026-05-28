@@ -103,6 +103,35 @@ Begin["`Private`"];
 
 numTy = mkType["num", {}];
 
+(* ===== atom abstraction =====                                   *)
+(* When linear parsing meets a maximal non-arithmetic num subterm  *)
+(* (an opaque application like LENGTH l, or a nonlinear product     *)
+(* m·n), abstract it to a fresh key and treat it as a variable.    *)
+(* $atomEnv (key→term) is dynamically scoped per ARITH call; None  *)
+(* means "no abstraction" (the ∃-SAT path keeps the old parse-     *)
+(* error behavior). The verifier's lemmas are ∀-polymorphic over   *)
+(* num, so an atom behaves exactly like a variable through         *)
+(* normalization, FM, and reconstruction.                          *)
+$atomEnv = None;
+
+atomNameFor[t_] :=
+  Module[{hit},
+    hit = SelectFirst[Keys[$atomEnv], ($atomEnv[#] === t) &];
+    If[! MissingQ[hit], hit,
+      With[{nm = "atom$" <> ToString[Length[$atomEnv] + 1]},
+        AssociateTo[$atomEnv, nm -> t]; nm]]
+  ];
+
+atomTermFor[nm_String] :=
+  If[$atomEnv =!= None && KeyExistsQ[$atomEnv, nm],
+    $atomEnv[nm], var[nm, numTy]];
+
+abstractAtom[t_] :=
+  If[$atomEnv === None || HOL`Terms`typeOf[t] =!= numTy,
+    HOL`Error`holError["arith-parse",
+      "term not recognized as a linear ℕ expression", <|"got" -> t|>],
+    linVar[atomNameFor[t]]];
+
 (* ============================================================ *)
 (* Linear term AST                                              *)
 (*                                                              *)
@@ -191,23 +220,18 @@ parseLinAux[comb[const["SUC", _], u_] /; ! litNumQ[u]] :=
 parseLinAux[comb[comb[const["+", _], a_], b_]] :=
   linAdd[parseLinAux[a], parseLinAux[b]];
 
-parseLinAux[comb[comb[const["*", _], a_], b_]] :=
+parseLinAux[t : comb[comb[const["*", _], a_], b_]] :=
   Module[{aLin, bLin},
     aLin = parseLinAux[a];
     bLin = parseLinAux[b];
     Which[
       linIsConst[aLin], linScale[linConstValue[aLin], bLin],
       linIsConst[bLin], linScale[linConstValue[bLin], aLin],
-      True, HOL`Error`holError["arith-parse",
-        "non-linear: product of two non-constant terms",
-        <|"left" -> a, "right" -> b|>]
+      True, abstractAtom[t]
     ]
   ];
 
-parseLinAux[t_] :=
-  HOL`Error`holError["arith-parse",
-    "term not recognized as a linear ℕ expression",
-    <|"got" -> t|>];
+parseLinAux[t_] := abstractAtom[t];
 
 (* ============================================================ *)
 (* buildLin: linTerm → HOL ℕ term (canonical form)              *)
@@ -226,9 +250,9 @@ buildLin[lt : linTerm[c_, vs_]] :=
     mkVarPart[name_] :=
       With[{coef = vs[name]},
         If[coef === 1,
-          var[name, numTy],
+          atomTermFor[name],
           mkComb[mkComb[timesConst[], buildLitNum[coef]],
-                 var[name, numTy]]]];
+                 atomTermFor[name]]]];
 
     varParts = mkVarPart /@ names;
 
@@ -1601,7 +1625,7 @@ canonSummandList[linTerm[c_, vs_Association]] :=
   Module[{names, varParts},
     names = Sort[Keys[vs]];
     varParts = (With[{coef = vs[#]},
-        If[coef === 1, var[#, numTy], nTimes[buildLitNum[coef], var[#, numTy]]]
+        If[coef === 1, atomTermFor[#], nTimes[buildLitNum[coef], atomTermFor[#]]]
       ] &) /@ names;
     Which[
       c =!= 0, Prepend[varParts, buildLitNum[c]],
@@ -1615,8 +1639,13 @@ rightAssocPlus[ss_List] :=
   Fold[nPlus[#2, #1] &, Last[ss], Reverse[Most[ss]]];
 
 summandIsConst[t_] := litNumQ[t];
+(* recover the linTerm key for a variable/atom monomial: a real var
+   by its name, an atom by reverse-lookup in $atomEnv, after peeling a
+   literal coefficient. *)
 summandVarName[var[nm_String, _]] := nm;
-summandVarName[comb[comb[const["*", _], _], var[nm_String, _]]] := nm;
+summandVarName[comb[comb[const["*", _], lit_], rest_] /; litNumQ[lit]] :=
+  summandVarName[rest];
+summandVarName[t_] := atomNameFor[t];
 
 (* x sorts strictly before y in the canonical (Sort) order. *)
 varOrderedBefore[x_String, y_String] := Order[x, y] === 1;
@@ -1680,9 +1709,9 @@ caInsertConst[c_Integer, linTerm[cM_, vsM_Association]] :=
 
 (* ===== caInsertVar: insert a variable monomial into canonical M ===== *)
 
-(* coefficient of a variable monomial term (bare x is 1·x). *)
-monoCoef[var[_, _]] := 1;
-monoCoef[comb[comb[const["*", _], lit_], var[_, _]]] := parseLitNum[lit];
+(* coefficient of a variable/atom monomial term (bare is 1·x). *)
+monoCoef[comb[comb[const["*", _], lit_], _] /; litNumQ[lit]] := parseLitNum[lit];
+monoCoef[_] := 1;
 
 (* ⊢ t = (buildLitNum[c])·x, coercing bare x (c=1) to SUC 0·x. *)
 coerceMonoEq[_, 1, xV_] :=
@@ -1711,8 +1740,8 @@ mergeTwoMonos[monoTerm_, k_Integer, headTerm_, cx_Integer, xV_] :=
 
 caInsertVar[x_String, k_Integer, linTerm[cM_, vsM_Association]] :=
   Module[{monoTerm},
-    monoTerm = If[k === 1, var[x, numTy],
-      nTimes[buildLitNum[k], var[x, numTy]]];
+    monoTerm = If[k === 1, atomTermFor[x],
+      nTimes[buildLitNum[k], atomTermFor[x]]];
     caInsertVarInto[monoTerm, x, k, buildLin[linTerm[cM, vsM]]]
   ];
 
@@ -1720,7 +1749,7 @@ caInsertVar[x_String, k_Integer, linTerm[cM_, vsM_Association]] :=
    monoTerm's coefficient, used when it merges with a like variable. *)
 caInsertVarInto[monoTerm_, x_String, k_Integer, BM_] :=
   Module[{head, rest, hasRest, hkName, lc, sub, cong, xV, mergeEq, assoc},
-    xV = var[x, numTy];
+    xV = atomTermFor[x];
     If[MatchQ[BM, comb[comb[const["+", _], _], _]],
       head = BM[[1, 2]]; rest = BM[[2]]; hasRest = True,
       head = BM; hasRest = False
@@ -1859,6 +1888,14 @@ normLinAux[t : comb[comb[const["*", _], a_], b_] /;
       k === 0, HOL`Bool`SPEC[b, HOL`Stdlib`Num`timesLeftZeroThm],
       k === 1, HOL`Bool`SPEC[b, HOL`Stdlib`Num`oneTimesEqThm],
       True, REFL[t]]];
+
+(* An opaque num subterm (atom: nonlinear product, unknown application)
+   parses to a single coef-1 variable and rebuilds to itself, so it is
+   already its own canonical form → REFL. The buildLin∘parseLin === t
+   guard fires only for such atoms; a term parseLin rewrites (e.g.
+   2·(x+x) → 4·x) fails it and falls through to the deferred error. *)
+normLinAux[t_ /; $atomEnv =!= None && HOL`Terms`typeOf[t] === numTy &&
+    buildLin[parseLin[t]] === t] := REFL[t];
 
 normLinAux[t_] :=
   HOL`Error`holError["arith-norm",
@@ -2069,18 +2106,26 @@ farkasRefute[leqFacts_List] :=
   ];
 
 (* Refute with the base facts; if the oracle finds no certificate, retry
-   once with the ℕ nonnegativity facts (⊢ 0 ≤ xᵢ) appended. Over ℕ these
-   are always available but Farkas needs them explicitly (e.g. x ≤ x+x).
-   They are hyp-free, so they never enter the CCONTR/DISCH assumptions.
-   Lazy so most goals don't pay the extra FM constraints. *)
-refuteWithNonneg[base_List, nonneg_List] :=
+   once with the ℕ nonnegativity facts (⊢ 0 ≤ t) for every variable AND
+   atom appearing in the facts. Over ℕ these always hold but Farkas needs
+   them explicitly (e.g. x ≤ x+x). They are hyp-free, so they never enter
+   the CCONTR/DISCH assumptions. Lazy so most goals skip the extra FM
+   constraints. *)
+refuteWithNonneg[facts_List] :=
   Catch[
-    farkasRefute[base],
+    farkasRefute[facts],
     HOL`Error`holErrorTag,
     Function[err,
-      If[err[[2, "tag"]] === "arith-farkas" && nonneg =!= {},
-        farkasRefute[Join[base, nonneg]],
-        Throw[err, HOL`Error`holErrorTag]]
+      If[err[[2, "tag"]] =!= "arith-farkas",
+        Throw[err, HOL`Error`holErrorTag],
+        Module[{keys, nonneg},
+          keys = Union @@ (Keys[#[[2]]] & /@ (factDiff /@ facts));
+          nonneg = (HOL`Bool`SPEC[atomTermFor[#],
+            HOL`Stdlib`Num`leqZeroThm] &) /@ keys;
+          If[nonneg === {}, Throw[err, HOL`Error`holErrorTag],
+            farkasRefute[Join[facts, nonneg]]]
+        ]
+      ]
     ]
   ];
 
@@ -2133,20 +2178,20 @@ negateConclFact[conclTm_] :=
   ];
 
 arithProveForall[goalTm_] :=
-  Module[{pf, varNames, body, pi, hypTms, conclTm, hypFacts, negFact,
-          nonnegFacts, falseThm, cThm, dischd},
-    pf = peelForallNum[goalTm];
-    varNames = pf[[1]]; body = pf[[2]];
-    pi = peelImp[body];
-    hypTms = pi[[1]]; conclTm = pi[[2]];
-    hypFacts = (toLeqFact[HOL`Kernel`ASSUME[#]] &) /@ hypTms;
-    negFact = negateConclFact[conclTm];
-    nonnegFacts = (HOL`Bool`SPEC[mkVar[#, numTy],
-      HOL`Stdlib`Num`leqZeroThm] &) /@ varNames;
-    falseThm = refuteWithNonneg[Append[hypFacts, negFact], nonnegFacts];
-    cThm = HOL`Bool`CCONTR[conclTm, falseThm];
-    dischd = Fold[HOL`Bool`DISCH[#2, #1] &, cThm, Reverse[hypTms]];
-    Fold[HOL`Bool`GEN[mkVar[#2, numTy], #1] &, dischd, Reverse[varNames]]
+  Block[{$atomEnv = <||>},
+    Module[{pf, varNames, body, pi, hypTms, conclTm, hypFacts, negFact,
+            falseThm, cThm, dischd},
+      pf = peelForallNum[goalTm];
+      varNames = pf[[1]]; body = pf[[2]];
+      pi = peelImp[body];
+      hypTms = pi[[1]]; conclTm = pi[[2]];
+      hypFacts = (toLeqFact[HOL`Kernel`ASSUME[#]] &) /@ hypTms;
+      negFact = negateConclFact[conclTm];
+      falseThm = refuteWithNonneg[Append[hypFacts, negFact]];
+      cThm = HOL`Bool`CCONTR[conclTm, falseThm];
+      dischd = Fold[HOL`Bool`DISCH[#2, #1] &, cThm, Reverse[hypTms]];
+      Fold[HOL`Bool`GEN[mkVar[#2, numTy], #1] &, dischd, Reverse[varNames]]
+    ]
   ];
 
 (* ============================================================ *)
