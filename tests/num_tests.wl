@@ -1251,6 +1251,61 @@ HOLTest`runTests["stdlib/Num: dividesAddDThm fires — d=3, x=5 yields d|(5+3) =
       "⊢ divides 3 (5 + 3) = divides 3 5"]
   ]];
 
+(* ===== Atom-level Cooper periodicity (M7-δ session 14) ===== *)
+
+HOLTest`runTests["stdlib/Num: addRightCommThm — ⊢ ∀a b c. (a+b)+c = (a+c)+b",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`addRightCommThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["=", _],
+          comb[comb[const["+", _], comb[comb[const["+", _], _], _]], _]],
+          comb[comb[const["+", _], comb[comb[const["+", _], _], _]], _]]]],
+      "shape: ∀a b c. (a+b)+c = (a+c)+b"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: dividesShiftThm — ⊢ ∀d x t δ. d|δ ⇒ (d|((x+δ)+t) = d|(x+t))",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`dividesShiftThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 4,
+        comb[comb[const["⇒", _],
+          comb[comb[const["divides", _], _], _]],
+          comb[comb[const["=", _],
+            comb[comb[const["divides", _], _],
+              comb[comb[const["+", _], comb[comb[const["+", _], _], _]], _]]],
+            comb[comb[const["divides", _], _],
+              comb[comb[const["+", _], _], _]]]]]],
+      "shape: ∀d x t δ. d|δ ⇒ (d|((x+δ)+t) = d|(x+t))"]
+  ]];
+
+(* Round-trip: with d=2, δ=4 (2|4 dischargeable) the shift fires. *)
+HOLTest`runTests["stdlib/Num: dividesShiftThm fires — d=2, δ=4 gives the equivalence under 2|4",
+  Module[{th, numTy, two, four, xV, tV, instThm, ante, c},
+    numTy = mkType["num", {}];
+    two  = HOL`Auto`Arith`Private`buildLitNum[2];
+    four = HOL`Auto`Arith`Private`buildLitNum[4];
+    xV = mkVar["x", numTy]; tV = mkVar["t", numTy];
+    th = HOL`Stdlib`Num`dividesShiftThm;
+    instThm = HOL`Bool`SPEC[four,
+      HOL`Bool`SPEC[tV, HOL`Bool`SPEC[xV, HOL`Bool`SPEC[two, th]]]];
+    (* ⊢ divides 2 4 ⇒ (divides 2 ((x+4)+t) = divides 2 (x+t)) *)
+    HOLTest`assertEq[hyp[instThm], {}, "no hyps after SPEC"];
+    ante = concl[instThm][[1, 2]];
+    HOLTest`assertTrue[
+      MatchQ[ante, comb[comb[const["divides", _], _], _]],
+      "antecedent is divides 2 4"];
+    c = concl[instThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["⇒", _], _],
+        comb[comb[const["=", _], _], _]]],
+      "concl is d|δ ⇒ (eq)"]
+  ]];
+
 (* ===== M7-3-o: gcd ===== *)
 
 HOLTest`runTests["stdlib/Num: gcd has type num → num → num",
