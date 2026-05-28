@@ -78,11 +78,13 @@ existsBoundedThm::usage =
   "EXISTS at a + leqRefl.";
 
 arithProve::usage =
-  "arithProve[goalTm] — Presburger ℕ decision procedure. " <>
-  "*Skeleton*: in the current session this is a stub that always " <>
-  "throws holError tagged \"arith-stub\". The full implementation " <>
-  "will close ground Presburger formulas via Cooper QE and kernel-" <>
-  "level certificate replay.";
+  "arithProve[goalTm] — linear ℕ arithmetic prover. ∃x:num. body " <>
+  "goals close via witness search + ground verification; ∀x:num. " <>
+  "H₁⇒…⇒Hₘ⇒C goals (C and each Hⱼ a ≤/< atom) close via a Farkas " <>
+  "refutation (unit-subset certificate + kernel verifier) under " <>
+  "CCONTR/DISCH/GEN. Linear only; non-unit multipliers and " <>
+  "coefficient-merge are not yet supported (fall through to a " <>
+  "tagged arith-farkas / arith-norm-merge error).";
 
 linNormConv::usage =
   "linNormConv[t] — proof-producing linear normalizer over ℕ: " <>
@@ -93,9 +95,9 @@ linNormConv::usage =
   "core building block.";
 
 ARITH::usage =
-  "ARITH[][goal] — tactic stub for arithProve. Currently fails on " <>
-  "every goal — sits here to reserve the public API for the eventual " <>
-  "decision procedure.";
+  "ARITH[][goal] — tactic wrapper for arithProve: proves the goal's " <>
+  "conclusion (a linear ℕ ∀/∃ statement) and closes the goal. Use " <>
+  "via prove[goal, ARITH[]].";
 
 Begin["`Private`"];
 
@@ -1920,6 +1922,213 @@ normLinAux[t_] :=
 HOL`Auto`Arith`linNormConv[t_] := normLinAux[t];
 
 (* ============================================================ *)
+(* Farkas refutation: oracle + kernel verifier                   *)
+(*                                                              *)
+(* To refute a system of ℕ inequalities {Lᵢ ≤ Rᵢ}, an untrusted *)
+(* oracle finds nonneg multipliers λᵢ with Σλᵢ(Lᵢ-Rᵢ) a         *)
+(* positive constant (Farkas). The kernel verifier then scales,  *)
+(* sums (leqAddMono), normalizes both sides (linNormConv), peels *)
+(* the shared variable part (leqAddLeftCancel), and hits a       *)
+(* ground-false c ≤ c' contradiction → ⊢ F. Oracle error only    *)
+(* costs completeness ("can't prove"), never soundness.          *)
+(*                                                              *)
+(* This first cut implements the unit-subset certificate (all    *)
+(* λ ∈ {0,1}) — which closes the capstone and the usual additive *)
+(* monotonicity goals. General LinearProgramming multipliers and *)
+(* the leqMultLeft scaling they require (which in turn needs      *)
+(* linNormConv coefficient-merge) are the next generalization.    *)
+(* ============================================================ *)
+
+nLeqTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+
+(* A ≤-fact's concl is `L ≤ R`; project the two sides. *)
+leqSidesOf[th_] := Module[{c}, c = concl[th]; {c[[1, 2]], c[[2]]}];
+
+(* Coerce a fact whose concl is `X < Y` into `SUC X ≤ Y`; pass
+   through `≤` facts unchanged. *)
+toLeqFact[th_] :=
+  Module[{c, xT, yT},
+    c = concl[th];
+    Which[
+      MatchQ[c, comb[comb[const["≤", _], _], _]], th,
+      MatchQ[c, comb[comb[const["<", _], _], _]],
+        xT = c[[1, 2]]; yT = c[[2]];
+        EQMP[unfoldLt[xT, yT], th],
+      True,
+        HOL`Error`holError["arith-farkas",
+          "toLeqFact: fact is neither ≤ nor <", <|"concl" -> c|>]
+    ]
+  ];
+
+(* dᵢ = Lᵢ - Rᵢ as a ℤ-coefficient linTerm. *)
+factDiff[th_] :=
+  Module[{ls}, ls = leqSidesOf[th];
+    linSub[parseLin[ls[[1]]], parseLin[ls[[2]]]]];
+
+(* unit-subset Farkas oracle: smallest nonempty index set whose
+   diff-sum has no variables and a positive constant, or $Failed. *)
+unitCertWorks[diffs_, idxs_] :=
+  Module[{s}, s = Fold[linAdd, linZero[], diffs[[idxs]]];
+    Length[s[[2]]] === 0 && s[[1]] > 0];
+
+farkasUnitCert[diffs_List] :=
+  Module[{n, hit},
+    n = Length[diffs];
+    If[n > 8,
+      HOL`Error`holError["arith-farkas",
+        "farkasUnitCert: too many hypotheses for unit search",
+        <|"n" -> n|>]];
+    hit = SelectFirst[Subsets[Range[n], {1, n}],
+      unitCertWorks[diffs, #] &];
+    If[MissingQ[hit], $Failed, hit]
+  ];
+
+(* leqAddMono fold: from facts ⊢ Lᵢ ≤ Rᵢ produce ⊢ ΣLᵢ ≤ ΣRᵢ. *)
+combineLeq[th1_, th2_] :=
+  Module[{s1, s2, inst},
+    s1 = leqSidesOf[th1]; s2 = leqSidesOf[th2];
+    inst = HOL`Bool`SPEC[s2[[2]], HOL`Bool`SPEC[s2[[1]],
+      HOL`Bool`SPEC[s1[[2]], HOL`Bool`SPEC[s1[[1]],
+        HOL`Stdlib`Num`leqAddMonoThm]]]];
+    HOL`Bool`MP[HOL`Bool`MP[inst, th1], th2]
+  ];
+
+sumLeqFacts[facts_List] := Fold[combineLeq, First[facts], Rest[facts]];
+
+(* rewrite the LHS / RHS of a `≤` theorem using an equation. *)
+rewriteLeqLhs[leqTh_, lhsEq_] :=
+  Module[{sides, cong},
+    sides = leqSidesOf[leqTh];
+    cong = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[HOL`Stdlib`Num`leqConst[], lhsEq], sides[[2]]];
+    EQMP[cong, leqTh]
+  ];
+
+rewriteLeqRhs[leqTh_, rhsEq_] :=
+  Module[{sides, cong},
+    sides = leqSidesOf[leqTh];
+    cong = HOL`Kernel`MKCOMB[
+      REFL[mkComb[HOL`Stdlib`Num`leqConst[], sides[[1]]]], rhsEq];
+    EQMP[cong, leqTh]
+  ];
+
+(* ⊢ buildLin[linTerm[c, Vvars]] = Vterm + buildLitNum[c]. *)
+commuteConstToRight[vLin : linTerm[_, vsV_], c_Integer] :=
+  Module[{vTerm, cLit},
+    vTerm = buildLin[vLin];
+    cLit = buildLitNum[c];
+    If[c === 0,
+      HOL`Equal`SYM[HOL`Bool`SPEC[vTerm, HOL`Stdlib`Num`plusZeroEqThm]],
+      addCommInst[cLit, vTerm]
+    ]
+  ];
+
+(* From a list of ≤-facts, build ⊢ F (carrying the facts' hyps). *)
+farkasRefute[leqFacts_List] :=
+  Module[{diffs, cert, chosen, combined, sides, normL, normR, cl, cr,
+          leqCanon, lcLin, rcLin, cL, cR, vLin, vTerm, groundLeq,
+          commL, commR, step2, step3, cancel, glt, notLeqInst, notLeq},
+    diffs = factDiff /@ leqFacts;
+    cert = farkasUnitCert[diffs];
+    If[cert === $Failed,
+      HOL`Error`holError["arith-farkas",
+        "no unit Farkas certificate", <|"diffs" -> diffs|>]];
+    chosen = leqFacts[[cert]];
+    combined = sumLeqFacts[chosen];
+    sides = leqSidesOf[combined];
+    normL = linNormConv[sides[[1]]];
+    normR = linNormConv[sides[[2]]];
+    cl = concl[normL][[2]]; cr = concl[normR][[2]];
+    leqCanon = rewriteLeqRhs[rewriteLeqLhs[combined, normL], normR];
+    lcLin = parseLin[cl]; rcLin = parseLin[cr];
+    cL = lcLin[[1]]; cR = rcLin[[1]];
+    If[lcLin[[2]] =!= rcLin[[2]] || ! (cL > cR),
+      HOL`Error`holError["arith-farkas",
+        "verifier: canonical sides not V+c with cL>cR (oracle bug)",
+        <|"lhs" -> lcLin, "rhs" -> rcLin|>]];
+    vLin = linTerm[0, lcLin[[2]]];
+    If[Length[lcLin[[2]]] === 0,
+      groundLeq = leqCanon,
+      vTerm = buildLin[vLin];
+      commL = commuteConstToRight[vLin, cL];
+      commR = commuteConstToRight[vLin, cR];
+      step2 = rewriteLeqLhs[leqCanon, commL];
+      step3 = rewriteLeqRhs[step2, commR];
+      cancel = HOL`Bool`SPEC[buildLitNum[cR], HOL`Bool`SPEC[buildLitNum[cL],
+        HOL`Bool`SPEC[vTerm, HOL`Stdlib`Num`leqAddLeftCancelThm]]];
+      groundLeq = HOL`Bool`MP[cancel, step3]
+    ];
+    glt = proveGroundLt[cR, cL];
+    notLeqInst = HOL`Bool`SPEC[buildLitNum[cR], HOL`Bool`SPEC[buildLitNum[cL],
+      HOL`Stdlib`Num`notLeqEqLtThm]];
+    notLeq = EQMP[HOL`Equal`SYM[notLeqInst], glt];
+    HOL`Bool`MP[HOL`Bool`NOTELIM[notLeq], groundLeq]
+  ];
+
+(* ============================================================ *)
+(* arithProveForall — close a universally-quantified linear goal *)
+(* ∀x₁…xₖ. H₁ ⇒ … ⇒ Hₘ ⇒ C (C and each Hⱼ an ℕ ≤/< atom) by     *)
+(* assuming the Hⱼ and ¬C, Farkas-refuting to F, then            *)
+(* CCONTR / DISCH / GEN to rebuild the universal.                *)
+(* ============================================================ *)
+
+peelForallNum[t_] :=
+  If[MatchQ[t, comb[const["∀", _], abs[bvar[0, ty_], _, _String]]] &&
+       t[[2, 1, 2]] === numTy,
+    Module[{origin, opened, rec},
+      origin = t[[2, 3]];
+      opened = openBvar0[t[[2, 2]], origin];
+      rec = peelForallNum[opened];
+      {Prepend[rec[[1]], origin], rec[[2]]}
+    ],
+    {{}, t}
+  ];
+
+peelImp[t_] :=
+  If[MatchQ[t, comb[comb[const["⇒", _], _], _]],
+    Module[{rec}, rec = peelImp[t[[2]]];
+      {Prepend[rec[[1]], t[[1, 2]]], rec[[2]]}],
+    {{}, t}
+  ];
+
+(* ¬C ⊢ (the ≤-fact equivalent of ¬C). *)
+negateConclFact[conclTm_] :=
+  Module[{negC, assumed, sides, inst},
+    negC = mkComb[notOp[], conclTm];
+    assumed = HOL`Kernel`ASSUME[negC];
+    sides = {conclTm[[1, 2]], conclTm[[2]]};
+    Which[
+      MatchQ[conclTm, comb[comb[const["≤", _], _], _]],
+        inst = HOL`Bool`SPEC[sides[[2]], HOL`Bool`SPEC[sides[[1]],
+          HOL`Stdlib`Num`notLeqEqLtThm]];
+        toLeqFact[EQMP[inst, assumed]],
+      MatchQ[conclTm, comb[comb[const["<", _], _], _]],
+        inst = HOL`Bool`SPEC[sides[[2]], HOL`Bool`SPEC[sides[[1]],
+          HOL`Stdlib`Num`notLtEqLeqThm]];
+        toLeqFact[EQMP[inst, assumed]],
+      True,
+        HOL`Error`holError["arith-not-supported",
+          "arithProveForall: conclusion not a ≤/< atom",
+          <|"concl" -> conclTm|>]
+    ]
+  ];
+
+arithProveForall[goalTm_] :=
+  Module[{pf, varNames, body, pi, hypTms, conclTm, hypFacts, negFact,
+          falseThm, cThm, dischd},
+    pf = peelForallNum[goalTm];
+    varNames = pf[[1]]; body = pf[[2]];
+    pi = peelImp[body];
+    hypTms = pi[[1]]; conclTm = pi[[2]];
+    hypFacts = (toLeqFact[HOL`Kernel`ASSUME[#]] &) /@ hypTms;
+    negFact = negateConclFact[conclTm];
+    falseThm = farkasRefute[Append[hypFacts, negFact]];
+    cThm = HOL`Bool`CCONTR[conclTm, falseThm];
+    dischd = Fold[HOL`Bool`DISCH[#2, #1] &, cThm, Reverse[hypTms]];
+    Fold[HOL`Bool`GEN[mkVar[#2, numTy], #1] &, dischd, Reverse[varNames]]
+  ];
+
+(* ============================================================ *)
 (* Public entry points                                           *)
 (*                                                              *)
 (* arithProve[goalTm]   — closes ∃-SAT Presburger ℕ goals via    *)
@@ -1937,13 +2146,17 @@ HOL`Auto`Arith`linNormConv[t_] := normLinAux[t];
 
 HOL`Auto`Arith`arithProve[goalTm_] :=
   Which[
+    MatchQ[goalTm, comb[const["∀", _],
+        abs[bvar[0, ty_], _, _String]]] &&
+        goalTm[[2, 1, 2]] === numTy,
+      arithProveForall[goalTm],
     MatchQ[goalTm, comb[const["∃", _],
         abs[bvar[0, ty_], _, _String]]] &&
         goalTm[[2, 1, 2]] === numTy,
       arithProveExists[goalTm],
     True,
       HOL`Error`holError["arith-not-supported",
-        "arithProve: only ∃x:num. body goals are currently supported",
+        "arithProve: only ∀/∃ x:num. body goals are currently supported",
         <|"goal" -> goalTm|>]
   ];
 

@@ -1350,14 +1350,24 @@ HOLTest`runTests["arith: arithProve on nested ∃ with constraint",
       "⊢ ∃x. ∃y. x = 3 ∧ y = 7"]
   ]];
 
-HOLTest`runTests["arith: arithProve rejects ∀-goal with arith-not-supported",
-  Module[{xV, goal},
+HOLTest`runTests["arith: arithProve closes ∀x. x ≤ x via Farkas",
+  Module[{xV, goal, th},
     xV = mkVar["x", numTy];
     goal = mkComb[mkConst["\[ForAll]",
       tyFun[tyFun[numTy, boolTy], boolTy]],
       mkAbs[xV, mkComb[mkComb[HOL`Stdlib`Num`leqConst[], xV], xV]]];
-    HOLTest`assertThrows[arithProve[goal], "arith-not-supported",
-      "∀ goals need Cooper main theorem (queued)"]
+    th = arithProve[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀x. x ≤ x"]
+  ]];
+
+HOLTest`runTests["arith: ARITH throws arith-norm-merge on a merge goal",
+  Module[{xV, goal},
+    xV = mkVar["x", numTy];
+    goal = forallNum[xV,
+      leqN[plusN[xV, xV], plusN[xV, xV]]];
+    HOLTest`assertThrows[arithProve[goal], "arith-norm-merge",
+      "coefficient merge (x + x) not yet supported"]
   ]];
 
 HOLTest`runTests["arith: ARITH tactic closes ∃-SAT goal via prove[]",
@@ -1417,3 +1427,44 @@ With[{mV = mkVar["m", numTy], nV = mkVar["n", numTy],
   normInvariant["constant fold 2 + (m + 3)",
     mkPlus[mkNum[2], mkPlus[mV, mkNum[3]]]];
 ];
+
+(* ===== ARITH on ∀ goals via Farkas refutation ===== *)
+
+HOLTest`runTests["arith: ARITH capstone ∀m n p. m≤n ⇒ m+p ≤ n+p",
+  Module[{mV, nV, pV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy]; pV = mkVar["p", numTy];
+    goal = forallNum[mV, forallNum[nV, forallNum[pV,
+      impCT[leqN[mV, nV], leqN[plusN[mV, pV], plusN[nV, pV]]]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal,
+      "⊢ ∀m n p. m ≤ n ⇒ m + p ≤ n + p"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀n. n ≤ SUC n (no hyp, single fact)",
+  Module[{nV, goal, th},
+    nV = mkVar["n", numTy];
+    goal = forallNum[nV, leqN[nV, sucN[nV]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀n. n ≤ SUC n"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀m n. m < n ⇒ m ≤ n (< hypothesis)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV, impCT[ltN[mV, nV], leqN[mV, nV]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m < n ⇒ m ≤ n"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀m n. m ≤ n ⇒ m < SUC n (< conclusion)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV,
+      impCT[leqN[mV, nV], ltN[mV, sucN[nV]]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m ≤ n ⇒ m < SUC n"]
+  ]];
