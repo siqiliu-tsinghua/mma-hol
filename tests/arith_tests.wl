@@ -1516,6 +1516,32 @@ HOLTest`runTests["arith: ARITH ∀x. 1 ≤ x ⇒ 2 ≤ x + x (non-unit λ)",
     HOLTest`assertEq[concl[th], goal, "⊢ ∀x. 1 ≤ x ⇒ 2 ≤ x + x"]
   ]];
 
+HOLTest`runTests["arith: ARITH ∀x. x ≤ x + x (needs 0 ≤ x)",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = forallNum[xV, leqN[xV, plusN[xV, xV]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀x. x ≤ x + x"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀m n. m ≤ m + n (needs 0 ≤ n)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV, leqN[mV, plusN[mV, nV]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m ≤ m + n"]
+  ]];
+
+HOLTest`runTests["arith: ARITH rejects the false goal ∀x. x ≤ 0",
+  Module[{xV, goal},
+    xV = mkVar["x", numTy];
+    goal = forallNum[xV, leqN[xV, mkNum[0]]];
+    HOLTest`assertThrows[arithProve[goal], "arith-farkas",
+      "x ≤ 0 is false; nonnegativity cannot rescue it"]
+  ]];
+
 (* ===== Phase B: Fourier–Motzkin oracle (farkasFM, untrusted) ===== *)
 (* diffs are linTerm[const, vars] standing for `≤ 0` constraints.    *)
 (* farkasFM returns an Association origIdx→integer λ (Farkas cert)    *)

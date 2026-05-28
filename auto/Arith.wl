@@ -2158,6 +2158,22 @@ farkasRefute[leqFacts_List] :=
     HOL`Bool`MP[HOL`Bool`NOTELIM[notLeq], groundLeq]
   ];
 
+(* Refute with the base facts; if the oracle finds no certificate, retry
+   once with the ℕ nonnegativity facts (⊢ 0 ≤ xᵢ) appended. Over ℕ these
+   are always available but Farkas needs them explicitly (e.g. x ≤ x+x).
+   They are hyp-free, so they never enter the CCONTR/DISCH assumptions.
+   Lazy so most goals don't pay the extra FM constraints. *)
+refuteWithNonneg[base_List, nonneg_List] :=
+  Catch[
+    farkasRefute[base],
+    HOL`Error`holErrorTag,
+    Function[err,
+      If[err[[2, "tag"]] === "arith-farkas" && nonneg =!= {},
+        farkasRefute[Join[base, nonneg]],
+        Throw[err, HOL`Error`holErrorTag]]
+    ]
+  ];
+
 (* ============================================================ *)
 (* arithProveForall — close a universally-quantified linear goal *)
 (* ∀x₁…xₖ. H₁ ⇒ … ⇒ Hₘ ⇒ C (C and each Hⱼ an ℕ ≤/< atom) by     *)
@@ -2208,14 +2224,16 @@ negateConclFact[conclTm_] :=
 
 arithProveForall[goalTm_] :=
   Module[{pf, varNames, body, pi, hypTms, conclTm, hypFacts, negFact,
-          falseThm, cThm, dischd},
+          nonnegFacts, falseThm, cThm, dischd},
     pf = peelForallNum[goalTm];
     varNames = pf[[1]]; body = pf[[2]];
     pi = peelImp[body];
     hypTms = pi[[1]]; conclTm = pi[[2]];
     hypFacts = (toLeqFact[HOL`Kernel`ASSUME[#]] &) /@ hypTms;
     negFact = negateConclFact[conclTm];
-    falseThm = farkasRefute[Append[hypFacts, negFact]];
+    nonnegFacts = (HOL`Bool`SPEC[mkVar[#, numTy],
+      HOL`Stdlib`Num`leqZeroThm] &) /@ varNames;
+    falseThm = refuteWithNonneg[Append[hypFacts, negFact], nonnegFacts];
     cThm = HOL`Bool`CCONTR[conclTm, falseThm];
     dischd = Fold[HOL`Bool`DISCH[#2, #1] &, cThm, Reverse[hypTms]];
     Fold[HOL`Bool`GEN[mkVar[#2, numTy], #1] &, dischd, Reverse[varNames]]
