@@ -1306,6 +1306,70 @@ HOLTest`runTests["stdlib/Num: dividesShiftThm fires — d=2, δ=4 gives the equi
       "concl is d|δ ⇒ (eq)"]
   ]];
 
+(* ===== ARITH verifier lemmas: additive monotonicity (M7-δ realign) ===== *)
+
+HOLTest`runTests["stdlib/Num: leqAddRightMonoThm (capstone) — ⊢ ∀m n p. m≤n ⇒ m+p≤n+p",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`leqAddRightMonoThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["⇒", _], comb[comb[const["≤", _], _], _]],
+          comb[comb[const["≤", _], comb[comb[const["+", _], _], _]],
+            comb[comb[const["+", _], _], _]]]]],
+      "shape: ∀m n p. m≤n ⇒ m+p≤n+p"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: leqAddLeftMonoThm — ⊢ ∀m n p. m≤n ⇒ p+m≤p+n",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`leqAddLeftMonoThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["⇒", _], comb[comb[const["≤", _], _], _]],
+          comb[comb[const["≤", _], comb[comb[const["+", _], _], _]],
+            comb[comb[const["+", _], _], _]]]]],
+      "shape: ∀m n p. m≤n ⇒ p+m≤p+n"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: leqAddMonoThm — ⊢ ∀a b c d. a≤b ⇒ c≤d ⇒ a+c≤b+d",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`leqAddMonoThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 4,
+        comb[comb[const["⇒", _], comb[comb[const["≤", _], _], _]],
+          comb[comb[const["⇒", _], comb[comb[const["≤", _], _], _]],
+            comb[comb[const["≤", _], comb[comb[const["+", _], _], _]],
+              comb[comb[const["+", _], _], _]]]]]],
+      "shape: ∀a b c d. a≤b ⇒ c≤d ⇒ a+c≤b+d"]
+  ]];
+
+(* Capstone fires: m=2,n=5,p=10 → 2≤5 ⇒ 12≤15; discharge 2≤5, get 12≤15. *)
+HOLTest`runTests["stdlib/Num: leqAddRightMonoThm fires — 2≤5 yields 2+10 ≤ 5+10",
+  Module[{th, numTy, two, five, ten, leqC, plusC, inst, leq25, concl12},
+    numTy = mkType["num", {}];
+    two  = HOL`Auto`Arith`Private`buildLitNum[2];
+    five = HOL`Auto`Arith`Private`buildLitNum[5];
+    ten  = HOL`Auto`Arith`Private`buildLitNum[10];
+    leqC = mkConst["≤", tyFun[numTy, tyFun[numTy, boolTy]]];
+    plusC = mkConst["+", tyFun[numTy, tyFun[numTy, numTy]]];
+    th = HOL`Stdlib`Num`leqAddRightMonoThm;
+    inst = HOL`Bool`SPEC[ten, HOL`Bool`SPEC[five, HOL`Bool`SPEC[two, th]]];
+    (* ⊢ 2≤5 ⇒ 2+10 ≤ 5+10 *)
+    leq25 = HOL`Auto`Arith`Private`proveGroundLeq[2, 5];
+    concl12 = HOL`Bool`MP[inst, leq25];
+    HOLTest`assertEq[hyp[concl12], {}, "no hyps after MP"];
+    HOLTest`assertTrue[
+      HOL`Terms`aconv[concl[concl12],
+        mkComb[mkComb[leqC, mkComb[mkComb[plusC, two], ten]],
+          mkComb[mkComb[plusC, five], ten]]],
+      "⊢ 2 + 10 ≤ 5 + 10"]
+  ]];
+
 (* ===== M7-3-o: gcd ===== *)
 
 HOLTest`runTests["stdlib/Num: gcd has type num → num → num",

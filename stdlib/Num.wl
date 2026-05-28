@@ -137,6 +137,9 @@ dividesAddMultDThm::usage  = "dividesAddMultDThm — ⊢ ∀d x j. divides d (x 
 dividesAddDThm::usage      = "dividesAddDThm — ⊢ ∀d x. divides d (x + d) = divides d x. One-step Cooper periodicity for divisibility atoms.";
 addRightCommThm::usage     = "addRightCommThm — ⊢ ∀a b c. (a + b) + c = (a + c) + b. Swaps the two right operands; addAssoc + addComm chain.";
 dividesShiftThm::usage     = "dividesShiftThm — ⊢ ∀d x t δ. divides d δ ⇒ (divides d ((x + δ) + t) = divides d (x + t)). Atom-level Cooper periodicity: shifting x by a period δ (with d | δ) preserves a divisibility atom d | (x + t).";
+leqAddRightMonoThm::usage  = "leqAddRightMonoThm — ⊢ ∀m n p. m ≤ n ⇒ m + p ≤ n + p. ≤ is monotone in adding a constant on the right. ARITH verifier building block (capstone).";
+leqAddLeftMonoThm::usage   = "leqAddLeftMonoThm — ⊢ ∀m n p. m ≤ n ⇒ p + m ≤ p + n. ≤ monotone in adding on the left.";
+leqAddMonoThm::usage       = "leqAddMonoThm — ⊢ ∀a b c d. a ≤ b ⇒ c ≤ d ⇒ a + c ≤ b + d. Two-sided additive monotonicity of ≤; the core leq-additivity lemma the ARITH Farkas verifier sums with.";
 
 gcdExistsThm::usage      = "gcdExistsThm — ⊢ ∀a b. ∃d. divides d a ∧ divides d b ∧ ∀e. (divides e a ∧ divides e b) ⇒ divides e d.";
 gcdConst::usage          = "gcdConst[] — gcd : num → num → num. Greatest common divisor via Hilbert ε on the universal property; constructively exists by Euclid (gcdExistsThm).";
@@ -5097,6 +5100,129 @@ dividesShiftThm =
 
     HOL`Bool`GEN[dV, HOL`Bool`GEN[xV,
       HOL`Bool`GEN[tV, HOL`Bool`GEN[deltaV, disch]]]]
+  ];
+
+(* ============================================================ *)
+(* ARITH verifier lemmas — additive monotonicity of ≤.          *)
+(* These are the +/≤ additivity lemmas the Farkas verifier       *)
+(* scales and sums (PLAN.md M7-δ oracle+verifier design).        *)
+(* ============================================================ *)
+
+(* leqAddRightMonoThm : ⊢ ∀m n p. m ≤ n ⇒ m + p ≤ n + p   (capstone) *)
+(* Unfold m≤n to ∃k. m+k=n; witness the same k for (m+p)+k = n+p:    *)
+(*   (m+p)+k = (m+k)+p [addRightComm] = n+p [m+k=n].                  *)
+
+leqAddRightMonoThm =
+  Module[{mV, nV, pV, kV, hTm, hAssum, hUnfold, witHypTm, witHypAssum,
+          rearr, mkPlusEq, witEq, existsBody, existsK, foldLeq,
+          chooseK, disch, genP, genN, genM},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    pV = mkVar["p", numTy];
+    kV = mkVar["k", numTy];
+
+    hTm = leqTm[mV, nV];
+    hAssum = ASSUME[hTm];
+    hUnfold = EQMP[unfoldLeq[mV, nV], hAssum];
+    (* (m≤n) ⊢ ∃k. m + k = n *)
+
+    witHypTm = mkEq[plusTm[mV, kV], nV];
+    witHypAssum = ASSUME[witHypTm];   (* (m+k=n) ⊢ m + k = n *)
+
+    rearr = HOL`Bool`SPEC[kV,
+      HOL`Bool`SPEC[pV, HOL`Bool`SPEC[mV, addRightCommThm]]];
+    (* ⊢ (m + p) + k = (m + k) + p *)
+    mkPlusEq = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[plusConst[], witHypAssum], pV];
+    (* (m+k=n) ⊢ (m + k) + p = n + p *)
+    witEq = TRANS[rearr, mkPlusEq];
+    (* (m+k=n) ⊢ (m + p) + k = n + p *)
+
+    existsBody = mkComb[existsC[numTy],
+      mkAbs[kV, mkEq[plusTm[plusTm[mV, pV], kV], plusTm[nV, pV]]]];
+    existsK = HOL`Bool`EXISTS[existsBody, kV, witEq];
+    (* (m+k=n) ⊢ ∃k. (m+p) + k = n+p *)
+    foldLeq = EQMP[
+      HOL`Equal`SYM[unfoldLeq[plusTm[mV, pV], plusTm[nV, pV]]], existsK];
+    (* (m+k=n) ⊢ (m+p) ≤ (n+p) *)
+
+    chooseK = HOL`Bool`CHOOSE[kV, hUnfold, foldLeq];
+    (* (m≤n) ⊢ (m+p) ≤ (n+p) *)
+    disch = HOL`Bool`DISCH[hTm, chooseK];
+    genP = HOL`Bool`GEN[pV, disch];
+    genN = HOL`Bool`GEN[nV, genP];
+    genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* leqAddLeftMonoThm : ⊢ ∀m n p. m ≤ n ⇒ p + m ≤ p + n *)
+(* From right-mono + commute both sides via MKCOMB on leqConst.       *)
+
+leqAddLeftMonoThm =
+  Module[{mV, nV, pV, hTm, hAssum, rightMono, commM, commN,
+          leqCongEq, leftMono, disch, genP, genN, genM},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    pV = mkVar["p", numTy];
+
+    hTm = leqTm[mV, nV];
+    hAssum = ASSUME[hTm];
+    rightMono = HOL`Bool`MP[
+      HOL`Bool`SPEC[pV, HOL`Bool`SPEC[nV,
+        HOL`Bool`SPEC[mV, leqAddRightMonoThm]]], hAssum];
+    (* (m≤n) ⊢ (m+p) ≤ (n+p) *)
+    commM = HOL`Bool`SPEC[pV, HOL`Bool`SPEC[mV, addCommThm]];
+    (* ⊢ m + p = p + m *)
+    commN = HOL`Bool`SPEC[pV, HOL`Bool`SPEC[nV, addCommThm]];
+    (* ⊢ n + p = p + n *)
+    leqCongEq = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[leqConst[], commM], commN];
+    (* ⊢ ((m+p) ≤ (n+p)) = ((p+m) ≤ (p+n)) *)
+    leftMono = EQMP[leqCongEq, rightMono];
+    (* (m≤n) ⊢ (p+m) ≤ (p+n) *)
+    disch = HOL`Bool`DISCH[hTm, leftMono];
+    genP = HOL`Bool`GEN[pV, disch];
+    genN = HOL`Bool`GEN[nV, genP];
+    genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* leqAddMonoThm : ⊢ ∀a b c d. a ≤ b ⇒ c ≤ d ⇒ a + c ≤ b + d *)
+(* a+c ≤ b+c [right-mono] ≤ b+d [left-mono], glued by leqTrans.        *)
+
+leqAddMonoThm =
+  Module[{aV, bV, cV, dV, abTm, cdTm, abAssum, cdAssum,
+          step1, step2, transInst, mp1, mp2, dischCd, dischAb,
+          genD, genC, genB, genA},
+    aV = mkVar["a", numTy];
+    bV = mkVar["b", numTy];
+    cV = mkVar["c", numTy];
+    dV = mkVar["d", numTy];
+
+    abTm = leqTm[aV, bV];
+    cdTm = leqTm[cV, dV];
+    abAssum = ASSUME[abTm];
+    cdAssum = ASSUME[cdTm];
+
+    step1 = HOL`Bool`MP[
+      HOL`Bool`SPEC[cV, HOL`Bool`SPEC[bV,
+        HOL`Bool`SPEC[aV, leqAddRightMonoThm]]], abAssum];
+    (* (a≤b) ⊢ (a+c) ≤ (b+c) *)
+    step2 = HOL`Bool`MP[
+      HOL`Bool`SPEC[bV, HOL`Bool`SPEC[dV,
+        HOL`Bool`SPEC[cV, leqAddLeftMonoThm]]], cdAssum];
+    (* (c≤d) ⊢ (b+c) ≤ (b+d) — leqAddLeftMono at m=c,n=d,p=b *)
+    transInst = HOL`Bool`SPEC[plusTm[bV, dV],
+      HOL`Bool`SPEC[plusTm[bV, cV],
+        HOL`Bool`SPEC[plusTm[aV, cV], leqTransThm]]];
+    (* ⊢ (a+c)≤(b+c) ⇒ (b+c)≤(b+d) ⇒ (a+c)≤(b+d) *)
+    mp1 = HOL`Bool`MP[transInst, step1];
+    mp2 = HOL`Bool`MP[mp1, step2];
+    (* (a≤b, c≤d) ⊢ (a+c) ≤ (b+d) *)
+    dischCd = HOL`Bool`DISCH[cdTm, mp2];
+    dischAb = HOL`Bool`DISCH[abTm, dischCd];
+    genD = HOL`Bool`GEN[dV, dischAb];
+    genC = HOL`Bool`GEN[cV, genD];
+    genB = HOL`Bool`GEN[bV, genC];
+    genA = HOL`Bool`GEN[aV, genB]
   ];
 
 (* ============================================================ *)
