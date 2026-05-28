@@ -1380,3 +1380,40 @@ HOLTest`runTests["arith: ARITH tactic on nested ∃ via prove[]",
     HOLTest`assertEq[concl[th], goal,
       "ARITH tactic closes ⊢ ∃x. ∃y. x + 1 = y"]
   ]];
+
+(* ===== linNormConv: proof-producing linear normalizer ===== *)
+(* Invariant for every supported t: linNormConv[t] returns the   *)
+(* hyp-free theorem ⊢ t = buildLin[parseLin[t]]. Asserting the    *)
+(* full equation forces the RHS to be canonical (a normalizer     *)
+(* that returned REFL[t] would fail on non-canonical inputs like  *)
+(* y + x) and the theorem to be kernel-valid.                     *)
+
+linNormConv = HOL`Auto`Arith`linNormConv;
+sucN[x_] := mkComb[sucConst[], x];
+
+normInvariant[label_, t_] :=
+  HOLTest`runTests["arith: linNormConv " <> label,
+    Module[{th},
+      th = linNormConv[t];
+      HOLTest`assertEq[hyp[th], {}, "no hyps"];
+      HOLTest`assertEq[concl[th], mkEq[t, buildLin[parseLin[t]]],
+        "⊢ t = buildLin[parseLin[t]]"]
+    ]];
+
+With[{mV = mkVar["m", numTy], nV = mkVar["n", numTy],
+      pV = mkVar["p", numTy]},
+  normInvariant["on x (already canonical var)", mkVar["x", numTy]];
+  normInvariant["on literal 3", mkNum[3]];
+  normInvariant["keeps m + n sorted", mkPlus[mV, nV]];
+  normInvariant["sorts n + m → m + n", mkPlus[nV, mV]];
+  normInvariant["reassociates (m + n) + p", mkPlus[mkPlus[mV, nV], pV]];
+  normInvariant["sorts + reassociates n + (m + p)",
+    mkPlus[nV, mkPlus[mV, pV]]];
+  normInvariant["SUC (n + p) → 1 + (n + p)", sucN[mkPlus[nV, pV]]];
+  normInvariant["m + SUC (n + p) [capstone LHS]",
+    mkPlus[mV, sucN[mkPlus[nV, pV]]]];
+  normInvariant["n + (m + p) [capstone RHS]",
+    mkPlus[nV, mkPlus[mV, pV]]];
+  normInvariant["constant fold 2 + (m + 3)",
+    mkPlus[mkNum[2], mkPlus[mV, mkNum[3]]]];
+];

@@ -84,6 +84,14 @@ arithProve::usage =
   "will close ground Presburger formulas via Cooper QE and kernel-" <>
   "level certificate replay.";
 
+linNormConv::usage =
+  "linNormConv[t] — proof-producing linear normalizer over ℕ: " <>
+  "returns ⊢ t = buildLin[parseLin[t]], the canonical constant-first, " <>
+  "sorted-variable, right-associated form. Covers 0/SUC/+/vars and " <>
+  "literal·literal products; throws arith-norm-merge on coefficient " <>
+  "merge and arith-norm on unsupported shapes. The Farkas verifier's " <>
+  "core building block.";
+
 ARITH::usage =
   "ARITH[][goal] — tactic stub for arithProve. Currently fails on " <>
   "every goal — sits here to reserve the public API for the eventual " <>
@@ -174,6 +182,9 @@ parseLinAux[var[name_String, ty_]] :=
     HOL`Error`holError["arith-parse",
       "linear-term variable must have type num",
       <|"name" -> name, "type" -> ty|>]];
+
+parseLinAux[comb[const["SUC", _], u_] /; ! litNumQ[u]] :=
+  linAdd[parseLinAux[u], linConst[1]];
 
 parseLinAux[comb[comb[const["+", _], a_], b_]] :=
   linAdd[parseLinAux[a], parseLinAux[b]];
@@ -1650,6 +1661,263 @@ arithProveBody[t_] :=
     arithProveExists[t],
     proveGroundFormulaTm[t]
   ];
+
+(* ============================================================ *)
+(* linNormConv — proof-producing linear normalizer               *)
+(*                                                              *)
+(*   linNormConv[t] → ⊢ t = buildLin[parseLin[t]]                *)
+(*                                                              *)
+(* Normalizes a ℕ linear term (built from 0, SUC, +, vars; and  *)
+(* literal·literal products) to the canonical buildLin form:     *)
+(* constant-first, then variable monomials in sorted order,      *)
+(* right-associated. The hard work is in caAdd, which proves     *)
+(* buildLin[L] + buildLin[M] = buildLin[L+M] by flattening the   *)
+(* left summand tree (addAssoc) and folding each monomial of L   *)
+(* into M's canonical form one at a time via caInsert.           *)
+(*                                                              *)
+(* This first cut covers sort + constant-folding + SUC. Two      *)
+(* generalizations throw a tagged error until a goal forces      *)
+(* them: coefficient-merge (same variable on both operands) and  *)
+(* literal scaling of a non-constant term (k · expr).            *)
+(* ============================================================ *)
+
+nPlus[a_, b_] := mkComb[mkComb[plusConst[], a], b];
+nTimes[a_, b_] := mkComb[mkComb[timesConst[], a], b];
+
+(* canonical summand list of a linTerm, in buildLin order. *)
+canonSummandList[linTerm[c_, vs_Association]] :=
+  Module[{names, varParts},
+    names = Sort[Keys[vs]];
+    varParts = (With[{coef = vs[#]},
+        If[coef === 1, var[#, numTy], nTimes[buildLitNum[coef], var[#, numTy]]]
+      ] &) /@ names;
+    Which[
+      c =!= 0, Prepend[varParts, buildLitNum[c]],
+      varParts === {}, {zeroConst[]},
+      True, varParts]
+  ];
+
+(* right-associated `+` of a summand list (mirrors buildLin's Fold). *)
+rightAssocPlus[{s_}] := s;
+rightAssocPlus[ss_List] :=
+  Fold[nPlus[#2, #1] &, Last[ss], Reverse[Most[ss]]];
+
+summandIsConst[t_] := litNumQ[t];
+summandVarName[var[nm_String, _]] := nm;
+summandVarName[comb[comb[const["*", _], _], var[nm_String, _]]] := nm;
+
+(* x sorts strictly before y in the canonical (Sort) order. *)
+varOrderedBefore[x_String, y_String] := Order[x, y] === 1;
+
+(* ===== algebraic lemma instances ===== *)
+
+(* ⊢ (a + b) + c = a + (b + c) *)
+addAssocInst[a_, b_, c_] :=
+  HOL`Bool`SPEC[c, HOL`Bool`SPEC[b, HOL`Bool`SPEC[a,
+    HOL`Stdlib`Num`addAssocThm]]];
+
+(* ⊢ a + b = b + a *)
+addCommInst[a_, b_] :=
+  HOL`Bool`SPEC[b, HOL`Bool`SPEC[a, HOL`Stdlib`Num`addCommThm]];
+
+(* ⊢ a + (b + c) = b + (a + c) *)
+addLeftCommInst[a_, b_, c_] :=
+  Module[{t1, t2, t3},
+    t1 = HOL`Equal`SYM[addAssocInst[a, b, c]];
+    (* ⊢ a + (b + c) = (a + b) + c *)
+    t2 = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[plusConst[], addCommInst[a, b]], c];
+    (* ⊢ (a + b) + c = (b + a) + c *)
+    t3 = addAssocInst[b, a, c];
+    (* ⊢ (b + a) + c = b + (a + c) *)
+    TRANS[t1, TRANS[t2, t3]]
+  ];
+
+(* From ⊢ X = Y, build ⊢ X + rest = Y + rest. *)
+plusLeftCong[xyThm_, rest_] :=
+  HOL`Equal`APTHM[HOL`Equal`APTERM[plusConst[], xyThm], rest];
+
+(* From ⊢ a = b, build ⊢ s + a = s + b. *)
+plusRightCong[s_, abThm_] :=
+  HOL`Equal`APTERM[mkComb[plusConst[], s], abThm];
+
+(* ===== caInsertConst: fold a positive constant into canonical M ===== *)
+
+caInsertConst[c_Integer, linTerm[cM_, vsM_Association]] :=
+  Module[{cLit, ss, cMLit, restTerm, assoc, gAdd, reduced},
+    cLit = buildLitNum[c];
+    If[cM === 0,
+      If[Length[vsM] === 0,
+        (* M empty: c + 0 = c *)
+        HOL`Bool`SPEC[cLit, HOL`Stdlib`Num`plusZeroEqThm],
+        (* M has vars, no const: c + buildLin[M] is already canonical *)
+        REFL[nPlus[cLit, buildLin[linTerm[cM, vsM]]]]
+      ],
+      ss = canonSummandList[linTerm[cM, vsM]];
+      cMLit = First[ss];
+      If[Length[ss] === 1,
+        proveGroundAddEq[c, cM],
+        restTerm = rightAssocPlus[Rest[ss]];
+        assoc = HOL`Equal`SYM[addAssocInst[cLit, cMLit, restTerm]];
+        gAdd = proveGroundAddEq[c, cM];
+        reduced = plusLeftCong[gAdd, restTerm];
+        TRANS[assoc, reduced]
+      ]
+    ]
+  ];
+
+(* ===== caInsertVar: insert a variable monomial into canonical M ===== *)
+
+caInsertVar[x_String, k_Integer, linTerm[cM_, vsM_Association]] :=
+  Module[{monoTerm},
+    If[KeyExistsQ[vsM, x],
+      HOL`Error`holError["arith-norm-merge",
+        "linNormConv: coefficient merge not yet supported",
+        <|"var" -> x|>]];
+    monoTerm = If[k === 1, var[x, numTy],
+      nTimes[buildLitNum[k], var[x, numTy]]];
+    caInsertVarInto[monoTerm, x, buildLin[linTerm[cM, vsM]]]
+  ];
+
+(* ⊢ monoTerm + BM = (canonical insertion of monoTerm into BM) *)
+caInsertVarInto[monoTerm_, x_String, BM_] :=
+  Module[{head, rest, hasRest, hkName, lc, sub, cong},
+    If[MatchQ[BM, comb[comb[const["+", _], _], _]],
+      head = BM[[1, 2]]; rest = BM[[2]]; hasRest = True,
+      head = BM; hasRest = False
+    ];
+    If[! hasRest,
+      If[summandIsConst[head],
+        addCommInst[monoTerm, head],
+        hkName = summandVarName[head];
+        Which[
+          x === hkName,
+            HOL`Error`holError["arith-norm-merge",
+              "linNormConv: coefficient merge not yet supported",
+              <|"var" -> x|>],
+          varOrderedBefore[x, hkName], REFL[nPlus[monoTerm, head]],
+          True, addCommInst[monoTerm, head]
+        ]
+      ],
+      If[summandIsConst[head],
+        lc = addLeftCommInst[monoTerm, head, rest];
+        sub = caInsertVarInto[monoTerm, x, rest];
+        cong = plusRightCong[head, sub];
+        TRANS[lc, cong],
+        hkName = summandVarName[head];
+        Which[
+          x === hkName,
+            HOL`Error`holError["arith-norm-merge",
+              "linNormConv: coefficient merge not yet supported",
+              <|"var" -> x|>],
+          varOrderedBefore[x, hkName], REFL[nPlus[monoTerm, BM]],
+          True,
+            lc = addLeftCommInst[monoTerm, head, rest];
+            sub = caInsertVarInto[monoTerm, x, rest];
+            cong = plusRightCong[head, sub];
+            TRANS[lc, cong]
+        ]
+      ]
+    ]
+  ];
+
+(* ===== caAdd: ⊢ buildLin[L] + buildLin[M] = buildLin[L+M] ===== *)
+
+linTermIsZero[linTerm[c_, vs_Association]] := c === 0 && Length[vs] === 0;
+monoCount[linTerm[c_, vs_Association]] := If[c =!= 0, 1, 0] + Length[vs];
+
+(* {kind, data, restLin, summandTerm} for the first canonical mono of L. *)
+firstMonoOf[linTerm[c_, vs_Association]] :=
+  If[c =!= 0,
+    {"const", c, linTerm[0, vs], buildLitNum[c]},
+    Module[{nm, coef},
+      nm = First[Sort[Keys[vs]]];
+      coef = vs[nm];
+      {"var", {nm, coef}, linTerm[0, KeyDrop[vs, nm]],
+        If[coef === 1, var[nm, numTy],
+          nTimes[buildLitNum[coef], var[nm, numTy]]]}
+    ]
+  ];
+
+caAdd[L_, M_] :=
+  Which[
+    linTermIsZero[L],
+      HOL`Bool`SPEC[buildLin[M], HOL`Stdlib`Num`addLeftZeroThm],
+    linTermIsZero[M],
+      HOL`Bool`SPEC[buildLin[L], HOL`Stdlib`Num`plusZeroEqThm],
+    True, caAddNonzero[L, M]
+  ];
+
+caAddNonzero[L_, M_] :=
+  Module[{kind, data, restLin, fs, doInsert, step1, step2, step3, step4},
+    {kind, data, restLin, fs} = firstMonoOf[L];
+    doInsert[targetM_] := If[kind === "const",
+      caInsertConst[data, targetM],
+      caInsertVar[data[[1]], data[[2]], targetM]];
+    If[monoCount[L] === 1,
+      doInsert[M],
+      step1 = addAssocInst[fs, buildLin[restLin], buildLin[M]];
+      step2 = caAdd[restLin, M];
+      step3 = plusRightCong[fs, step2];
+      step4 = doInsert[linAdd[restLin, M]];
+      TRANS[step1, TRANS[step3, step4]]
+    ]
+  ];
+
+(* ===== sucEqAddOne + normLin driver ===== *)
+
+(* ⊢ SUC u = u + SUC 0 *)
+sucEqAddOne[u_] :=
+  Module[{e1, e2, e3, chain},
+    e1 = HOL`Bool`SPEC[zeroConst[], HOL`Bool`SPEC[u,
+      HOL`Stdlib`Num`plusSucEqThm]];
+    (* ⊢ u + SUC 0 = SUC (u + 0) *)
+    e2 = HOL`Bool`SPEC[u, HOL`Stdlib`Num`plusZeroEqThm];
+    (* ⊢ u + 0 = u *)
+    e3 = HOL`Equal`APTERM[sucConst[], e2];
+    (* ⊢ SUC (u + 0) = SUC u *)
+    chain = TRANS[e1, e3];
+    HOL`Equal`SYM[chain]
+  ];
+
+normLinAux[t_const /; litNumQ[t]] := REFL[t];
+normLinAux[t_comb /; litNumQ[t]] := REFL[t];
+normLinAux[v : var[_String, ty_] /; ty === numTy] := REFL[v];
+
+normLinAux[comb[const["SUC", _], u_] /; ! litNumQ[u]] :=
+  Module[{thU, Lu, sucToAdd, cong, add, normRhs},
+    thU = normLinAux[u];
+    Lu = parseLin[u];
+    sucToAdd = sucEqAddOne[u];
+    cong = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[plusConst[], thU],
+      REFL[mkComb[sucConst[], zeroConst[]]]];
+    (* ⊢ u + SUC 0 = buildLin[Lu] + SUC 0 *)
+    add = caAdd[Lu, linConst[1]];
+    (* ⊢ buildLin[Lu] + SUC 0 = buildLin[Lu + 1] *)
+    normRhs = TRANS[cong, add];
+    TRANS[sucToAdd, normRhs]
+  ];
+
+normLinAux[comb[comb[const["+", _], a_], b_]] :=
+  Module[{thA, thB, La, Lb, cong, add},
+    thA = normLinAux[a];
+    thB = normLinAux[b];
+    La = parseLin[a];
+    Lb = parseLin[b];
+    cong = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[plusConst[], thA], thB];
+    (* ⊢ a + b = buildLin[La] + buildLin[Lb] *)
+    add = caAdd[La, Lb];
+    TRANS[cong, add]
+  ];
+
+normLinAux[t_] :=
+  HOL`Error`holError["arith-norm",
+    "linNormConv: term not a supported linear ℕ expression",
+    <|"got" -> t|>];
+
+HOL`Auto`Arith`linNormConv[t_] := normLinAux[t];
 
 (* ============================================================ *)
 (* Public entry points                                           *)
