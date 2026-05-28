@@ -72,7 +72,9 @@ M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeB
 
 **M7-δ session 11 done** — public entry points `arithProve[goalTm]` + `ARITH[][goal]` tactic. `arithProve` dispatches ∃x:num.body → `arithProveExists` (others → `arith-not-supported`); `arithProveExists` recurses via `arithProveBody` so nested ∃ closes automatically. ARITH usable via `prove[goal, ARITH[]]`. End-to-end on `∃x. x=5`, `∃x.∃y. x≤y`, `∃x.∃y. x=3 ∧ y=7`. ∀-goals still queued.
 
-**Next**: M7-δ session 12+ — the **Cooper main theorem** in HOL: `⊢ (∃x:num. body) = simpForm[cooperExistsStep]` proved generically (mirrors HOL Light's `int.ml` Cooper, ~3000 lines). Multi-session. Session 12 starts with Cooper-instance theorems: `existsEqThm`, `existsLeqUbThm`, `existsLowerBoundThm`, `existsBoundedThm` (= a≤b). Other deferred items: (i) higher-coef atom normalization (multiply through to coef-±1), (ii) atoms with both negation and divisibility properly. Alternative direction: M7-5 `stdlib/Int.wl`. **Audit issues parked in `TODO.md`.**
+**M7-δ sessions 12–13 — Cooper main theorem, stages 1–2 (multi-session push toward generic `⊢ (∃x:num. body) = simpForm[cooperExistsStep]`, mirrors HOL Light `int.ml`).** S12 (auto/Arith.wl): Cooper-instance theorems `existsEqThm`/`existsLeqUbThm`/`existsLowerBoundThm` (witness + EQTINTRO) + `existsBoundedThm` (`(∃x. a≤x ∧ x≤b) = (a≤b)` via CHOOSE+leqTrans / EXISTS+leqRefl + DEDUCTANTISYM). S13 (stdlib/Num.wl): divides-periodicity `dividesAddEqThm` (`d|y ⇒ d|(x+y)=d|x`) + corollaries `dividesAddMultDThm`/`dividesAddDThm`. **Planned remaining: S14 atom-level periodicity at δ=LCM; S15 φ_{-∞} characterization; S16 B-set covering lemma; S17 main theorem assembly; S18 ARITH ∀/UNSAT rewire + higher-coef normalization + ¬Divides + M7-δ wrap.**
+
+**Next**: M7-δ session 14 — atom-level periodicity: `aSat[x↦x+δ] = aSat[x↦x]` for each atom when δ is the LCM of divisibility moduli (single-atom, no quantifier). Other deferred: M7-5 `stdlib/Int.wl`. **Audit issues parked in `TODO.md`.**
 
 Detailed proof history: `git log` + code comments. Design rationale: `PLAN.md`.
 
