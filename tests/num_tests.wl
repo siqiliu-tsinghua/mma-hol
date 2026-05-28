@@ -1183,6 +1183,79 @@ HOLTest`runTests["stdlib/Num: dividesAddRightThm — ⊢ ∀d m n. d|m ⇒ d|(m+
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`dividesAddRightThm], {}, "no hyps"];
 ]];
 
+(* ===== Cooper-periodicity foundation (M7-δ session 13) ===== *)
+
+HOLTest`runTests["stdlib/Num: dividesAddEqThm — ⊢ ∀d x y. d|y ⇒ (d|(x+y) = d|x)",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`dividesAddEqThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _],
+            comb[comb[const["⇒", _],
+              comb[comb[const["divides", _], _], _]],
+              comb[comb[const["=", _],
+                comb[comb[const["divides", _], _],
+                  comb[comb[const["+", _], _], _]]],
+                comb[comb[const["divides", _], _], _]]], _]], _]], _]]],
+      "shape: ∀d x y. d|y ⇒ (d|(x+y) = d|x)"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: dividesAddMultDThm — ⊢ ∀d x j. d|(x + j*d) = d|x",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`dividesAddMultDThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[const["∀", _], abs[bvar[0, _],
+            comb[comb[const["=", _],
+              comb[comb[const["divides", _], _],
+                comb[comb[const["+", _], _],
+                  comb[comb[const["*", _], _], _]]]],
+              comb[comb[const["divides", _], _], _]], _]], _]], _]]],
+      "shape: ∀d x j. d|(x + j*d) = d|x"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: dividesAddDThm — ⊢ ∀d x. d|(x + d) = d|x",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`dividesAddDThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
+        comb[const["∀", _], abs[bvar[0, _],
+          comb[comb[const["=", _],
+            comb[comb[const["divides", _], _],
+              comb[comb[const["+", _], _], _]]],
+            comb[comb[const["divides", _], _], _]], _]], _]]],
+      "shape: ∀d x. d|(x + d) = d|x"]
+  ]];
+
+(* Round-trip: SPEC application validates the lemma actually fires. *)
+HOLTest`runTests["stdlib/Num: dividesAddDThm fires — d=3, x=5 yields d|(5+3) = d|5",
+  Module[{th, numTy, three, five, instThm, c, divC, plusC},
+    numTy = mkType["num", {}];
+    three = HOL`Auto`Arith`Private`buildLitNum[3];
+    five  = HOL`Auto`Arith`Private`buildLitNum[5];
+    th = HOL`Stdlib`Num`dividesAddDThm;
+    instThm = HOL`Bool`SPEC[five, HOL`Bool`SPEC[three, th]];
+    c = concl[instThm];
+    divC = mkConst["divides", tyFun[numTy, tyFun[numTy, boolTy]]];
+    plusC = mkConst["+", tyFun[numTy, tyFun[numTy, numTy]]];
+    HOLTest`assertEq[hyp[instThm], {}, "no hyps after SPEC"];
+    HOLTest`assertTrue[
+      HOL`Terms`aconv[c,
+        mkEq[
+          mkComb[mkComb[divC, three],
+            mkComb[mkComb[plusC, five], three]],
+          mkComb[mkComb[divC, three], five]]],
+      "⊢ divides 3 (5 + 3) = divides 3 5"]
+  ]];
+
 (* ===== M7-3-o: gcd ===== *)
 
 HOLTest`runTests["stdlib/Num: gcd has type num → num → num",

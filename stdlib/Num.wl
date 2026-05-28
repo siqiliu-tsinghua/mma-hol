@@ -132,6 +132,9 @@ dividesZeroThm::usage      = "dividesZeroThm — ⊢ ∀a. divides a 0.";
 dividesAddThm::usage       = "dividesAddThm — ⊢ ∀d m n. divides d m ⇒ divides d n ⇒ divides d (m + n).";
 dividesMultRightThm::usage = "dividesMultRightThm — ⊢ ∀d m n. divides d m ⇒ divides d (m * n).";
 dividesAddRightThm::usage  = "dividesAddRightThm — ⊢ ∀d m n. divides d m ⇒ divides d (m + n) ⇒ divides d n.";
+dividesAddEqThm::usage     = "dividesAddEqThm — ⊢ ∀d x y. divides d y ⇒ (divides d (x + y) = divides d x). Adding a multiple of d to x preserves divisibility by d. Cooper-periodicity foundation.";
+dividesAddMultDThm::usage  = "dividesAddMultDThm — ⊢ ∀d x j. divides d (x + j * d) = divides d x. Periodicity at any integer multiple of d.";
+dividesAddDThm::usage      = "dividesAddDThm — ⊢ ∀d x. divides d (x + d) = divides d x. One-step Cooper periodicity for divisibility atoms.";
 
 gcdExistsThm::usage      = "gcdExistsThm — ⊢ ∀a b. ∃d. divides d a ∧ divides d b ∧ ∀e. (divides e a ∧ divides e b) ⇒ divides e d.";
 gcdConst::usage          = "gcdConst[] — gcd : num → num → num. Greatest common divisor via Hilbert ε on the universal property; constructively exists by Euclid (gcdExistsThm).";
@@ -4919,6 +4922,120 @@ dividesAddRightThm =
     genN = HOL`Bool`GEN[nV, dischDM];
     genM = HOL`Bool`GEN[mV, genN];
     genD = HOL`Bool`GEN[dV, genM]
+  ];
+
+(* dividesAddEqThm : ⊢ ∀d x y. divides d y ⇒ (divides d (x + y) = divides d x) *)
+(*                                                                              *)
+(* Combine dividesAddThm + dividesAddRightThm into an equivalence. Forward      *)
+(* uses dividesAddRightThm with arguments swapped via addComm; backward uses    *)
+(* dividesAddThm directly. DEDUCTANTISYM joins them; the shared divides-d-y     *)
+(* hyp survives to be discharged at the top.                                     *)
+
+dividesAddEqThm =
+  Module[{dV, xV, yV, dyTm, dxTm, dxyTm, dyHyp, dxyHyp, commXY,
+          divEq, dyxFromDxy, darAtYX, fStep1, forwardConcl,
+          dxHyp, daAtXY, bStep1, backwardConcl, eqThm,
+          dischDY, genY, genX, genD},
+    dV = mkVar["d", numTy];
+    xV = mkVar["x", numTy];
+    yV = mkVar["y", numTy];
+
+    dyTm = dividesTm[dV, yV];
+    dxTm = dividesTm[dV, xV];
+    dxyTm = dividesTm[dV, plusTm[xV, yV]];
+
+    dyHyp = ASSUME[dyTm];
+
+    (* Forward: {d|y, d|(x+y)} ⊢ d|x. *)
+    dxyHyp = ASSUME[dxyTm];
+    commXY = HOL`Bool`SPEC[yV, HOL`Bool`SPEC[xV, addCommThm]];
+    (* ⊢ x + y = y + x *)
+    divEq = HOL`Equal`APTERM[mkComb[dividesConst[], dV], commXY];
+    (* ⊢ divides d (x + y) = divides d (y + x) *)
+    dyxFromDxy = EQMP[divEq, dxyHyp];
+    (* {d|(x+y)} ⊢ d|(y+x) *)
+    darAtYX = HOL`Bool`SPEC[xV,
+      HOL`Bool`SPEC[yV, HOL`Bool`SPEC[dV, dividesAddRightThm]]];
+    (* ⊢ divides d y ⇒ divides d (y + x) ⇒ divides d x *)
+    fStep1 = HOL`Bool`MP[darAtYX, dyHyp];
+    forwardConcl = HOL`Bool`MP[fStep1, dyxFromDxy];
+    (* {d|y, d|(x+y)} ⊢ d|x *)
+
+    (* Backward: {d|y, d|x} ⊢ d|(x+y). *)
+    dxHyp = ASSUME[dxTm];
+    daAtXY = HOL`Bool`SPEC[yV,
+      HOL`Bool`SPEC[xV, HOL`Bool`SPEC[dV, dividesAddThm]]];
+    (* ⊢ divides d x ⇒ divides d y ⇒ divides d (x + y) *)
+    bStep1 = HOL`Bool`MP[daAtXY, dxHyp];
+    backwardConcl = HOL`Bool`MP[bStep1, dyHyp];
+    (* {d|y, d|x} ⊢ d|(x+y) *)
+
+    eqThm = HOL`Kernel`DEDUCTANTISYM[backwardConcl, forwardConcl];
+    (* {d|y} ⊢ d|(x+y) = d|x *)
+
+    dischDY = HOL`Bool`DISCH[dyTm, eqThm];
+    genY = HOL`Bool`GEN[yV, dischDY];
+    genX = HOL`Bool`GEN[xV, genY];
+    genD = HOL`Bool`GEN[dV, genX]
+  ];
+
+(* dividesAddMultDThm : ⊢ ∀d x j. divides d (x + j * d) = divides d x *)
+(*                                                                     *)
+(* Instantiate dividesAddEqThm at y = j*d. Discharge `divides d (j*d)`  *)
+(* via dividesRefl + dividesMultRight on d * j, then commute.            *)
+
+dividesAddMultDThm =
+  Module[{dV, xV, jV, jdTm, instEq, refl, dDJ, multRightInst,
+          dDtimesJ, commDJ, divCommEq, dJD, eqStep,
+          genJ, genX, genD},
+    dV = mkVar["d", numTy];
+    xV = mkVar["x", numTy];
+    jV = mkVar["j", numTy];
+    jdTm = timesTm[jV, dV];
+
+    instEq = HOL`Bool`SPEC[jdTm,
+      HOL`Bool`SPEC[xV, HOL`Bool`SPEC[dV, dividesAddEqThm]]];
+    (* ⊢ divides d (j*d) ⇒ (divides d (x + j*d) = divides d x) *)
+
+    refl = HOL`Bool`SPEC[dV, dividesReflThm];
+    (* ⊢ divides d d *)
+    multRightInst = HOL`Bool`SPEC[jV,
+      HOL`Bool`SPEC[dV, HOL`Bool`SPEC[dV, dividesMultRightThm]]];
+    (* ⊢ divides d d ⇒ divides d (d * j) *)
+    dDtimesJ = HOL`Bool`MP[multRightInst, refl];
+    (* ⊢ divides d (d * j) *)
+    commDJ = HOL`Bool`SPEC[jV, HOL`Bool`SPEC[dV, timesCommThm]];
+    (* ⊢ d * j = j * d *)
+    divCommEq = HOL`Equal`APTERM[mkComb[dividesConst[], dV], commDJ];
+    (* ⊢ divides d (d * j) = divides d (j * d) *)
+    dJD = EQMP[divCommEq, dDtimesJ];
+    (* ⊢ divides d (j * d) *)
+
+    eqStep = HOL`Bool`MP[instEq, dJD];
+    (* ⊢ divides d (x + j*d) = divides d x *)
+
+    genJ = HOL`Bool`GEN[jV, eqStep];
+    genX = HOL`Bool`GEN[xV, genJ];
+    genD = HOL`Bool`GEN[dV, genX]
+  ];
+
+(* dividesAddDThm : ⊢ ∀d x. divides d (x + d) = divides d x *)
+(* Special case of dividesAddEqThm at y = d, discharged by dividesRefl. *)
+
+dividesAddDThm =
+  Module[{dV, xV, instEq, refl, eqStep, genX, genD},
+    dV = mkVar["d", numTy];
+    xV = mkVar["x", numTy];
+
+    instEq = HOL`Bool`SPEC[dV,
+      HOL`Bool`SPEC[xV, HOL`Bool`SPEC[dV, dividesAddEqThm]]];
+    (* ⊢ divides d d ⇒ (divides d (x + d) = divides d x) *)
+    refl = HOL`Bool`SPEC[dV, dividesReflThm];
+    eqStep = HOL`Bool`MP[instEq, refl];
+    (* ⊢ divides d (x + d) = divides d x *)
+
+    genX = HOL`Bool`GEN[xV, eqStep];
+    genD = HOL`Bool`GEN[dV, genX]
   ];
 
 (* ============================================================ *)
