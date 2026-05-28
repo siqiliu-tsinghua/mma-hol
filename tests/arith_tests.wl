@@ -1504,6 +1504,18 @@ HOLTest`runTests["arith: ARITH ∀m n. m ≤ n ⇒ m < SUC n (< conclusion)",
     HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m ≤ n ⇒ m < SUC n"]
   ]];
 
+HOLTest`runTests["arith: ARITH ∀x. 1 ≤ x ⇒ 2 ≤ x + x (non-unit λ)",
+  Module[{xV, goal, th},
+    (* FM certificate uses the hypothesis twice: λ = (2, 1). The old
+       unit-subset oracle could never find this. *)
+    xV = mkVar["x", numTy];
+    goal = forallNum[xV,
+      impCT[leqN[mkNum[1], xV], leqN[mkNum[2], plusN[xV, xV]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀x. 1 ≤ x ⇒ 2 ≤ x + x"]
+  ]];
+
 (* ===== Phase B: Fourier–Motzkin oracle (farkasFM, untrusted) ===== *)
 (* diffs are linTerm[const, vars] standing for `≤ 0` constraints.    *)
 (* farkasFM returns an Association origIdx→integer λ (Farkas cert)    *)

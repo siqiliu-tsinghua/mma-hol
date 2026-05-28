@@ -2001,24 +2001,6 @@ factDiff[th_] :=
   Module[{ls}, ls = leqSidesOf[th];
     linSub[parseLin[ls[[1]]], parseLin[ls[[2]]]]];
 
-(* unit-subset Farkas oracle: smallest nonempty index set whose
-   diff-sum has no variables and a positive constant, or $Failed. *)
-unitCertWorks[diffs_, idxs_] :=
-  Module[{s}, s = Fold[linAdd, linZero[], diffs[[idxs]]];
-    Length[s[[2]]] === 0 && s[[1]] > 0];
-
-farkasUnitCert[diffs_List] :=
-  Module[{n, hit},
-    n = Length[diffs];
-    If[n > 8,
-      HOL`Error`holError["arith-farkas",
-        "farkasUnitCert: too many hypotheses for unit search",
-        <|"n" -> n|>]];
-    hit = SelectFirst[Subsets[Range[n], {1, n}],
-      unitCertWorks[diffs, #] &];
-    If[MissingQ[hit], $Failed, hit]
-  ];
-
 (* ===== Fourier–Motzkin oracle (untrusted, exact rationals) ===== *)
 (*                                                              *)
 (* A constraint is fmConstr[coeffs, const, prov] standing for    *)
@@ -2100,6 +2082,12 @@ combineLeq[th1_, th2_] :=
 
 sumLeqFacts[facts_List] := Fold[combineLeq, First[facts], Rest[facts]];
 
+(* apply an integer multiplier λ≥1 to a ≤-fact by summing it with
+   itself λ times (leqAddMono) — keeps every term in the `+` world, so
+   the verifier needs only linNormConv's coefficient-merge, never the
+   leqMultLeft scaling / k·(a+b) distribution. *)
+repeatLeqFact[th_, lam_Integer] := Nest[combineLeq[#, th] &, th, lam - 1];
+
 (* rewrite the LHS / RHS of a `≤` theorem using an equation. *)
 rewriteLeqLhs[leqTh_, lhsEq_] :=
   Module[{sides, cong},
@@ -2130,16 +2118,16 @@ commuteConstToRight[vLin : linTerm[_, vsV_], c_Integer] :=
 
 (* From a list of ≤-facts, build ⊢ F (carrying the facts' hyps). *)
 farkasRefute[leqFacts_List] :=
-  Module[{diffs, cert, chosen, combined, sides, normL, normR, cl, cr,
+  Module[{diffs, cert, combined, sides, normL, normR, cl, cr,
           leqCanon, lcLin, rcLin, cL, cR, vLin, vTerm, groundLeq,
           commL, commR, step2, step3, cancel, glt, notLeqInst, notLeq},
     diffs = factDiff /@ leqFacts;
-    cert = farkasUnitCert[diffs];
+    cert = farkasFM[diffs];
     If[cert === $Failed,
       HOL`Error`holError["arith-farkas",
-        "no unit Farkas certificate", <|"diffs" -> diffs|>]];
-    chosen = leqFacts[[cert]];
-    combined = sumLeqFacts[chosen];
+        "no Farkas certificate", <|"diffs" -> diffs|>]];
+    combined = sumLeqFacts[
+      KeyValueMap[repeatLeqFact[leqFacts[[#1]], #2] &, cert]];
     sides = leqSidesOf[combined];
     normL = linNormConv[sides[[1]]];
     normR = linNormConv[sides[[2]]];
