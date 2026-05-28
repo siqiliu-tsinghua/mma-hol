@@ -803,8 +803,8 @@ HOL`Auto`Arith`nnfConv[holForm_] :=
 (* Cooper QE — AST-level building blocks                         *)
 (*                                                              *)
 (* These functions operate on aForm/aAtom (AST), not on HOL      *)
-(* terms. They prepare the data structures that the eventual     *)
-(* HOL-proof Cooper engine (session 6+) will consume:            *)
+(* terms. They support the ∃-SAT witness search (candidate        *)
+(* generation + checking):                                        *)
 (*                                                              *)
 (*   normalizeAtomsForm[f]   : rewrite every aAtomEq/Leq/Lt[a,b] *)
 (*                             to […, b]→0 form via linSub.       *)
@@ -815,15 +815,11 @@ HOL`Auto`Arith`nnfConv[holForm_] :=
 (*                              their negation flag.              *)
 (*   deltaOnX[f, x]          : LCM of divisibility moduli where  *)
 (*                             x appears (default 1).             *)
-(*   phiMinusInfOnX[f, x]    : AST with atoms involving x        *)
-(*                             replaced by their (x → -∞) limits  *)
-(*                             (T / F / divisibility kept).      *)
+(*   bSetOnX[f, x]           : lower-bound witnesses for x.       *)
 (*                                                              *)
 (* All assume the input formula is already in NNF (so ¬ appears   *)
 (* only at the atom layer) and has been run through                *)
 (* normalizeAtomsForm so each non-divisibility atom is `lt op 0`.  *)
-(* B-set extraction, the big-disjunction assembly, and the HOL    *)
-(* certificates are queued for session 6+.                         *)
 (* ============================================================ *)
 
 normalizeAtom[aAtomEq[a_, b_]]  := aAtomEq[linSub[a, b], linZero[]];
@@ -890,50 +886,6 @@ deltaOnX[f_, x_String] :=
     moduli = Map[#[[2, 1]] &, divPairs];
     If[moduli === {}, 1, LCM @@ moduli]
   ];
-
-(* ===== φ_{-∞} on x — replace x-atoms with their limits ===== *)
-
-phiMinusInfAtom[atom_, x_String, negated_] :=
-  Module[{coef = atomCoefOnX[atom, x]},
-    If[coef === 0,
-      (* Atom doesn't involve x; keep as-is. *)
-      If[negated, aFormNot[aFormAtom[atom]], aFormAtom[atom]],
-      Switch[Head[atom],
-        aAtomEq,
-          (* c·x + t = 0 has at most one solution; as x → -∞, false. *)
-          If[negated, aFormTrue, aFormFalse],
-        aAtomLeq,
-          If[coef > 0, If[negated, aFormFalse, aFormTrue],
-                       If[negated, aFormTrue, aFormFalse]],
-        aAtomLt,
-          If[coef > 0, If[negated, aFormFalse, aFormTrue],
-                       If[negated, aFormTrue, aFormFalse]],
-        aAtomDivides,
-          (* Periodic in x; keep as-is (will be evaluated at x := j). *)
-          If[negated, aFormNot[aFormAtom[atom]], aFormAtom[atom]],
-        _,
-          If[negated, aFormNot[aFormAtom[atom]], aFormAtom[atom]]
-      ]
-    ]
-  ];
-
-phiMinusInfOnX[aFormTrue, _]  := aFormTrue;
-phiMinusInfOnX[aFormFalse, _] := aFormFalse;
-phiMinusInfOnX[aFormAtom[atom_], x_String] :=
-  phiMinusInfAtom[atom, x, False];
-phiMinusInfOnX[aFormNot[aFormAtom[atom_]], x_String] :=
-  phiMinusInfAtom[atom, x, True];
-phiMinusInfOnX[aFormAnd[a_, b_], x_String] :=
-  aFormAnd[phiMinusInfOnX[a, x], phiMinusInfOnX[b, x]];
-phiMinusInfOnX[aFormOr[a_, b_], x_String] :=
-  aFormOr[phiMinusInfOnX[a, x], phiMinusInfOnX[b, x]];
-(* Quantifiers shouldn't appear in a QF Cooper body, but keep      *)
-(* pass-through semantics for robustness.                          *)
-phiMinusInfOnX[aFormForall[v_, body_], x_String] :=
-  aFormForall[v, phiMinusInfOnX[body, x]];
-phiMinusInfOnX[aFormExists[v_, body_], x_String] :=
-  aFormExists[v, phiMinusInfOnX[body, x]];
-phiMinusInfOnX[other_, _] := other;
 
 (* ============================================================ *)
 (* Substitution: replace a variable in a linTerm / atom / form    *)
@@ -1081,48 +1033,6 @@ bSetOnX[f_, x_String] :=
   ];
 
 (* ============================================================ *)
-(* cooperExistsStep — assemble the final QE AST                  *)
-(*                                                              *)
-(*   ∃x. body  ⇔   (⋁_{j=1..δ} φ_{-∞}[x ↦ j])                    *)
-(*            ∨   (⋁_{j=1..δ} ⋁_{b ∈ B} body[x ↦ b + j])           *)
-(*                                                              *)
-(* Inputs: variable name x and a QF NNF body. Returns an AST     *)
-(* aForm. Empty B-set means the right disjunct is aFormFalse;    *)
-(* δ = 1 with no divisibility is the typical "no modulus" case.   *)
-(* Output may still contain ⊤ / ⊥ leaves and unsimplified atoms;  *)
-(* propositional simplification is a separate later pass.         *)
-(* ============================================================ *)
-
-bigOr[{}] := aFormFalse;
-bigOr[{f_}] := f;
-bigOr[fs_List] := Fold[aFormOr[#1, #2] &, First[fs], Rest[fs]];
-
-cooperExistsStep[xName_String, body_] :=
-  Module[{normBody, delta, bSet, phiMinf, jRange,
-          minfDisjunct, bDisjunct},
-    normBody = normalizeAtomsForm[body];
-    delta    = deltaOnX[normBody, xName];
-    bSet     = bSetOnX[normBody, xName];
-    phiMinf  = phiMinusInfOnX[normBody, xName];
-    jRange   = Range[1, delta];
-
-    minfDisjunct = bigOr[
-      Map[Function[j,
-        substVarInForm[phiMinf, xName, linConst[j]]],
-        jRange]];
-
-    bDisjunct = bigOr[Flatten[
-      Map[Function[b,
-        Map[Function[j,
-          substVarInForm[normBody, xName,
-            linAdd[b, linConst[j]]]],
-          jRange]],
-        bSet], 1]];
-
-    aFormOr[minfDisjunct, bDisjunct]
-  ];
-
-(* ============================================================ *)
 (* simpForm — AST-level propositional simplification              *)
 (*                                                              *)
 (*   - Evaluate ground atoms (linTerm with empty vars):           *)
@@ -1138,8 +1048,8 @@ cooperExistsStep[xName_String, body_] :=
 (*     beyond propagating bool constants (which mostly don't       *)
 (*     happen for ⇒/⇔ in a NNF-then-Cooper pipeline).               *)
 (*                                                              *)
-(* Composed with cooperExistsStep, this turns a closed Presburger  *)
-(* formula's QE output into a ground T/F.                          *)
+(* Evaluates a ground (variable-free) Presburger formula to T/F;   *)
+(* used to check candidate witnesses in the ∃-SAT path.            *)
 (* ============================================================ *)
 
 linIsGround[linTerm[_, vs_Association]] := Length[vs] === 0;
