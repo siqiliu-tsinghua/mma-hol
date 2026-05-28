@@ -1370,6 +1370,81 @@ HOLTest`runTests["stdlib/Num: leqAddRightMonoThm fires — 2≤5 yields 2+10 ≤
       "⊢ 2 + 10 ≤ 5 + 10"]
   ]];
 
+(* ARITH verifier lemmas batch 2: scaling + left-cancellation *)
+
+HOLTest`runTests["stdlib/Num: leqMultLeftThm — ⊢ ∀k a b. a≤b ⇒ k*a≤k*b",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`leqMultLeftThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["⇒", _], comb[comb[const["≤", _], _], _]],
+          comb[comb[const["≤", _], comb[comb[const["*", _], _], _]],
+            comb[comb[const["*", _], _], _]]]]],
+      "shape: ∀k a b. a≤b ⇒ k*a≤k*b"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: leqAddLeftCancelThm — ⊢ ∀v a b. v+a≤v+b ⇒ a≤b",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`leqAddLeftCancelThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["⇒", _],
+          comb[comb[const["≤", _], comb[comb[const["+", _], _], _]],
+            comb[comb[const["+", _], _], _]]],
+          comb[comb[const["≤", _], _], _]]]],
+      "shape: ∀v a b. v+a≤v+b ⇒ a≤b"]
+  ]];
+
+(* Scaling fires: 2≤5 ⇒ 3*2 ≤ 3*5. *)
+HOLTest`runTests["stdlib/Num: leqMultLeftThm fires — 2≤5 yields 3*2 ≤ 3*5",
+  Module[{th, numTy, two, five, three, leqC, timesC, inst, leq25, conc},
+    numTy = mkType["num", {}];
+    two = HOL`Auto`Arith`Private`buildLitNum[2];
+    five = HOL`Auto`Arith`Private`buildLitNum[5];
+    three = HOL`Auto`Arith`Private`buildLitNum[3];
+    leqC = mkConst["≤", tyFun[numTy, tyFun[numTy, boolTy]]];
+    timesC = mkConst["*", tyFun[numTy, tyFun[numTy, numTy]]];
+    th = HOL`Stdlib`Num`leqMultLeftThm;
+    inst = HOL`Bool`SPEC[five, HOL`Bool`SPEC[two, HOL`Bool`SPEC[three, th]]];
+    leq25 = HOL`Auto`Arith`Private`proveGroundLeq[2, 5];
+    conc = HOL`Bool`MP[inst, leq25];
+    HOLTest`assertEq[hyp[conc], {}, "no hyps after MP"];
+    HOLTest`assertTrue[
+      HOL`Terms`aconv[concl[conc],
+        mkComb[mkComb[leqC, mkComb[mkComb[timesC, three], two]],
+          mkComb[mkComb[timesC, three], five]]],
+      "⊢ 3 * 2 ≤ 3 * 5"]
+  ]];
+
+(* Cancellation round-trips mono: leqAddLeftMono builds 10+2≤10+5 from 2≤5, *)
+(* leqAddLeftCancel recovers 2≤5. *)
+HOLTest`runTests["stdlib/Num: leqAddLeftCancelThm round-trips leqAddLeftMono",
+  Module[{numTy, two, five, ten, leqC, monoInst, built, cancelInst, recovered},
+    numTy = mkType["num", {}];
+    two = HOL`Auto`Arith`Private`buildLitNum[2];
+    five = HOL`Auto`Arith`Private`buildLitNum[5];
+    ten = HOL`Auto`Arith`Private`buildLitNum[10];
+    leqC = mkConst["≤", tyFun[numTy, tyFun[numTy, boolTy]]];
+    monoInst = HOL`Bool`MP[
+      HOL`Bool`SPEC[ten, HOL`Bool`SPEC[five, HOL`Bool`SPEC[two,
+        HOL`Stdlib`Num`leqAddLeftMonoThm]]],
+      HOL`Auto`Arith`Private`proveGroundLeq[2, 5]];
+    (* ⊢ 10+2 ≤ 10+5 *)
+    cancelInst = HOL`Bool`SPEC[five, HOL`Bool`SPEC[two, HOL`Bool`SPEC[ten,
+      HOL`Stdlib`Num`leqAddLeftCancelThm]]];
+    (* ⊢ 10+2 ≤ 10+5 ⇒ 2 ≤ 5 *)
+    recovered = HOL`Bool`MP[cancelInst, monoInst];
+    HOLTest`assertEq[hyp[recovered], {}, "no hyps"];
+    HOLTest`assertTrue[
+      HOL`Terms`aconv[concl[recovered],
+        mkComb[mkComb[leqC, two], five]],
+      "⊢ 2 ≤ 5 (cancellation undid the +10)"]
+  ]];
+
 (* ===== M7-3-o: gcd ===== *)
 
 HOLTest`runTests["stdlib/Num: gcd has type num → num → num",

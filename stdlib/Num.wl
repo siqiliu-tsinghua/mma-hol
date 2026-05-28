@@ -140,6 +140,8 @@ dividesShiftThm::usage     = "dividesShiftThm — ⊢ ∀d x t δ. divides d δ 
 leqAddRightMonoThm::usage  = "leqAddRightMonoThm — ⊢ ∀m n p. m ≤ n ⇒ m + p ≤ n + p. ≤ is monotone in adding a constant on the right. ARITH verifier building block (capstone).";
 leqAddLeftMonoThm::usage   = "leqAddLeftMonoThm — ⊢ ∀m n p. m ≤ n ⇒ p + m ≤ p + n. ≤ monotone in adding on the left.";
 leqAddMonoThm::usage       = "leqAddMonoThm — ⊢ ∀a b c d. a ≤ b ⇒ c ≤ d ⇒ a + c ≤ b + d. Two-sided additive monotonicity of ≤; the core leq-additivity lemma the ARITH Farkas verifier sums with.";
+leqMultLeftThm::usage      = "leqMultLeftThm — ⊢ ∀k a b. a ≤ b ⇒ k * a ≤ k * b. Scaling ≤ by a nonneg constant on the left; the ARITH verifier scales each hypothesis by its Farkas multiplier with this.";
+leqAddLeftCancelThm::usage = "leqAddLeftCancelThm — ⊢ ∀v a b. v + a ≤ v + b ⇒ a ≤ b. Cancel a shared left summand from ≤; the verifier strips the common variable part after summing scaled inequalities.";
 
 gcdExistsThm::usage      = "gcdExistsThm — ⊢ ∀a b. ∃d. divides d a ∧ divides d b ∧ ∀e. (divides e a ∧ divides e b) ⇒ divides e d.";
 gcdConst::usage          = "gcdConst[] — gcd : num → num → num. Greatest common divisor via Hilbert ε on the universal property; constructively exists by Euclid (gcdExistsThm).";
@@ -5223,6 +5225,97 @@ leqAddMonoThm =
     genC = HOL`Bool`GEN[cV, genD];
     genB = HOL`Bool`GEN[bV, genC];
     genA = HOL`Bool`GEN[aV, genB]
+  ];
+
+(* leqMultLeftThm : ⊢ ∀k a b. a ≤ b ⇒ k * a ≤ k * b *)
+(* Unfold a≤b to ∃j. a+j=b; witness k*j for k*a + (k*j) = k*b:        *)
+(*   k*b = k*(a+j) [a+j=b] = k*a + k*j [distribLeft].                  *)
+
+leqMultLeftThm =
+  Module[{kV, aV, bV, jV, hTm, hAssum, hUnfold, witHypTm, witHypAssum,
+          kTimesEq, distrib, witEq, existsBody, existsJ, foldLeq,
+          chooseJ, disch, genB, genA, genK},
+    kV = mkVar["k", numTy];
+    aV = mkVar["a", numTy];
+    bV = mkVar["b", numTy];
+    jV = mkVar["j", numTy];
+
+    hTm = leqTm[aV, bV];
+    hAssum = ASSUME[hTm];
+    hUnfold = EQMP[unfoldLeq[aV, bV], hAssum];
+    (* (a≤b) ⊢ ∃j. a + j = b *)
+
+    witHypTm = mkEq[plusTm[aV, jV], bV];
+    witHypAssum = ASSUME[witHypTm];   (* (a+j=b) ⊢ a + j = b *)
+
+    kTimesEq = HOL`Equal`APTERM[mkComb[timesConst[], kV], witHypAssum];
+    (* (a+j=b) ⊢ k * (a + j) = k * b *)
+    distrib = HOL`Bool`SPEC[jV,
+      HOL`Bool`SPEC[aV, HOL`Bool`SPEC[kV, timesDistribLeftThm]]];
+    (* ⊢ k * (a + j) = k * a + k * j *)
+    witEq = TRANS[HOL`Equal`SYM[distrib], kTimesEq];
+    (* (a+j=b) ⊢ k * a + k * j = k * b *)
+
+    existsBody = mkComb[existsC[numTy],
+      mkAbs[jV, mkEq[plusTm[timesTm[kV, aV], jV], timesTm[kV, bV]]]];
+    existsJ = HOL`Bool`EXISTS[existsBody, timesTm[kV, jV], witEq];
+    (* (a+j=b) ⊢ ∃j. k*a + j = k*b *)
+    foldLeq = EQMP[
+      HOL`Equal`SYM[unfoldLeq[timesTm[kV, aV], timesTm[kV, bV]]], existsJ];
+    (* (a+j=b) ⊢ k*a ≤ k*b *)
+
+    chooseJ = HOL`Bool`CHOOSE[jV, hUnfold, foldLeq];
+    disch = HOL`Bool`DISCH[hTm, chooseJ];
+    genB = HOL`Bool`GEN[bV, disch];
+    genA = HOL`Bool`GEN[aV, genB];
+    genK = HOL`Bool`GEN[kV, genA]
+  ];
+
+(* leqAddLeftCancelThm : ⊢ ∀v a b. v + a ≤ v + b ⇒ a ≤ b *)
+(* Unfold (v+a)≤(v+b) to ∃j. (v+a)+j = v+b; reassociate to              *)
+(* v+(a+j) = v+b, addLeftCancel gives a+j=b, fold back to a≤b.          *)
+
+leqAddLeftCancelThm =
+  Module[{vV, aV, bV, jV, hTm, hAssum, hUnfold, witHypTm, witHypAssum,
+          assocStep, vajEqVb, cancelInst, ajEqB, existsBody, existsJ,
+          foldLeq, chooseJ, disch, genB, genA, genV},
+    vV = mkVar["v", numTy];
+    aV = mkVar["a", numTy];
+    bV = mkVar["b", numTy];
+    jV = mkVar["j", numTy];
+
+    hTm = leqTm[plusTm[vV, aV], plusTm[vV, bV]];
+    hAssum = ASSUME[hTm];
+    hUnfold = EQMP[unfoldLeq[plusTm[vV, aV], plusTm[vV, bV]], hAssum];
+    (* (v+a≤v+b) ⊢ ∃j. (v+a) + j = v+b *)
+
+    witHypTm = mkEq[plusTm[plusTm[vV, aV], jV], plusTm[vV, bV]];
+    witHypAssum = ASSUME[witHypTm];
+    (* ((v+a)+j = v+b) ⊢ (v+a) + j = v+b *)
+
+    assocStep = HOL`Bool`SPEC[jV,
+      HOL`Bool`SPEC[aV, HOL`Bool`SPEC[vV, addAssocThm]]];
+    (* ⊢ (v + a) + j = v + (a + j) *)
+    vajEqVb = TRANS[HOL`Equal`SYM[assocStep], witHypAssum];
+    (* ((v+a)+j = v+b) ⊢ v + (a + j) = v + b *)
+    cancelInst = HOL`Bool`SPEC[bV,
+      HOL`Bool`SPEC[plusTm[aV, jV], HOL`Bool`SPEC[vV, addLeftCancelThm]]];
+    (* ⊢ v + (a+j) = v + b ⇒ (a + j) = b *)
+    ajEqB = HOL`Bool`MP[cancelInst, vajEqVb];
+    (* ((v+a)+j = v+b) ⊢ (a + j) = b *)
+
+    existsBody = mkComb[existsC[numTy],
+      mkAbs[jV, mkEq[plusTm[aV, jV], bV]]];
+    existsJ = HOL`Bool`EXISTS[existsBody, jV, ajEqB];
+    (* ((v+a)+j = v+b) ⊢ ∃j. a + j = b *)
+    foldLeq = EQMP[HOL`Equal`SYM[unfoldLeq[aV, bV]], existsJ];
+    (* ((v+a)+j = v+b) ⊢ a ≤ b *)
+
+    chooseJ = HOL`Bool`CHOOSE[jV, hUnfold, foldLeq];
+    disch = HOL`Bool`DISCH[hTm, chooseJ];
+    genB = HOL`Bool`GEN[bV, disch];
+    genA = HOL`Bool`GEN[aV, genB];
+    genV = HOL`Bool`GEN[vV, genA]
   ];
 
 (* ============================================================ *)
