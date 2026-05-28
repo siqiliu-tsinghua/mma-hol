@@ -1445,6 +1445,55 @@ HOLTest`runTests["stdlib/Num: leqAddLeftCancelThm round-trips leqAddLeftMono",
       "⊢ 2 ≤ 5 (cancellation undid the +10)"]
   ]];
 
+(* ARITH verifier lemmas batch 3: order-trichotomy negation *)
+
+HOLTest`runTests["stdlib/Num: notLeqEqLtThm — ⊢ ∀m n. ¬(m≤n) = (n<m)",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`notLeqEqLtThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _],
+          comb[const["¬", _], comb[comb[const["≤", _], _], _]]],
+          comb[comb[const["<", _], _], _]]]],
+      "shape: ∀m n. ¬(m≤n) = (n<m)"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: notLtEqLeqThm — ⊢ ∀m n. ¬(m<n) = (n≤m)",
+  Module[{th, c},
+    th = HOL`Stdlib`Num`notLtEqLeqThm;
+    c = concl[th];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertTrue[
+      MatchQ[c, HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _],
+          comb[const["¬", _], comb[comb[const["<", _], _], _]]],
+          comb[comb[const["≤", _], _], _]]]],
+      "shape: ∀m n. ¬(m<n) = (n≤m)"]
+  ]];
+
+(* Fires: ground 3<5 turns notLeqEqLt into ⊢ ¬(5≤3) — the verifier's *)
+(* ground ≤-contradiction step. *)
+HOLTest`runTests["stdlib/Num: notLeqEqLtThm fires — 3<5 yields ⊢ ¬(5≤3)",
+  Module[{th, numTy, five, three, inst, lt35, notLeq, notC, leqC},
+    numTy = mkType["num", {}];
+    five = HOL`Auto`Arith`Private`buildLitNum[5];
+    three = HOL`Auto`Arith`Private`buildLitNum[3];
+    notC = HOL`Stdlib`Num`Private`notC;
+    leqC = mkConst["≤", tyFun[numTy, tyFun[numTy, boolTy]]];
+    th = HOL`Stdlib`Num`notLeqEqLtThm;
+    inst = HOL`Bool`SPEC[three, HOL`Bool`SPEC[five, th]];
+    (* ⊢ ¬(5≤3) = (3<5) *)
+    lt35 = HOL`Auto`Arith`Private`proveGroundLt[3, 5];
+    notLeq = HOL`Kernel`EQMP[HOL`Equal`SYM[inst], lt35];
+    HOLTest`assertEq[hyp[notLeq], {}, "no hyps"];
+    HOLTest`assertTrue[
+      HOL`Terms`aconv[concl[notLeq],
+        mkComb[notC[], mkComb[mkComb[leqC, five], three]]],
+      "⊢ ¬(5 ≤ 3)"]
+  ]];
+
 (* ===== M7-3-o: gcd ===== *)
 
 HOLTest`runTests["stdlib/Num: gcd has type num → num → num",

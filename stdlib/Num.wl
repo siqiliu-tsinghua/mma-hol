@@ -154,6 +154,8 @@ gcdUniversalThm::usage   = "gcdUniversalThm — ⊢ ∀a b e. divides e a ∧ di
 oneTimesEqThm::usage     = "oneTimesEqThm — ⊢ ∀n. SUC 0 * n = n.";
 sucNotEqSelfThm::usage   = "sucNotEqSelfThm — ⊢ ∀n. ¬ (SUC n = n).";
 ltImpliesNotEqThm::usage = "ltImpliesNotEqThm — ⊢ ∀m n. m < n ⇒ ¬ (m = n).";
+notLeqEqLtThm::usage     = "notLeqEqLtThm — ⊢ ∀m n. ¬ (m ≤ n) = (n < m). Order-trichotomy negation; the ARITH verifier negates a ≤-goal into a < hypothesis and proves the ground ≤-contradiction with it.";
+notLtEqLeqThm::usage     = "notLtEqLeqThm — ⊢ ∀m n. ¬ (m < n) = (n ≤ m). Negation of <; verifier negates a <-goal into a ≤ hypothesis.";
 dividesLeqThm::usage     = "dividesLeqThm — ⊢ ∀d n. ¬ (n = 0) ⇒ divides d n ⇒ d ≤ n.";
 
 primeConst::usage        = "primeConst[] — prime : num → bool. prime p ⇔ SUC 0 < p ∧ ∀d. d divides p ⇒ d = SUC 0 ∨ d = p.";
@@ -5834,6 +5836,84 @@ ltImpliesNotEqThm =
     dischLt = HOL`Bool`DISCH[mLtNTm, notEq];
     genN = HOL`Bool`GEN[nV, dischLt];
     genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* Order-trichotomy negation (ARITH verifier: negate goals).     *)
+(* ============================================================ *)
+
+(* notLeqEqLtThm : ⊢ ∀m n. ¬ (m ≤ n) = (n < m)                    *)
+(* Forward: leqTotal + leqCaseEqLt; the m≤n and n=m cases clash    *)
+(* with ¬(m≤n), the n<m case is the goal. Backward: n<m gives      *)
+(* SUC n ≤ m; with m≤n, leqTrans → SUC n ≤ n, antisym vs leqSuc →   *)
+(* SUC n = n, clash with sucNotEqSelf.                             *)
+
+notLeqEqLtThm =
+  Module[{mV, nV, sucN, notLeqHyp, total, mLeqNHyp, contra1, branch1,
+          nLeqMHyp, caseEq, nEqMHyp, mEqN, leqMmToMn, mLeqNDerived,
+          contraSub1, sub1, sub2, branch2, forward,
+          ltHyp, sucNLeqM, mLeqNHyp2, sucNLeqN, nLeqSucN, sucNEqN,
+          notSucNEqN, contraB, backward, eqThm},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    sucN = mkComb[sucConst[], nV];
+
+    notLeqHyp = ASSUME[mkComb[notC[], leqTm[mV, nV]]];
+    total = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, leqTotalThm]];
+    mLeqNHyp = ASSUME[leqTm[mV, nV]];
+    contra1 = HOL`Bool`MP[HOL`Bool`NOTELIM[notLeqHyp], mLeqNHyp];
+    branch1 = HOL`Bool`CONTR[ltTm[nV, mV], contra1];
+    nLeqMHyp = ASSUME[leqTm[nV, mV]];
+    caseEq = HOL`Bool`MP[
+      HOL`Bool`SPEC[mV, HOL`Bool`SPEC[nV, leqCaseEqLtThm]], nLeqMHyp];
+    nEqMHyp = ASSUME[mkEq[nV, mV]];
+    mEqN = HOL`Equal`SYM[nEqMHyp];
+    leqMmToMn = HOL`Equal`APTERM[mkComb[leqConst[], mV], mEqN];
+    mLeqNDerived = EQMP[leqMmToMn, HOL`Bool`SPEC[mV, leqReflThm]];
+    contraSub1 = HOL`Bool`MP[HOL`Bool`NOTELIM[notLeqHyp], mLeqNDerived];
+    sub1 = HOL`Bool`CONTR[ltTm[nV, mV], contraSub1];
+    sub2 = ASSUME[ltTm[nV, mV]];
+    branch2 = HOL`Bool`DISJCASES[caseEq, sub1, sub2];
+    forward = HOL`Bool`DISJCASES[total, branch1, branch2];
+    (* (¬(m≤n)) ⊢ n < m *)
+
+    ltHyp = ASSUME[ltTm[nV, mV]];
+    sucNLeqM = EQMP[unfoldLt[nV, mV], ltHyp];
+    mLeqNHyp2 = ASSUME[leqTm[mV, nV]];
+    sucNLeqN = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV,
+        HOL`Bool`SPEC[sucN, leqTransThm]]], sucNLeqM], mLeqNHyp2];
+    nLeqSucN = HOL`Bool`SPEC[nV, leqSucThm];
+    sucNEqN = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[sucN, leqAntisymThm]],
+      sucNLeqN], nLeqSucN];
+    notSucNEqN = HOL`Bool`SPEC[nV, sucNotEqSelfThm];
+    contraB = HOL`Bool`MP[HOL`Bool`NOTELIM[notSucNEqN], sucNEqN];
+    backward = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[leqTm[mV, nV], contraB]];
+    (* (n<m) ⊢ ¬(m≤n) *)
+
+    eqThm = HOL`Kernel`DEDUCTANTISYM[backward, forward];
+    HOL`Bool`GEN[mV, HOL`Bool`GEN[nV, eqThm]]
+  ];
+
+(* notLtEqLeqThm : ⊢ ∀m n. ¬ (m < n) = (n ≤ m)                     *)
+(* From notLeqEqLt[swap]: (m<n) = ¬(n≤m); APTERM ¬ then propTaut    *)
+(* double-negation ¬¬(n≤m) = (n≤m).                                *)
+
+notLtEqLeqThm =
+  Module[{mV, nV, base, symBase, apNot, dn, result},
+    mV = mkVar["m", numTy];
+    nV = mkVar["n", numTy];
+    base = HOL`Bool`SPEC[mV, HOL`Bool`SPEC[nV, notLeqEqLtThm]];
+    (* ⊢ ¬(n ≤ m) = (m < n) *)
+    symBase = HOL`Equal`SYM[base];
+    apNot = HOL`Equal`APTERM[notC[], symBase];
+    (* ⊢ ¬(m < n) = ¬¬(n ≤ m) *)
+    dn = HOL`Auto`PropTaut`propTaut[
+      mkEq[mkComb[notC[], mkComb[notC[], leqTm[nV, mV]]], leqTm[nV, mV]]];
+    (* ⊢ ¬¬(n ≤ m) = (n ≤ m) *)
+    result = TRANS[apNot, dn];
+    HOL`Bool`GEN[mV, HOL`Bool`GEN[nV, result]]
   ];
 
 (* ============================================================ *)
