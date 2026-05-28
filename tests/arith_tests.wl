@@ -1468,3 +1468,47 @@ HOLTest`runTests["arith: ARITH ∀m n. m ≤ n ⇒ m < SUC n (< conclusion)",
     HOLTest`assertEq[hyp[th], {}, "no hyps"];
     HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m ≤ n ⇒ m < SUC n"]
   ]];
+
+(* ===== Phase B: Fourier–Motzkin oracle (farkasFM, untrusted) ===== *)
+(* diffs are linTerm[const, vars] standing for `≤ 0` constraints.    *)
+(* farkasFM returns an Association origIdx→integer λ (Farkas cert)    *)
+(* or $Failed. Compare KeySort'd since cert key order is incidental. *)
+
+farkasFM = HOL`Auto`Arith`Private`farkasFM;
+
+HOLTest`runTests["arith: farkasFM capstone diffs → {1→1, 2→1}",
+  HOLTest`assertEq[
+    KeySort[farkasFM[{linTerm[0, <|"m" -> 1, "n" -> -1|>],
+                      linTerm[1, <|"m" -> -1, "n" -> 1|>]}]],
+    KeySort[<|1 -> 1, 2 -> 1|>],
+    "m-n ≤0, n-m+1 ≤0 refuted by λ=(1,1)"]];
+
+HOLTest`runTests["arith: farkasFM single positive constant → {1→1}",
+  HOLTest`assertEq[
+    KeySort[farkasFM[{linTerm[2, <||>]}]],
+    KeySort[<|1 -> 1|>],
+    "2 ≤ 0 is already contradictory"]];
+
+HOLTest`runTests["arith: farkasFM finds non-unit multiplier λ=(1,2)",
+  HOLTest`assertEq[
+    KeySort[farkasFM[{linTerm[-1, <|"x" -> 2|>],
+                      linTerm[1, <|"x" -> -1|>]}]],
+    KeySort[<|1 -> 1, 2 -> 2|>],
+    "2x-1 ≤0, 1-x ≤0 needs λ=(1,2) — unbeatable by unit subsets"]];
+
+HOLTest`runTests["arith: farkasFM returns $Failed on a feasible system",
+  HOLTest`assertEq[
+    farkasFM[{linTerm[0, <|"x" -> 1|>]}],
+    $Failed,
+    "x ≤ 0 alone is feasible (x = 0)"]];
+
+HOLTest`runTests["arith: farkasFM eliminates a middle variable (3 facts)",
+  Module[{cert},
+    (* x ≤ y, y ≤ z, z+1 ≤ x  ⇒  x ≤ y ≤ z < z+1 ≤ x, infeasible.
+       diffs: x-y ≤0, y-z ≤0, z+1-x ≤0; λ=(1,1,1). *)
+    cert = farkasFM[{linTerm[0, <|"x" -> 1, "y" -> -1|>],
+                     linTerm[0, <|"y" -> 1, "z" -> -1|>],
+                     linTerm[1, <|"z" -> 1, "x" -> -1|>]}];
+    HOLTest`assertEq[KeySort[cert], KeySort[<|1 -> 1, 2 -> 1, 3 -> 1|>],
+      "chain refutation λ=(1,1,1)"]
+  ]];

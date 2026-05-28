@@ -1983,6 +1983,75 @@ farkasUnitCert[diffs_List] :=
     If[MissingQ[hit], $Failed, hit]
   ];
 
+(* ===== Fourier–Motzkin oracle (untrusted, exact rationals) ===== *)
+(*                                                              *)
+(* A constraint is fmConstr[coeffs, const, prov] standing for    *)
+(*   Σ coeffs[v]·v + const ≤ 0,                                  *)
+(* together with the bookkeeping identity                        *)
+(*   (this constraint) = Σ prov[i]·diffs[[i]]    (prov ≥ 0).       *)
+(* prov is the running nonneg combination of the original        *)
+(* constraints; when elimination reaches a positive-constant     *)
+(* constraint, prov IS the Farkas certificate. All arithmetic is *)
+(* exact (Integer/Rational) — never any floats. Oracle error     *)
+(* only costs completeness, never soundness.                     *)
+
+assocScale[g_, a_Association] := DeleteCases[Map[g # &, a], 0];
+assocAddR[a_Association, b_Association] := DeleteCases[Merge[{a, b}, Total], 0];
+
+(* combine a positive-x and a negative-x constraint to cancel x. *)
+combineOnVar[x_, fmConstr[pco_, pc_, ppr_], fmConstr[nco_, nc_, npr_]] :=
+  Module[{a, b},
+    a = pco[x]; b = -nco[x];
+    fmConstr[
+      KeyDrop[assocAddR[assocScale[b, pco], assocScale[a, nco]], x],
+      b*pc + a*nc,
+      assocAddR[assocScale[b, ppr], assocScale[a, npr]]]
+  ];
+
+(* eliminate variables one at a time; return the prov of the first
+   positive-constant constraint reached, or $Failed if feasible. *)
+fmLoop[constrs_List] :=
+  Module[{posConst, live, vars, x, pos, neg, zero, combos},
+    posConst = SelectFirst[constrs,
+      (Length[#[[1]]] === 0 && #[[2]] > 0) &];
+    If[! MissingQ[posConst], Return[posConst[[3]]]];
+    live = Select[constrs, ! (Length[#[[1]]] === 0 && #[[2]] <= 0) &];
+    vars = Union @@ (Keys[#[[1]]] & /@ live);
+    If[vars === {}, Return[$Failed]];
+    x = First[vars];
+    pos = Select[live, Lookup[#[[1]], x, 0] > 0 &];
+    neg = Select[live, Lookup[#[[1]], x, 0] < 0 &];
+    zero = Select[live, Lookup[#[[1]], x, 0] === 0 &];
+    combos = Flatten[Table[combineOnVar[x, p, nn], {p, pos}, {nn, neg}], 1];
+    fmLoop[Join[zero, combos]]
+  ];
+
+(* clear a rational prov Association to gcd-reduced positive integers. *)
+clearProvToInt[prov_Association] :=
+  Module[{lcm, scaled, g},
+    lcm = Apply[LCM, Denominator /@ Values[prov]];
+    scaled = Map[(# lcm) &, prov];
+    g = Apply[GCD, Values[scaled]];
+    If[g === 0, scaled, Map[(#/g) &, scaled]]
+  ];
+
+farkasFM[diffs_List] :=
+  Module[{init, prov, cert, chk},
+    init = Table[
+      With[{d = diffs[[i]]}, fmConstr[d[[2]], d[[1]], <|i -> 1|>]],
+      {i, Length[diffs]}];
+    prov = fmLoop[init];
+    If[prov === $Failed, Return[$Failed]];
+    cert = clearProvToInt[prov];
+    chk = Fold[linAdd, linZero[],
+      KeyValueMap[linScale[#2, diffs[[#1]]] &, cert]];
+    If[Length[chk[[2]]] =!= 0 || ! (chk[[1]] > 0),
+      HOL`Error`holError["arith-fm-internal",
+        "farkasFM: certificate is not a positive constant",
+        <|"cert" -> cert, "check" -> chk|>]];
+    cert
+  ];
+
 (* leqAddMono fold: from facts ⊢ Lᵢ ≤ Rᵢ produce ⊢ ΣLᵢ ≤ ΣRᵢ. *)
 combineLeq[th1_, th2_] :=
   Module[{s1, s2, inst},
