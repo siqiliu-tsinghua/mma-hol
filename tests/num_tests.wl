@@ -1191,15 +1191,13 @@ HOLTest`runTests["stdlib/Num: dividesAddEqThm — ⊢ ∀d x y. d|y ⇒ (d|(x+y)
     c = concl[th];
     HOLTest`assertEq[hyp[th], {}, "no hyps"];
     HOLTest`assertTrue[
-      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
-        comb[const["∀", _], abs[bvar[0, _],
-          comb[const["∀", _], abs[bvar[0, _],
-            comb[comb[const["⇒", _],
-              comb[comb[const["divides", _], _], _]],
-              comb[comb[const["=", _],
-                comb[comb[const["divides", _], _],
-                  comb[comb[const["+", _], _], _]]],
-                comb[comb[const["divides", _], _], _]]], _]], _]], _]]],
+      MatchQ[c, HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["⇒", _],
+          comb[comb[const["divides", _], _], _]],
+          comb[comb[const["=", _],
+            comb[comb[const["divides", _], _],
+              comb[comb[const["+", _], _], _]]],
+            comb[comb[const["divides", _], _], _]]]]],
       "shape: ∀d x y. d|y ⇒ (d|(x+y) = d|x)"]
   ]];
 
@@ -1209,14 +1207,12 @@ HOLTest`runTests["stdlib/Num: dividesAddMultDThm — ⊢ ∀d x j. d|(x + j*d) =
     c = concl[th];
     HOLTest`assertEq[hyp[th], {}, "no hyps"];
     HOLTest`assertTrue[
-      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
-        comb[const["∀", _], abs[bvar[0, _],
-          comb[const["∀", _], abs[bvar[0, _],
-            comb[comb[const["=", _],
-              comb[comb[const["divides", _], _],
-                comb[comb[const["+", _], _],
-                  comb[comb[const["*", _], _], _]]]],
-              comb[comb[const["divides", _], _], _]], _]], _]], _]]],
+      MatchQ[c, HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["=", _],
+          comb[comb[const["divides", _], _],
+            comb[comb[const["+", _], _],
+              comb[comb[const["*", _], _], _]]]],
+          comb[comb[const["divides", _], _], _]]]],
       "shape: ∀d x j. d|(x + j*d) = d|x"]
   ]];
 
@@ -1226,12 +1222,11 @@ HOLTest`runTests["stdlib/Num: dividesAddDThm — ⊢ ∀d x. d|(x + d) = d|x",
     c = concl[th];
     HOLTest`assertEq[hyp[th], {}, "no hyps"];
     HOLTest`assertTrue[
-      MatchQ[c, comb[const["∀", _], abs[bvar[0, _],
-        comb[const["∀", _], abs[bvar[0, _],
-          comb[comb[const["=", _],
-            comb[comb[const["divides", _], _],
-              comb[comb[const["+", _], _], _]]],
-            comb[comb[const["divides", _], _], _]], _]], _]]],
+      MatchQ[c, HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _],
+          comb[comb[const["divides", _], _],
+            comb[comb[const["+", _], _], _]]],
+          comb[comb[const["divides", _], _], _]]]],
       "shape: ∀d x. d|(x + d) = d|x"]
   ]];
 

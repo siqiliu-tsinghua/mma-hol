@@ -1,7 +1,12 @@
 (* ::Package:: *)
 
-BeginPackage["HOLTest`", {"HOL`Error`"}];
+BeginPackage["HOLTest`", {"HOL`Error`", "HOL`Terms`"}];
 
+quantNestPat::usage  =
+  "quantNestPat[q, n, body] builds a MatchQ pattern wrapping `body` in n uniform " <>
+  "quantifier layers comb[const[q, _], abs[bvar[0, _], #, _]] (numTy de-Bruijn). " <>
+  "Lets shape tests write only the shallow body pattern and avoid hand-counting the " <>
+  "deeply-nested binder prefix + trailing close-run of `]`.";
 group::usage         = "group[name] prints a section header in test output.";
 assertEq::usage      = "assertEq[actual, expected, name] passes iff actual === expected.";
 assertTrue::usage    = "assertTrue[cond, name] passes iff cond === True.";
@@ -14,6 +19,9 @@ testExit::usage      = "testExit[] prints summary and Exit[0] on all-pass, Exit[
 resetCounters::usage = "resetCounters[] clears pass/fail counters. Used only from CI entry.";
 
 Begin["`Private`"];
+
+quantNestPat[q_String, n_Integer, body_] :=
+  Nest[comb[const[q, _], abs[bvar[0, _], #, _]] &, body, n];
 
 $pass = 0;
 $fail = 0;
