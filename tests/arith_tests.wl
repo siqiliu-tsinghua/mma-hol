@@ -160,10 +160,13 @@ HOLTest`runTests["arith: linScale by 2 doubles everything",
 
 (* ===== stub behavior ===== *)
 
-HOLTest`runTests["arith: arithProve rejects non-∃ goal shape",
-  HOLTest`assertThrows[
-    arithProve[mkEq[mkVar["x", numTy], mkVar["x", numTy]]],
-    "arith-not-supported", "x = x is not an ∃-goal"]];
+HOLTest`runTests["arith: arithProve closes the num equality x = x",
+  Module[{xV, goal, th},
+    xV = mkVar["x", numTy];
+    goal = mkEq[xV, xV];
+    th = arithProve[goal];
+    HOLTest`assertEq[concl[th], goal, "⊢ x = x"]
+  ]];
 
 (* ===== Session 2: Atom / Formula AST + parse / build / NNF ===== *)
 
@@ -1423,6 +1426,52 @@ HOLTest`runTests["arith: ARITH ∀m n. m·n ≤ m·n + m·n (atom merge + 0≤at
     HOLTest`assertEq[hyp[th], {}, "no hyps"];
     HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m·n ≤ m·n + m·n"]
   ]];
+
+(* ===== equality (=) atoms: conclusions via antisymmetry, =-hyps split ===== *)
+
+eqN[a_, b_] := mkEq[a, b];
+
+HOLTest`runTests["arith: ARITH ∀m n. m + n = n + m (= conclusion)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV, eqN[plusN[mV, nV], plusN[nV, mV]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m + n = n + m"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀m n p. m = n ⇒ m + p = n + p (= hyp + concl)",
+  Module[{mV, nV, pV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy]; pV = mkVar["p", numTy];
+    goal = forallNum[mV, forallNum[nV, forallNum[pV,
+      impCT[eqN[mV, nV], eqN[plusN[mV, pV], plusN[nV, pV]]]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n p. m = n ⇒ m + p = n + p"]
+  ]];
+
+HOLTest`runTests["arith: ARITH ∀m n. m = n ⇒ m ≤ n (= hypothesis)",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV, impCT[eqN[mV, nV], leqN[mV, nV]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m = n ⇒ m ≤ n"]
+  ]];
+
+HOLTest`runTests["arith: arithProve closes a bare open goal m + n = n + m",
+  Module[{mV, nV, goal, th},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = eqN[plusN[mV, nV], plusN[nV, mV]];
+    th = arithProve[goal];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ m + n = n + m (free m, n)"]
+  ]];
+
+HOLTest`runTests["arith: arithProve rejects an unsupported goal shape",
+  HOLTest`assertThrows[
+    arithProve[divN[buildLitNum[3], mkVar["x", numTy]]],
+    "arith-not-supported", "divides 3 x is not a ≤/</= goal"]];
 
 (* ===== Phase B: Fourier–Motzkin oracle (farkasFM, untrusted) ===== *)
 (* diffs are linTerm[const, vars] standing for `≤ 0` constraints.    *)

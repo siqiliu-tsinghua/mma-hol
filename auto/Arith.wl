@@ -2177,18 +2177,57 @@ negateConclFact[conclTm_] :=
     ]
   ];
 
+numEqShapeQ[t_] :=
+  MatchQ[t, comb[comb[const["=", _], _], _]] &&
+    HOL`Terms`typeOf[t[[1, 2]]] === numTy;
+
+(* Γ ⊢ a ≤ b from Γ ⊢ a = b: rewrite a ≤ a through the equation. *)
+eqToLeqFwd[eqThm_] :=
+  Module[{a, cong},
+    a = concl[eqThm][[1, 2]];
+    cong = HOL`Kernel`MKCOMB[
+      REFL[mkComb[HOL`Stdlib`Num`leqConst[], a]], eqThm];
+    EQMP[cong, HOL`Bool`SPEC[a, HOL`Stdlib`Num`leqReflThm]]
+  ];
+
+(* a hypothesis term → its ≤-fact(s): a num `=` yields both directions
+   (a ≤ b and b ≤ a), a ≤/< atom yields one. *)
+hypToLeqFacts[hypTm_] :=
+  Module[{assumed = HOL`Kernel`ASSUME[hypTm]},
+    If[numEqShapeQ[hypTm],
+      {eqToLeqFwd[assumed], eqToLeqFwd[HOL`Equal`SYM[assumed]]},
+      {toLeqFact[assumed]}]
+  ];
+
+(* {hyps} ⊢ atomTm (a ≤/< atom) by Farkas-refuting its negation. *)
+proveAtomUnderHyps[atomTm_, hypFacts_] :=
+  HOL`Bool`CCONTR[atomTm,
+    refuteWithNonneg[Append[hypFacts, negateConclFact[atomTm]]]];
+
+(* {hyps} ⊢ conclTm; a num `=` conclusion is proved by antisymmetry
+   from the two ≤ directions, otherwise Farkas on the ≤/< atom. *)
+proveConclUnderHyps[conclTm_, hypFacts_] :=
+  If[numEqShapeQ[conclTm],
+    Module[{a, b, leqAB, leqBA},
+      a = conclTm[[1, 2]]; b = conclTm[[2]];
+      leqAB = proveAtomUnderHyps[nLeqTm[a, b], hypFacts];
+      leqBA = proveAtomUnderHyps[nLeqTm[b, a], hypFacts];
+      HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Bool`SPEC[b, HOL`Bool`SPEC[a, HOL`Stdlib`Num`leqAntisymThm]],
+        leqAB], leqBA]
+    ],
+    proveAtomUnderHyps[conclTm, hypFacts]
+  ];
+
 arithProveForall[goalTm_] :=
   Block[{$atomEnv = <||>},
-    Module[{pf, varNames, body, pi, hypTms, conclTm, hypFacts, negFact,
-            falseThm, cThm, dischd},
+    Module[{pf, varNames, body, pi, hypTms, conclTm, hypFacts, cThm, dischd},
       pf = peelForallNum[goalTm];
       varNames = pf[[1]]; body = pf[[2]];
       pi = peelImp[body];
       hypTms = pi[[1]]; conclTm = pi[[2]];
-      hypFacts = (toLeqFact[HOL`Kernel`ASSUME[#]] &) /@ hypTms;
-      negFact = negateConclFact[conclTm];
-      falseThm = refuteWithNonneg[Append[hypFacts, negFact]];
-      cThm = HOL`Bool`CCONTR[conclTm, falseThm];
+      hypFacts = Flatten[hypToLeqFacts /@ hypTms];
+      cThm = proveConclUnderHyps[conclTm, hypFacts];
       dischd = Fold[HOL`Bool`DISCH[#2, #1] &, cThm, Reverse[hypTms]];
       Fold[HOL`Bool`GEN[mkVar[#2, numTy], #1] &, dischd, Reverse[varNames]]
     ]
@@ -2210,19 +2249,27 @@ arithProveForall[goalTm_] :=
 (*                        goal via tacResult.                     *)
 (* ============================================================ *)
 
+(* ∀-Farkas-shaped: a ∀x:num, an implication, or a bare ≤/</num-= atom
+   (the latter for open subgoals with free context variables). *)
+arithForallShapeQ[t_] :=
+  (MatchQ[t, comb[const["∀", _], abs[bvar[0, _], _, _String]]] &&
+     t[[2, 1, 2]] === numTy) ||
+  MatchQ[t, comb[comb[const["⇒", _], _], _]] ||
+  MatchQ[t, comb[comb[const["≤", _], _], _]] ||
+  MatchQ[t, comb[comb[const["<", _], _], _]] ||
+  numEqShapeQ[t];
+
 HOL`Auto`Arith`arithProve[goalTm_] :=
   Which[
-    MatchQ[goalTm, comb[const["∀", _],
-        abs[bvar[0, ty_], _, _String]]] &&
-        goalTm[[2, 1, 2]] === numTy,
-      arithProveForall[goalTm],
     MatchQ[goalTm, comb[const["∃", _],
         abs[bvar[0, ty_], _, _String]]] &&
         goalTm[[2, 1, 2]] === numTy,
       arithProveExists[goalTm],
+    arithForallShapeQ[goalTm],
+      arithProveForall[goalTm],
     True,
       HOL`Error`holError["arith-not-supported",
-        "arithProve: only ∀/∃ x:num. body goals are currently supported",
+        "arithProve: unsupported goal shape (need an ∃/∀ x:num, an implication chain, or a ≤/</= atom over ℕ)",
         <|"goal" -> goalTm|>]
   ];
 
