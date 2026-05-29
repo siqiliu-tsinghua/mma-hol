@@ -258,3 +258,18 @@ HOLTest`runTests["pair: repAbsProdThm is (isPair r) = (REP_prod (ABS_prod r) = r
     HOLTest`assertEq[hyp[repAbsProdThm], {},
       "no hyps"];
 ]];
+
+(* ===== surjective pairing ===== *)
+
+HOLTest`runTests["pair: surjective pairing (FST p, SND p) = p",
+  Module[{alpha, beta, pTy, pV, specP, expected},
+    alpha = mkVarType["A"]; beta = mkVarType["B"];
+    pTy = HOL`Stdlib`Pair`prodTy[alpha, beta];
+    pV = mkVar["p", pTy];
+    specP = HOL`Bool`SPEC[pV, pairSurjThm];
+    expected = mkEq[HOL`Stdlib`Pair`pairCons[
+      mkComb[HOL`Stdlib`Pair`fstConst[], pV],
+      mkComb[HOL`Stdlib`Pair`sndConst[], pV]], pV];
+    HOLTest`assertEq[concl[specP], expected, "(FST p, SND p) = p"];
+    HOLTest`assertEq[hyp[pairSurjThm], {}, "no hyps"]
+  ]];

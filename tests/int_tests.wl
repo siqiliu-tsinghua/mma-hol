@@ -88,3 +88,20 @@ HOLTest`runTests["stdlib/Int: &ℤ is injective (functional check)",
     HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intRepNatPairThm],
       "intRepNatPairThm is a theorem"]
   ]];
+
+(* ===== Stage c: intNeg (negation) ===== *)
+
+HOLTest`runTests["stdlib/Int: intNeg involution (intNeg (intNeg z) = z)",
+  Module[{one, z1, specZ, neg, expected},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];   (* &ℤ (SUC 0) *)
+    specZ = HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intNegNegThm];
+    neg[t_] := mkComb[HOL`Stdlib`Int`intNegConst[], t];
+    expected = mkEq[neg[neg[z1]], z1];
+    HOLTest`assertEq[concl[specZ], expected,
+      "⊢ intNeg (intNeg (&ℤ 1)) = &ℤ 1"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intNegNegThm], {}, "no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intRepRepThm] &&
+        hyp[HOL`Stdlib`Int`intRepRepThm] === {},
+      "intRepRepThm is a hyp-free theorem"]
+  ]];

@@ -94,6 +94,11 @@ fstPairEqThm::usage =
 sndPairEqThm::usage =
   "sndPairEqThm — ⊢ SND (a, b) = b. Mirror of fstPairEqThm.";
 
+pairSurjThm::usage =
+  "pairSurjThm — ⊢ ∀p. (FST p, SND p) = p. Surjective pairing: every " <>
+  "pair is reconstructed from its projections. Foundational for code " <>
+  "that decomposes an opaque pair (e.g. REP_int z in stdlib/Int).";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -565,6 +570,76 @@ sndPairEqThm =
 
     symEq = HOL`Equal`SYM[chooseRes];
     TRANS[step3, symEq]
+  ];
+
+(* ============================================================ *)
+(* pairSurjThm : ⊢ ∀p. (FST p, SND p) = p  (surjective pairing)  *)
+(*                                                              *)
+(* REP_prod p lies in the carve, so ∃x y. REP_prod p = mkPair   *)
+(* x y; CHOOSE x₀ y₀, then p = ABS_prod (REP_prod p) =          *)
+(* ABS_prod (mkPair x₀ y₀) = (x₀, y₀), whence FST p = x₀,        *)
+(* SND p = y₀ and (FST p, SND p) = (x₀, y₀) = p.                 *)
+(* ============================================================ *)
+
+unfoldPairCons[xT_, yT_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[pairConsDefThm, xT];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, yT];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+pairSurjThm =
+  Module[{pV, repP, aVarAbs, rVarRep, absRepAtP, repAbsAtRepP, rhsThm,
+          isPairAtRepP, existsXY, x0, y0, yBound, mkP, mkPx0y0,
+          innerExTm, hypInner, hypEq, pEqAbsRep, apAbs, consUnf, pEqPair,
+          apFst, fstInst, fstEq, apSnd, sndInst, sndEq,
+          pairFstSnd, goalUnderEq, innerCh, outerCh},
+    pV = mkVar["p", prodTy[αTy, βTy]];
+    repP = mkComb[repProdConst[], pV];
+
+    aVarAbs = concl[absRepProdThm][[2]];
+    absRepAtP = INST[{aVarAbs -> pV}, absRepProdThm];
+    (* ⊢ ABS_prod (REP_prod p) = p *)
+    rVarRep = concl[repAbsProdThm][[1, 2, 2]];
+    repAbsAtRepP = INST[{rVarRep -> repP}, repAbsProdThm];
+    rhsThm = HOL`Equal`APTERM[repProdConst[], absRepAtP];
+    isPairAtRepP = EQMP[HOL`Equal`SYM[repAbsAtRepP], rhsThm];
+    existsXY = EQMP[BETACONV[mkComb[isPairPredicateTerm[], repP]], isPairAtRepP];
+    (* ⊢ ∃x y. REP_prod p = mkPair x y *)
+
+    x0 = mkVar["x0", αTy]; y0 = mkVar["y0", βTy];
+    yBound = mkVar["y", βTy];
+    mkP = mkPairConst[];
+    mkPx0y0 = mkComb[mkComb[mkP, x0], y0];
+
+    innerExTm = mkComb[existsC[βTy],
+      mkAbs[yBound, mkEq[repP, mkComb[mkComb[mkP, x0], yBound]]]];
+    hypInner = ASSUME[innerExTm];
+    hypEq = ASSUME[mkEq[repP, mkPx0y0]];
+
+    pEqAbsRep = HOL`Equal`SYM[absRepAtP];   (* p = ABS_prod (REP_prod p) *)
+    apAbs = HOL`Equal`APTERM[absProdConst[], hypEq];
+    (* ABS_prod (REP_prod p) = ABS_prod (mkPair x0 y0) *)
+    consUnf = unfoldPairCons[x0, y0];   (* (x0, y0) = ABS_prod (mkPair x0 y0) *)
+    pEqPair = TRANS[pEqAbsRep, TRANS[apAbs, HOL`Equal`SYM[consUnf]]];
+    (* ⊢ p = (x0, y0) *)
+
+    apFst = HOL`Equal`APTERM[fstConst[], pEqPair];
+    fstInst = INST[{mkVar["a", αTy] -> x0, mkVar["b", βTy] -> y0}, fstPairEqThm];
+    fstEq = TRANS[apFst, fstInst];   (* FST p = x0 *)
+    apSnd = HOL`Equal`APTERM[sndConst[], pEqPair];
+    sndInst = INST[{mkVar["a", αTy] -> x0, mkVar["b", βTy] -> y0}, sndPairEqThm];
+    sndEq = TRANS[apSnd, sndInst];   (* SND p = y0 *)
+
+    pairFstSnd = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[pairConsConst[], fstEq], sndEq];
+    (* (FST p, SND p) = (x0, y0) *)
+    goalUnderEq = TRANS[pairFstSnd, HOL`Equal`SYM[pEqPair]];
+    (* (REP_prod p = mkPair x0 y0) ⊢ (FST p, SND p) = p *)
+    innerCh = HOL`Bool`CHOOSE[y0, hypInner, goalUnderEq];
+    outerCh = HOL`Bool`CHOOSE[x0, existsXY, innerCh];
+    HOL`Bool`GEN[pV, outerCh]
   ];
 
 End[];

@@ -33,6 +33,12 @@ intRepNatPairThm::usage = "intRepNatPairThm — ⊢ INT_REP (n, 0) (n free): nat
 repIntOfNumThm::usage = "repIntOfNumThm — ⊢ REP_int (&ℤ n) = (n, 0) (n free).";
 intOfNumInjThm::usage = "intOfNumInjThm — ⊢ ∀m n. &ℤ m = &ℤ n ⇒ m = n.";
 
+intRepRepThm::usage = "intRepRepThm — ⊢ INT_REP (REP_int z) (z free): REP_int lands in the carve.";
+intNegConst::usage  = "intNegConst[] — intNeg : int → int, negation (swaps the representative components).";
+intNegDefThm::usage = "intNegDefThm — ⊢ intNeg = (λz. ABS_int (SND (REP_int z), FST (REP_int z))).";
+repIntNegThm::usage = "repIntNegThm — ⊢ REP_int (intNeg z) = (SND (REP_int z), FST (REP_int z)) (z free).";
+intNegNegThm::usage = "intNegNegThm — ⊢ ∀z. intNeg (intNeg z) = z (involution).";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -180,6 +186,134 @@ intOfNumInjThm =
     dischd = HOL`Bool`DISCH[concl[hyp], conj1];
     genN = HOL`Bool`GEN[nV, dischd];
     genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* intNeg : int → int — negation by swapping representative      *)
+(* components: intNeg z = ABS_int (SND (REP_int z), FST (REP_int z)). *)
+(* Swapping a canonical pair stays canonical, so no recanon.     *)
+(* ============================================================ *)
+
+repIntTm[zT_] := mkComb[repIntConst[], zT];
+fstOf[pT_] := mkComb[fstNum[], pT];
+sndOf[pT_] := mkComb[sndNum[], pT];
+swapPair[pT_] := numPairCons[sndOf[pT], fstOf[pT]];   (* (SND p, FST p) *)
+
+(* ⊢ FST (a, b) = a at num × num *)
+fstNumPairThm[aTm_, bTm_] :=
+  HOL`Kernel`INST[{mkVar["a", numTy] -> aTm, mkVar["b", numTy] -> bTm},
+    HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numTy, mkVarType["B"] -> numTy},
+      HOL`Stdlib`Pair`fstPairEqThm]];
+
+(* ⊢ INT_REP (REP_int z)  (z free): REP_int lands in the carve. *)
+intRepRepThm =
+  Module[{zV, repZ, rVar, repAbsInst, aVar, absRepZ, rhsThm},
+    zV = mkVar["z", intTy]; repZ = repIntTm[zV];
+    rVar = concl[repAbsIntThm][[1, 2, 2]];
+    repAbsInst = HOL`Kernel`INST[{rVar -> repZ}, repAbsIntThm];
+    aVar = concl[absRepIntThm][[2]];
+    absRepZ = HOL`Kernel`INST[{aVar -> zV}, absRepIntThm];
+    rhsThm = HOL`Equal`APTERM[repIntConst[], absRepZ];
+    EQMP[HOL`Equal`SYM[repAbsInst], rhsThm]
+  ];
+
+(* ⊢ q ∨ p  from  ⊢ p ∨ q *)
+commuteDisj[disjThm_, pTm_, qTm_] :=
+  HOL`Bool`DISJCASES[disjThm,
+    HOL`Bool`DISJ2[ASSUME[pTm], qTm],
+    HOL`Bool`DISJ1[ASSUME[qTm], pTm]];
+
+(* ⊢ INT_REP (SND (REP_int z), FST (REP_int z))  (z free). *)
+intRepSwappedThm =
+  Module[{zV, repZ, sw, fstR, sndR, fstSw0, sndSw0, disjRep, comm,
+          fstSwapEq, sndSwapEq, fstSwapAt0, sndSwapAt0, eqConst0,
+          disjEq, swapDisj},
+    zV = mkVar["z", intTy]; repZ = repIntTm[zV];
+    sw = swapPair[repZ];
+    fstR = fstOf[repZ]; sndR = sndOf[repZ];
+    (* FST(REP z)=0 ∨ SND(REP z)=0  then commute *)
+    disjRep = EQMP[unfoldIntRep[repZ], intRepRepThm];
+    comm = commuteDisj[disjRep, mkEq[fstR, zeroN[]], mkEq[sndR, zeroN[]]];
+    (* ⊢ SND(REP z)=0 ∨ FST(REP z)=0 *)
+    (* FST(swap) = SND(REP z),  SND(swap) = FST(REP z) *)
+    fstSwapEq = fstNumPairThm[sndR, fstR];   (* FST(SND R, FST R) = SND R *)
+    sndSwapEq = sndNumPairThm[sndR, fstR];   (* SND(SND R, FST R) = FST R *)
+    eqConst0 = mkConst["=", tyFun[numTy, tyFun[numTy, boolTy]]];
+    (* (FST swap = 0) = (SND R = 0) *)
+    fstSwapAt0 = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[eqConst0, fstSwapEq], zeroN[]];
+    sndSwapAt0 = HOL`Equal`APTHM[
+      HOL`Equal`APTERM[eqConst0, sndSwapEq], zeroN[]];
+    (* ⊢ (SND R=0 ∨ FST R=0) = (FST swap=0 ∨ SND swap=0) *)
+    disjEq = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[orC[], HOL`Equal`SYM[fstSwapAt0]],
+      HOL`Equal`SYM[sndSwapAt0]];
+    swapDisj = EQMP[disjEq, comm];
+    (* ⊢ FST(swap)=0 ∨ SND(swap)=0 *)
+    EQMP[HOL`Equal`SYM[unfoldIntRep[sw]], swapDisj]
+  ];
+
+intNegTy = tyFun[intTy, intTy];
+
+intNegDefThm = newDefinition[mkEq[
+  mkVar["intNeg", intNegTy],
+  Module[{zV}, zV = mkVar["z", intTy];
+    mkAbs[zV, mkComb[absIntConst[], swapPair[repIntTm[zV]]]]]
+]];
+
+intNegConst[] := mkConst["intNeg", intNegTy];
+intNegTm[zT_] := mkComb[intNegConst[], zT];
+
+(* ⊢ intNeg z = ABS_int (SND (REP_int z), FST (REP_int z)) *)
+unfoldIntNeg[zT_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[intNegDefThm, zT];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* ⊢ REP_int (intNeg z) = (SND (REP_int z), FST (REP_int z))  (z free). *)
+repIntNegThm =
+  Module[{zV, repZ, sw, unfNeg, rVar, repAbsInst, repEq, apRep},
+    zV = mkVar["z", intTy]; repZ = repIntTm[zV]; sw = swapPair[repZ];
+    unfNeg = unfoldIntNeg[zV];   (* intNeg z = ABS_int (swap) *)
+    rVar = concl[repAbsIntThm][[1, 2, 2]];
+    repAbsInst = HOL`Kernel`INST[{rVar -> sw}, repAbsIntThm];
+    (* INT_REP(swap) = (REP_int(ABS_int swap) = swap) *)
+    repEq = EQMP[repAbsInst, intRepSwappedThm];
+    (* REP_int(ABS_int swap) = swap *)
+    apRep = HOL`Equal`APTERM[repIntConst[], unfNeg];
+    (* REP_int(intNeg z) = REP_int(ABS_int swap) *)
+    TRANS[apRep, repEq]
+  ];
+
+(* ⊢ ∀z. intNeg (intNeg z) = z *)
+intNegNegThm =
+  Module[{zV, repZ, sw, negZ, repNeg, repNegNeg, fstNeg, sndNeg,
+          unfNegNeg, swapBack, absBack, absRepZ, aVar, genZ},
+    zV = mkVar["z", intTy]; repZ = repIntTm[zV]; sw = swapPair[repZ];
+    negZ = intNegTm[zV];
+    (* REP_int (intNeg z) = (SND R, FST R) = sw *)
+    repNeg = repIntNegThm;
+    (* intNeg (intNeg z) = ABS_int (SND (REP (intNeg z)), FST (REP (intNeg z))) *)
+    unfNegNeg = unfoldIntNeg[negZ];
+    (* SND (REP (intNeg z)) = SND sw = FST R ;  FST (REP (intNeg z)) = FST sw = SND R *)
+    fstNeg = HOL`Equal`APTERM[fstNum[], repNeg];   (* FST(REP(intNeg z)) = FST sw *)
+    sndNeg = HOL`Equal`APTERM[sndNum[], repNeg];   (* SND(REP(intNeg z)) = SND sw *)
+    (* swap (REP (intNeg z)) = (SND(REP(intNeg z)), FST(REP(intNeg z)))
+                             = (SND sw, FST sw) = (FST R, SND R) *)
+    swapBack = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[mkConst[",", tyFun[numTy, tyFun[numTy, numPairTy]]],
+        TRANS[sndNeg, sndNumPairThm[sndOf[repZ], fstOf[repZ]]]],
+      TRANS[fstNeg, fstNumPairThm[sndOf[repZ], fstOf[repZ]]]];
+    (* ⊢ (SND(REP(intNeg z)), FST(REP(intNeg z))) = (FST R, SND R) *)
+    (* and (FST R, SND R) = REP_int z by surjective pairing *)
+    swapBack = TRANS[swapBack, HOL`Bool`ISPEC[repZ, pairSurjThm]];
+    (* ⊢ swap(REP(intNeg z)) = REP_int z *)
+    absBack = HOL`Equal`APTERM[absIntConst[], swapBack];
+    (* ABS_int(swap(REP(intNeg z))) = ABS_int(REP_int z) *)
+    aVar = concl[absRepIntThm][[2]];
+    absRepZ = HOL`Kernel`INST[{aVar -> zV}, absRepIntThm];   (* ABS_int(REP z) = z *)
+    genZ = HOL`Bool`GEN[zV, TRANS[unfNegNeg, TRANS[absBack, absRepZ]]]
   ];
 
 End[];
