@@ -1732,3 +1732,51 @@ HOLTest`runTests["stdlib/Num: euclidLemmaThm — ⊢ ∀p a b. prime p ⇒ p|a*b
       "∀p a b. prime p ⇒ divides p (a*b) ⇒ divides p a ∨ divides p b"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Num`euclidLemmaThm], {}, "no hyps"];
 ]];
+
+(* ===== PRE + monus (∸) ===== *)
+
+mkNumN[0] := HOL`Stdlib`Num`zeroConst[];
+mkNumN[k_Integer] /; k > 0 := mkComb[HOL`Stdlib`Num`sucConst[], mkNumN[k - 1]];
+monusN[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`monusConst[], a], b];
+
+HOLTest`runTests["stdlib/Num: PRE 0 = 0 and PRE (SUC 0) = 0",
+  Module[{},
+    HOLTest`assertEq[concl[HOL`Stdlib`Num`preZeroThm],
+      mkEq[mkComb[HOL`Stdlib`Num`preConst[], mkNumN[0]], mkNumN[0]],
+      "⊢ PRE 0 = 0"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`preZeroThm], {}, "no hyps"];
+    HOLTest`assertEq[
+      concl[HOL`Bool`SPEC[mkNumN[0], HOL`Stdlib`Num`preSucThm]],
+      mkEq[mkComb[HOL`Stdlib`Num`preConst[], mkNumN[1]], mkNumN[0]],
+      "⊢ PRE (SUC 0) = 0"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: monus lemmas are hyp-free theorems",
+  Module[{ls},
+    ls = {HOL`Stdlib`Num`monusZeroThm, HOL`Stdlib`Num`monusSucThm,
+          HOL`Stdlib`Num`zeroMonusThm, HOL`Stdlib`Num`monusSucSucThm,
+          HOL`Stdlib`Num`addMonusCancelThm, HOL`Stdlib`Num`monusSelfThm,
+          HOL`Stdlib`Num`leqAddMonusThm, HOL`Stdlib`Num`preSucThm};
+    HOLTest`assertTrue[AllTrue[ls, isThm], "all are theorems"];
+    HOLTest`assertTrue[AllTrue[ls, hyp[#] === {} &], "all hyp-free"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: ground monus 2 ∸ 1 = 1",
+  Module[{ssZeroSubSZero, sZeroSubZero},
+    (* SUC(SUC 0) ∸ SUC 0 = SUC 0 ∸ 0 = SUC 0 *)
+    ssZeroSubSZero = HOL`Bool`SPEC[mkNumN[0],
+      HOL`Bool`SPEC[mkNumN[1], HOL`Stdlib`Num`monusSucSucThm]];
+    sZeroSubZero = HOL`Bool`SPEC[mkNumN[1], HOL`Stdlib`Num`monusZeroThm];
+    HOLTest`assertEq[concl[TRANS[ssZeroSubSZero, sZeroSubZero]],
+      mkEq[monusN[mkNumN[2], mkNumN[1]], mkNumN[1]], "⊢ 2 ∸ 1 = 1"]
+  ]];
+
+HOLTest`runTests["stdlib/Num: ground monus 1 ∸ 2 = 0 (truncates)",
+  Module[{sZeroSubSS, zeroSubS},
+    (* SUC 0 ∸ SUC(SUC 0) = 0 ∸ SUC 0 = 0 *)
+    sZeroSubSS = HOL`Bool`SPEC[mkNumN[1],
+      HOL`Bool`SPEC[mkNumN[0], HOL`Stdlib`Num`monusSucSucThm]];
+    zeroSubS = HOL`Bool`SPEC[mkNumN[1], HOL`Stdlib`Num`zeroMonusThm];
+    HOLTest`assertEq[concl[TRANS[sZeroSubSS, zeroSubS]],
+      mkEq[monusN[mkNumN[1], mkNumN[2]], mkNumN[0]], "⊢ 1 ∸ 2 = 0"]
+  ]];
