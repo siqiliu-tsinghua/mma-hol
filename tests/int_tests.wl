@@ -59,3 +59,32 @@ HOLTest`runTests["stdlib/Int: repAbsIntThm characterizes the image",
       "shape: INT_REP r = (REP_int (ABS_int r) = r)"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`repAbsIntThm], {}, "no hyps"]
   ]];
+
+(* ===== Stage b: &ℤ embedding ===== *)
+
+HOLTest`runTests["stdlib/Int: REP_int (&ℤ n) = (n, 0)",
+  Module[{nV, c, expected},
+    nV = mkVar["n", numTy];
+    expected = mkEq[
+      mkComb[HOL`Stdlib`Int`repIntConst[],
+        mkComb[HOL`Stdlib`Int`intOfNumConst[], nV]],
+      numPairCons[nV, HOL`Stdlib`Num`zeroConst[]]];
+    c = concl[HOL`Stdlib`Int`repIntOfNumThm];
+    HOLTest`assertEq[c, expected, "⊢ REP_int (&ℤ n) = (n, 0)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`repIntOfNumThm], {}, "no hyps"]
+  ]];
+
+HOLTest`runTests["stdlib/Int: &ℤ is injective (functional check)",
+  Module[{one, inj2, refl1, mp},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    (* SPEC m := SUC 0, n := SUC 0; MP with reflexivity ⇒ SUC 0 = SUC 0 *)
+    inj2 = HOL`Bool`SPEC[one, HOL`Bool`SPEC[one,
+      HOL`Stdlib`Int`intOfNumInjThm]];
+    refl1 = REFL[mkComb[HOL`Stdlib`Int`intOfNumConst[], one]];
+    mp = HOL`Bool`MP[inj2, refl1];
+    HOLTest`assertEq[concl[mp], mkEq[one, one],
+      "⊢ SUC 0 = SUC 0 from &ℤ injectivity"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intOfNumInjThm], {}, "no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intRepNatPairThm],
+      "intRepNatPairThm is a theorem"]
+  ]];
