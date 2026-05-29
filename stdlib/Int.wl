@@ -39,6 +39,10 @@ intNegDefThm::usage = "intNegDefThm — ⊢ intNeg = (λz. ABS_int (SND (REP_int
 repIntNegThm::usage = "repIntNegThm — ⊢ REP_int (intNeg z) = (SND (REP_int z), FST (REP_int z)) (z free).";
 intNegNegThm::usage = "intNegNegThm — ⊢ ∀z. intNeg (intNeg z) = z (involution).";
 
+intCanonConst::usage  = "intCanonConst[] — intCanon : num × num → num × num, reduce a representative to canonical form.";
+intCanonDefThm::usage = "intCanonDefThm — ⊢ intCanon = (λp. COND (SND p ≤ FST p) (FST p ∸ SND p, 0) (0, SND p ∸ FST p)).";
+intRepCanonThm::usage = "intRepCanonThm — ⊢ INT_REP (intCanon p) (p free): canonicalization lands in the carve.";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -46,9 +50,10 @@ zeroN[] := HOL`Stdlib`Num`zeroConst[];
 numPairTy = HOL`Stdlib`Pair`prodTy[numTy, numTy];
 intRepTy = tyFun[numPairTy, boolTy];
 
-(* local ∨ builder (Num's orTm is in another file's Private) *)
+(* local connective builders (Num's are in another file's Private) *)
 orC[] := mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
 orTm[a_, b_] := mkComb[mkComb[orC[], a], b];
+notOp[] := mkConst["¬", tyFun[boolTy, boolTy]];
 
 fstNum[] := mkConst["FST", tyFun[numPairTy, numTy]];
 sndNum[] := mkConst["SND", tyFun[numPairTy, numTy]];
@@ -314,6 +319,108 @@ intNegNegThm =
     aVar = concl[absRepIntThm][[2]];
     absRepZ = HOL`Kernel`INST[{aVar -> zV}, absRepIntThm];   (* ABS_int(REP z) = z *)
     genZ = HOL`Bool`GEN[zV, TRANS[unfNegNeg, TRANS[absBack, absRepZ]]]
+  ];
+
+(* ============================================================ *)
+(* intCanon : num × num → num × num — canonical form.            *)
+(*   intCanon p = COND (SND p ≤ FST p)                           *)
+(*                     (FST p ∸ SND p, 0)   [p ≥ 0]              *)
+(*                     (0, SND p ∸ FST p)   [p < 0]              *)
+(* ============================================================ *)
+
+falseTm[] := mkConst["F", boolTy];
+leqNum[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+monusNum[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`monusConst[], a], b];
+
+(* from Γ ⊢ ¬p derive Γ ⊢ p = F *)
+eqFIntro[notTh_] :=
+  Module[{pTm, pToF, fToP},
+    pTm = concl[notTh][[2]];
+    pToF = HOL`Bool`MP[HOL`Bool`NOTELIM[notTh], ASSUME[pTm]];   (* Γ, p ⊢ F *)
+    fToP = HOL`Bool`CONTR[pTm, ASSUME[falseTm[]]];   (* F ⊢ p *)
+    HOL`Equal`SYM[HOL`Kernel`DEDUCTANTISYM[pToF, fToP]]   (* Γ ⊢ p = F *)
+  ];
+
+intCanonTy = tyFun[numPairTy, numPairTy];
+
+intCanonBranchT[fp_, sp_] := numPairCons[monusNum[fp, sp], zeroN[]];
+intCanonBranchF[fp_, sp_] := numPairCons[zeroN[], monusNum[sp, fp]];
+
+intCanonDefThm = newDefinition[mkEq[
+  mkVar["intCanon", intCanonTy],
+  Module[{pV, fp, sp},
+    pV = mkVar["p", numPairTy]; fp = fstOf[pV]; sp = sndOf[pV];
+    mkAbs[pV,
+      mkComb[mkComb[mkComb[condConst[numPairTy], leqNum[sp, fp]],
+        intCanonBranchT[fp, sp]], intCanonBranchF[fp, sp]]]]
+]];
+
+intCanonConst[] := mkConst["intCanon", intCanonTy];
+
+(* ⊢ intCanon p = COND (SND p ≤ FST p) (FST p ∸ SND p, 0) (0, SND p ∸ FST p) *)
+unfoldIntCanon[pT_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[intCanonDefThm, pT];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* ⊢ COND gv bT bF = (bT if gEqTF rewrites gv→T, else bF) — given an
+   equation gEqV : ⊢ gv = T (or = F), rewrite the guard and fire condT/F. *)
+condRewrite[gEqV_, bT_, bF_, branchThm_] :=
+  Module[{rw},
+    rw = HOL`Equal`APTHM[HOL`Equal`APTHM[
+      HOL`Equal`APTERM[condConst[numPairTy], gEqV], bT], bF];
+    TRANS[rw, branchThm]
+  ];
+
+(* INT_REP of a pair whose SND is 0 (the +n branch). *)
+intRepBySnd[pairTm_, sndZeroThm_] :=
+  EQMP[HOL`Equal`SYM[unfoldIntRep[pairTm]],
+    HOL`Bool`DISJ2[sndZeroThm, mkEq[mkComb[fstNum[], pairTm], zeroN[]]]];
+
+(* INT_REP of a pair whose FST is 0 (the −n branch). *)
+intRepByFst[pairTm_, fstZeroThm_] :=
+  EQMP[HOL`Equal`SYM[unfoldIntRep[pairTm]],
+    HOL`Bool`DISJ1[fstZeroThm, mkEq[mkComb[sndNum[], pairTm], zeroN[]]]];
+
+(* ⊢ INT_REP (intCanon p)  (p free) *)
+intRepCanonThm =
+  Module[{pV, fp, sp, guard, bT, bF, canonEq, condTI, condFI, em,
+          caseT, caseF},
+    pV = mkVar["p", numPairTy]; fp = fstOf[pV]; sp = sndOf[pV];
+    guard = leqNum[sp, fp];
+    bT = intCanonBranchT[fp, sp]; bF = intCanonBranchF[fp, sp];
+    canonEq = unfoldIntCanon[pV];
+    condTI = HOL`Bool`SPEC[bF, HOL`Bool`SPEC[bT,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numPairTy}, condTThm]]];
+    (* ⊢ COND T bT bF = bT *)
+    condFI = HOL`Bool`SPEC[bF, HOL`Bool`SPEC[bT,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numPairTy}, condFThm]]];
+    (* ⊢ COND F bT bF = bF *)
+    em = HOL`Bool`EXCLUDEDMIDDLE[guard];
+
+    caseT = Module[{gEqT, canonT, sndBT, repBT},
+      gEqT = HOL`Bool`EQTINTRO[ASSUME[guard]];   (* guard = T *)
+      canonT = TRANS[canonEq, condRewrite[gEqT, bT, bF, condTI]];
+      (* (guard) ⊢ intCanon p = bT *)
+      sndBT = sndNumPairThm[monusNum[fp, sp], zeroN[]];   (* SND bT = 0 *)
+      repBT = intRepBySnd[bT, sndBT];   (* INT_REP bT *)
+      EQMP[HOL`Equal`SYM[
+        HOL`Equal`APTERM[intRepConst[], canonT]], repBT]
+      (* (guard) ⊢ INT_REP (intCanon p) *)
+    ];
+
+    caseF = Module[{gEqF, canonF, fstBF, repBF},
+      gEqF = eqFIntro[ASSUME[mkComb[notOp[], guard]]];   (* guard = F *)
+      canonF = TRANS[canonEq, condRewrite[gEqF, bT, bF, condFI]];
+      (* (¬guard) ⊢ intCanon p = bF *)
+      fstBF = fstNumPairThm[zeroN[], monusNum[sp, fp]];   (* FST bF = 0 *)
+      repBF = intRepByFst[bF, fstBF];   (* INT_REP bF *)
+      EQMP[HOL`Equal`SYM[
+        HOL`Equal`APTERM[intRepConst[], canonF]], repBF]
+    ];
+
+    HOL`Bool`DISJCASES[em, caseT, caseF]
   ];
 
 End[];

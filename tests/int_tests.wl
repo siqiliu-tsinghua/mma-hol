@@ -105,3 +105,15 @@ HOLTest`runTests["stdlib/Int: intNeg involution (intNeg (intNeg z) = z)",
         hyp[HOL`Stdlib`Int`intRepRepThm] === {},
       "intRepRepThm is a hyp-free theorem"]
   ]];
+
+(* ===== Stage d (part 1): intCanon canonicalizer ===== *)
+
+HOLTest`runTests["stdlib/Int: INT_REP (intCanon p)",
+  Module[{pV, expected},
+    pV = mkVar["p", numPairTy];
+    expected = mkComb[HOL`Stdlib`Int`intRepConst[],
+      mkComb[HOL`Stdlib`Int`intCanonConst[], pV]];
+    HOLTest`assertEq[concl[HOL`Stdlib`Int`intRepCanonThm], expected,
+      "⊢ INT_REP (intCanon p)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intRepCanonThm], {}, "no hyps"]
+  ]];
