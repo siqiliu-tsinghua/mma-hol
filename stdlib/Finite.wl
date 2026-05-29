@@ -2164,9 +2164,7 @@ unfoldNsum[gArg_, sArg_] :=
 (*   step xC (step yC aC) = step yC (step xC aC),                *)
 (* via addAssoc + addComm.                                       *)
 nsumStepCommBuilder[gV_] :=
-  Module[{stepL, xC, yC, aC, lhsTm, rhsTm, lhsRed, rhsRed,
-          gxc, gyc, addAssocSym, commGxGy, step1, step2, addAssoc2,
-          coreEq, eqTm},
+  Module[{stepL, xC, yC, aC, lhsTm, rhsTm, lhsRed, rhsRed, coreEq, eqTm},
     stepL = nsumStepBuilder[gV];
     xC = mkVar["xC", αTy]; yC = mkVar["yC", αTy]; aC = mkVar["aC", numTy];
     lhsTm = mkComb[mkComb[stepL, xC], mkComb[mkComb[stepL, yC], aC]];
@@ -2176,20 +2174,11 @@ nsumStepCommBuilder[gV_] :=
     (* lhsRed: lhsTm = g xC + (g yC + aC)
        rhsRed: rhsTm = g yC + (g xC + aC) *)
 
-    gxc = mkComb[gV, xC]; gyc = mkComb[gV, yC];
-    addAssocSym = HOL`Equal`SYM[HOL`Bool`SPEC[aC,
-      HOL`Bool`SPEC[gyc, HOL`Bool`SPEC[gxc, HOL`Stdlib`Num`addAssocThm]]]];
-    (* ⊢ gxc + (gyc + aC) = (gxc + gyc) + aC *)
-    commGxGy = HOL`Bool`SPEC[gyc, HOL`Bool`SPEC[gxc, HOL`Stdlib`Num`addCommThm]];
-    (* ⊢ gxc + gyc = gyc + gxc *)
-    step1 = HOL`Equal`APTERM[HOL`Stdlib`Num`plusConst[], commGxGy];
-    step2 = HOL`Equal`APTHM[step1, aC];
-    (* ⊢ (gxc + gyc) + aC = (gyc + gxc) + aC *)
-    addAssoc2 = HOL`Bool`SPEC[aC,
-      HOL`Bool`SPEC[gxc, HOL`Bool`SPEC[gyc, HOL`Stdlib`Num`addAssocThm]]];
-    (* ⊢ (gyc + gxc) + aC = gyc + (gxc + aC) *)
-    coreEq = TRANS[TRANS[addAssocSym, step2], addAssoc2];
-    (* ⊢ gxc + (gyc + aC) = gyc + (gxc + aC) *)
+    (* The arithmetic core g xC + (g yC + aC) = g yC + (g xC + aC) is a
+       linear identity over the atoms g xC, g yC — discharge it with
+       ARITH (g xC / g yC abstracted, aC a variable). *)
+    coreEq = HOL`Auto`Arith`arithProve[
+      mkEq[concl[lhsRed][[2]], concl[rhsRed][[2]]]];
 
     eqTm = TRANS[TRANS[lhsRed, coreEq], HOL`Equal`SYM[rhsRed]];
     HOL`Bool`GEN[xC, HOL`Bool`GEN[yC, HOL`Bool`GEN[aC, eqTm]]]

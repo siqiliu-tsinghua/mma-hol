@@ -1800,8 +1800,8 @@ firstMonoOf[linTerm[c_, vs_Association]] :=
       nm = First[Sort[Keys[vs]]];
       coef = vs[nm];
       {"var", {nm, coef}, linTerm[0, KeyDrop[vs, nm]],
-        If[coef === 1, var[nm, numTy],
-          nTimes[buildLitNum[coef], var[nm, numTy]]]}
+        If[coef === 1, atomTermFor[nm],
+          nTimes[buildLitNum[coef], atomTermFor[nm]]]}
     ]
   ];
 

@@ -1473,6 +1473,19 @@ HOLTest`runTests["arith: arithProve rejects an unsupported goal shape",
     arithProve[divN[buildLitNum[3], mkVar["x", numTy]]],
     "arith-not-supported", "divides 3 x is not a ≤/</= goal"]];
 
+HOLTest`runTests["arith: ARITH ∀m n. m·n + n·m = n·m + m·n (two distinct atoms)",
+  Module[{mV, nV, goal, th},
+    (* Regression: ≥2 distinct atoms in a normalized side exercises
+       firstMonoOf, which must materialize the atom term, not var[key]. *)
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    goal = forallNum[mV, forallNum[nV,
+      eqN[plusN[timesN[mV, nV], timesN[nV, mV]],
+          plusN[timesN[nV, mV], timesN[mV, nV]]]]];
+    th = HOL`Tactics`prove[goal, ARITH[]];
+    HOLTest`assertEq[hyp[th], {}, "no hyps"];
+    HOLTest`assertEq[concl[th], goal, "⊢ ∀m n. m·n + n·m = n·m + m·n"]
+  ]];
+
 (* ===== Phase B: Fourier–Motzkin oracle (farkasFM, untrusted) ===== *)
 (* diffs are linTerm[const, vars] standing for `≤ 0` constraints.    *)
 (* farkasFM returns an Association origIdx→integer λ (Farkas cert)    *)
