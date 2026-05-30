@@ -272,3 +272,22 @@ HOLTest`runTests["stdlib/Int: intMul right identity / zero (functional checks)",
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulOneThm], {}, "intMulOne no hyps"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulZeroThm], {}, "intMulZero no hyps"]
   ]];
+
+HOLTest`runTests["stdlib/Int: intMul left distributivity (functional check)",
+  Module[{one, two, three, z1, z2, z3, mulTm, addTm, specZWV, expected},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    two = mkComb[HOL`Stdlib`Num`sucConst[], one];
+    three = mkComb[HOL`Stdlib`Num`sucConst[], two];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    z2 = mkComb[HOL`Stdlib`Int`intOfNumConst[], two];
+    z3 = mkComb[HOL`Stdlib`Int`intOfNumConst[], three];
+    mulTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intMulConst[], a], b];
+    addTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intAddConst[], a], b];
+    specZWV = HOL`Bool`SPEC[z3, HOL`Bool`SPEC[z2,
+      HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intMulDistribThm]]];
+    expected = mkEq[mulTm[z1, addTm[z2, z3]],
+      addTm[mulTm[z1, z2], mulTm[z1, z3]]];
+    HOLTest`assertEq[concl[specZWV], expected,
+      "⊢ intMul (&ℤ 1) (intAdd (&ℤ 2) (&ℤ 3)) = intAdd (intMul (&ℤ 1) (&ℤ 2)) (intMul (&ℤ 1) (&ℤ 3))"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulDistribThm], {}, "no hyps"]
+  ]];

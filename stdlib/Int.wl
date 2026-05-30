@@ -69,6 +69,7 @@ repIntMulThm::usage = "repIntMulThm — ⊢ ∀z w. REP_int (intMul z w) = intCa
 intMulCommThm::usage = "intMulCommThm — ⊢ ∀z w. intMul z w = intMul w z.";
 intMulOneThm::usage = "intMulOneThm — ⊢ ∀z. intMul z (&ℤ (SUC 0)) = z. Right multiplicative identity.";
 intMulZeroThm::usage = "intMulZeroThm — ⊢ ∀z. intMul z (&ℤ 0) = &ℤ 0. Right absorbing element.";
+intMulDistribThm::usage = "intMulDistribThm — ⊢ ∀z w v. intMul z (intAdd w v) = intAdd (intMul z w) (intMul z v). Left distributivity of intMul over intAdd.";
 
 Begin["`Private`"];
 
@@ -1279,6 +1280,133 @@ intMulZeroThm =
     zeroEq = unfoldIntOfNum[zeroN[]];   (* &ℤ 0 = ABS_int(0,0) *)
     HOL`Bool`GEN[zV, TRANS[ufMul,
       TRANS[HOL`Equal`APTERM[absIntConst[], canonEq], HOL`Equal`SYM[zeroEq]]]]
+  ];
+
+(* ============================================================ *)
+(* intMulDistribThm: ⊢ ∀z w v.                                  *)
+(*   intMul z (intAdd w v) = intAdd (intMul z w) (intMul z v).  *)
+(*                                                              *)
+(* Both sides reduce (repIntMulThm/repIntAddThm) to             *)
+(* ABS_int(intCanon Pstar) for the SAME fully-distributed pair     *)
+(* Pstar = ((z1w1+z2w2)+(z1v1+z2v2), (z1w2+z2w1)+(z1v2+z2v1)),      *)
+(* the canon-of-canon collapsing through canonRespectsThm.      *)
+(* LHS's equivalence needs canonEquivAt at (w1+v1, w2+v2)        *)
+(* multiplied by z1, z2 and distributed by hand (timesDistrib —  *)
+(* products are opaque to ARITH); the residual linear step      *)
+(* closes via ARITH. RHS's products are already atoms so its     *)
+(* two canonEquivAt facts feed ARITH directly.                  *)
+(* ============================================================ *)
+
+(* ⊢ a * (b + c) = a * b + a * c  at chosen a, b, c *)
+timesDistribLeftAt[aTm_, bTm_, cTm_] :=
+  HOL`Bool`SPEC[cTm, HOL`Bool`SPEC[bTm,
+    HOL`Bool`SPEC[aTm, HOL`Stdlib`Num`timesDistribLeftThm]]];
+
+(* from E : (aT + (w2+v2)) = ((w1+v1) + bT), multiplier k, build the
+   fully-distributed  k*aT + (k*w2 + k*v2) = (k*w1 + k*v1) + k*bT *)
+scaleDistribEquiv[kTm_, eqE_, aT_, bT_, w1_, v1_, w2_, v2_] :=
+  Module[{plusC, kE, lhsD1, lhsD2, lhsDist, rhsD1, rhsD2, rhsDist},
+    plusC = HOL`Stdlib`Num`plusConst[];
+    kE = HOL`Equal`APTERM[mkComb[timesNC[], kTm], eqE];
+    lhsD1 = timesDistribLeftAt[kTm, aT, plusN[w2, v2]];
+    lhsD2 = timesDistribLeftAt[kTm, w2, v2];
+    lhsDist = TRANS[lhsD1,
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, REFL[timesN[kTm, aT]]], lhsD2]];
+    rhsD1 = timesDistribLeftAt[kTm, plusN[w1, v1], bT];
+    rhsD2 = timesDistribLeftAt[kTm, w1, v1];
+    rhsDist = TRANS[rhsD1,
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, rhsD2], REFL[timesN[kTm, bT]]]];
+    TRANS[TRANS[HOL`Equal`SYM[lhsDist], kE], rhsDist]
+  ];
+
+intMulDistribThm =
+  Module[{zV, wV, vV, rz, rw, rv, z1, z2, w1, w2, v1, v2, plusC, timesC,
+          w1v1, w2v2, cpWV, aT, bT, addWV, ufMulL, repAdd, fstAB, sndAB,
+          p1f, p1s, innerRw, lhsStep1, eqE, e1, e2, zw1, zw2, zv1, zv2,
+          psF, psS, respInstL, targetL, hImpL, respL, lhsStep2,
+          mulZW, mulZV, ufAddR, repMZW, repMZV, cpZW, cpZV, pp, qq, rr, ss,
+          fstP, fstQ, sndP, sndQ, innerRwR, rhsStep1, ezw, ezv,
+          respInstR, targetR, hImpR, respR, rhsStep2, body, genV, genW},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy]; vV = mkVar["v", intTy];
+    rz = repIntTm[zV]; rw = repIntTm[wV]; rv = repIntTm[vV];
+    z1 = fstOf[rz]; z2 = sndOf[rz]; w1 = fstOf[rw]; w2 = sndOf[rw];
+    v1 = fstOf[rv]; v2 = sndOf[rv];
+    plusC = HOL`Stdlib`Num`plusConst[]; timesC = timesNC[];
+    w1v1 = plusN[w1, v1]; w2v2 = plusN[w2, v2];
+    cpWV = mkComb[intCanonConst[], numPairCons[w1v1, w2v2]];
+    aT = fstOf[cpWV]; bT = sndOf[cpWV];
+
+    (* ---- LHS: intMul z (intAdd w v) ---- *)
+    addWV = intAddTm[wV, vV];
+    ufMulL = unfoldIntMul[zV, addWV];
+    repAdd = repIntAddAt[wV, vV];                  (* REP(addWV) = intCanon(w1+v1,w2+v2) *)
+    fstAB = HOL`Equal`APTERM[fstNum[], repAdd];    (* FST(REP addWV) = aT *)
+    sndAB = HOL`Equal`APTERM[sndNum[], repAdd];    (* SND(REP addWV) = bT *)
+    p1f = plusN[timesN[z1, aT], timesN[z2, bT]];
+    p1s = plusN[timesN[z1, bT], timesN[z2, aT]];
+    innerRw = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[],
+        HOL`Kernel`MKCOMB[
+          HOL`Equal`APTERM[plusC, HOL`Equal`APTERM[mkComb[timesC, z1], fstAB]],
+          HOL`Equal`APTERM[mkComb[timesC, z2], sndAB]]],
+      HOL`Kernel`MKCOMB[
+        HOL`Equal`APTERM[plusC, HOL`Equal`APTERM[mkComb[timesC, z1], sndAB]],
+        HOL`Equal`APTERM[mkComb[timesC, z2], fstAB]]];
+    lhsStep1 = TRANS[ufMulL,
+      HOL`Equal`APTERM[absIntConst[],
+        HOL`Equal`APTERM[intCanonConst[], innerRw]]];
+    (* LHS = ABS_int(intCanon(z1*aT+z2*bT, z1*bT+z2*aT)) *)
+    eqE = canonEquivAt[w1v1, w2v2];                (* aT + (w2+v2) = (w1+v1) + bT *)
+    e1 = scaleDistribEquiv[z1, eqE, aT, bT, w1, v1, w2, v2];
+    e2 = scaleDistribEquiv[z2, eqE, aT, bT, w1, v1, w2, v2];
+    zw1 = plusN[timesN[z1, w1], timesN[z2, w2]];
+    zw2 = plusN[timesN[z1, w2], timesN[z2, w1]];
+    zv1 = plusN[timesN[z1, v1], timesN[z2, v2]];
+    zv2 = plusN[timesN[z1, v2], timesN[z2, v1]];
+    psF = plusN[zw1, zv1]; psS = plusN[zw2, zv2];   (* Pstar components *)
+    respInstL = HOL`Bool`SPEC[psS, HOL`Bool`SPEC[psF,
+      HOL`Bool`SPEC[p1s, HOL`Bool`SPEC[p1f, canonRespectsThm]]]];
+    targetL = mkEq[plusN[p1f, psS], plusN[psF, p1s]];
+    hImpL = HOL`Auto`Arith`arithProve[
+      impliesTm[concl[e1], impliesTm[concl[e2], targetL]]];
+    respL = HOL`Bool`MP[respInstL,
+      HOL`Bool`MP[HOL`Bool`MP[hImpL, e1], e2]];
+    lhsStep2 = TRANS[lhsStep1, HOL`Equal`APTERM[absIntConst[], respL]];
+    (* LHS = ABS_int(intCanon Pstar) *)
+
+    (* ---- RHS: intAdd (intMul z w) (intMul z v) ---- *)
+    mulZW = intMulTm[zV, wV]; mulZV = intMulTm[zV, vV];
+    ufAddR = unfoldIntAdd[mulZW, mulZV];
+    repMZW = repIntMulAt[zV, wV]; repMZV = repIntMulAt[zV, vV];
+    cpZW = mkComb[intCanonConst[], intMulPairTm[zV, wV]];
+    cpZV = mkComb[intCanonConst[], intMulPairTm[zV, vV]];
+    pp = fstOf[cpZW]; qq = sndOf[cpZW]; rr = fstOf[cpZV]; ss = sndOf[cpZV];
+    fstP = HOL`Equal`APTERM[fstNum[], repMZW]; fstQ = HOL`Equal`APTERM[fstNum[], repMZV];
+    sndP = HOL`Equal`APTERM[sndNum[], repMZW]; sndQ = HOL`Equal`APTERM[sndNum[], repMZV];
+    innerRwR = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[],
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, fstP], fstQ]],
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, sndP], sndQ]];
+    rhsStep1 = TRANS[ufAddR,
+      HOL`Equal`APTERM[absIntConst[],
+        HOL`Equal`APTERM[intCanonConst[], innerRwR]]];
+    (* RHS = ABS_int(intCanon(pp+rr, qq+ss)) *)
+    ezw = canonEquivAt[zw1, zw2];   (* pp + zw2 = zw1 + qq *)
+    ezv = canonEquivAt[zv1, zv2];   (* rr + zv2 = zv1 + ss *)
+    respInstR = HOL`Bool`SPEC[psS, HOL`Bool`SPEC[psF,
+      HOL`Bool`SPEC[plusN[qq, ss], HOL`Bool`SPEC[plusN[pp, rr], canonRespectsThm]]]];
+    targetR = mkEq[plusN[plusN[pp, rr], psS], plusN[psF, plusN[qq, ss]]];
+    hImpR = HOL`Auto`Arith`arithProve[
+      impliesTm[concl[ezw], impliesTm[concl[ezv], targetR]]];
+    respR = HOL`Bool`MP[respInstR,
+      HOL`Bool`MP[HOL`Bool`MP[hImpR, ezw], ezv]];
+    rhsStep2 = TRANS[rhsStep1, HOL`Equal`APTERM[absIntConst[], respR]];
+    (* RHS = ABS_int(intCanon Pstar) *)
+
+    body = TRANS[lhsStep2, HOL`Equal`SYM[rhsStep2]];
+    genV = HOL`Bool`GEN[vV, body];
+    genW = HOL`Bool`GEN[wV, genV];
+    HOL`Bool`GEN[zV, genW]
   ];
 
 End[];
