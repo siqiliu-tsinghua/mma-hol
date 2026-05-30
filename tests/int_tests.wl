@@ -117,3 +117,16 @@ HOLTest`runTests["stdlib/Int: INT_REP (intCanon p)",
       "⊢ INT_REP (intCanon p)"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intRepCanonThm], {}, "no hyps"]
   ]];
+
+HOLTest`runTests["stdlib/Int: intAdd commutativity (functional check)",
+  Module[{one, z0, z1, specZW, addTm, expected},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z0 = mkComb[HOL`Stdlib`Int`intOfNumConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    specZW = HOL`Bool`SPEC[z0, HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intAddCommThm]];
+    addTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intAddConst[], a], b];
+    expected = mkEq[addTm[z1, z0], addTm[z0, z1]];
+    HOLTest`assertEq[concl[specZW], expected,
+      "⊢ intAdd (&ℤ 1) (&ℤ 0) = intAdd (&ℤ 0) (&ℤ 1)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intAddCommThm], {}, "no hyps"]
+  ]];

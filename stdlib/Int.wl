@@ -43,6 +43,10 @@ intCanonConst::usage  = "intCanonConst[] — intCanon : num × num → num × nu
 intCanonDefThm::usage = "intCanonDefThm — ⊢ intCanon = (λp. COND (SND p ≤ FST p) (FST p ∸ SND p, 0) (0, SND p ∸ FST p)).";
 intRepCanonThm::usage = "intRepCanonThm — ⊢ INT_REP (intCanon p) (p free): canonicalization lands in the carve.";
 
+intAddConst::usage  = "intAddConst[] — intAdd : int → int → int, addition. intAdd z w canonicalizes (FST(REP z)+FST(REP w), SND(REP z)+SND(REP w)).";
+intAddDefThm::usage = "intAddDefThm — ⊢ intAdd = (λz w. ABS_int (intCanon (FST (REP_int z) + FST (REP_int w), SND (REP_int z) + SND (REP_int w)))).";
+intAddCommThm::usage = "intAddCommThm — ⊢ ∀z w. intAdd z w = intAdd w z (additive commutativity).";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -421,6 +425,66 @@ intRepCanonThm =
     ];
 
     HOL`Bool`DISJCASES[em, caseT, caseF]
+  ];
+
+(* ============================================================ *)
+(* intAdd : int → int → int                                      *)
+(*   intAdd z w = ABS_int (intCanon (FST(REP z) + FST(REP w),    *)
+(*                                   SND(REP z) + SND(REP w)))   *)
+(* ============================================================ *)
+
+intAddTy = tyFun[intTy, tyFun[intTy, intTy]];
+
+plusN[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`plusConst[], a], b];
+
+intAddPairTm[zT_, wT_] :=
+  Module[{rz, rw},
+    rz = repIntTm[zT]; rw = repIntTm[wT];
+    numPairCons[plusN[fstOf[rz], fstOf[rw]], plusN[sndOf[rz], sndOf[rw]]]
+  ];
+
+intAddDefThm = newDefinition[mkEq[
+  mkVar["intAdd", intAddTy],
+  Module[{zV, wV},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    mkAbs[zV, mkAbs[wV,
+      mkComb[absIntConst[],
+        mkComb[intCanonConst[], intAddPairTm[zV, wV]]]]]]
+]];
+
+intAddConst[] := mkConst["intAdd", intAddTy];
+intAddTm[zT_, wT_] := mkComb[mkComb[intAddConst[], zT], wT];
+
+(* ⊢ intAdd z w = ABS_int (intCanon (F(R z)+F(R w), S(R z)+S(R w))) *)
+unfoldIntAdd[zT_, wT_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[intAddDefThm, zT];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, wT];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* ⊢ ∀z w. intAdd z w = intAdd w z *)
+intAddCommThm =
+  Module[{zV, wV, rz, rw, fz, sz, fw, sw, ufZW, ufWZ,
+          fstComm, sndComm, commaC, pairEq, canonEq, absEq, genW, genZ},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    rz = repIntTm[zV]; rw = repIntTm[wV];
+    fz = fstOf[rz]; sz = sndOf[rz]; fw = fstOf[rw]; sw = sndOf[rw];
+    ufZW = unfoldIntAdd[zV, wV];
+    ufWZ = unfoldIntAdd[wV, zV];
+    (* num addCommThm: ∀m n. m+n = n+m; SPEC m:=fz, n:=fw → fz+fw = fw+fz *)
+    fstComm = HOL`Bool`SPEC[fw, HOL`Bool`SPEC[fz, HOL`Stdlib`Num`addCommThm]];
+    sndComm = HOL`Bool`SPEC[sw, HOL`Bool`SPEC[sz, HOL`Stdlib`Num`addCommThm]];
+    commaC = mkConst[",", tyFun[numTy, tyFun[numTy, numPairTy]]];
+    pairEq = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaC, fstComm], sndComm];
+    (* ⊢ (fz+fw, sz+sw) = (fw+fz, sw+sz) *)
+    canonEq = HOL`Equal`APTERM[intCanonConst[], pairEq];
+    absEq = HOL`Equal`APTERM[absIntConst[], canonEq];
+    (* ⊢ ABS_int(intCanon(fz+fw, sz+sw)) = ABS_int(intCanon(fw+fz, sw+sz)) *)
+    genW = HOL`Bool`GEN[wV, TRANS[ufZW, TRANS[absEq, HOL`Equal`SYM[ufWZ]]]];
+    genZ = HOL`Bool`GEN[zV, genW]
   ];
 
 End[];
