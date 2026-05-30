@@ -73,6 +73,16 @@ intMulDistribThm::usage = "intMulDistribThm — ⊢ ∀z w v. intMul z (intAdd w
 intMulAssocThm::usage = "intMulAssocThm — ⊢ ∀z w v. intMul (intMul z w) v = intMul z (intMul w v). Multiplicative associativity.";
 intMulEqZeroThm::usage = "intMulEqZeroThm — ⊢ ∀z w. intMul z w = &ℤ 0 ⇒ z = &ℤ 0 ∨ w = &ℤ 0. ℤ has no zero divisors (integral domain).";
 
+intLeConst::usage  = "intLeConst[] — intLe : int → int → bool, order. intLe z w ⟺ FST(REP z) + SND(REP w) ≤ FST(REP w) + SND(REP z).";
+intLeDefThm::usage = "intLeDefThm — ⊢ intLe = (λz w. FST(REP z) + SND(REP w) ≤ FST(REP w) + SND(REP z)).";
+intLeReflThm::usage = "intLeReflThm — ⊢ ∀z. intLe z z.";
+intLeAntisymThm::usage = "intLeAntisymThm — ⊢ ∀z w. intLe z w ⇒ intLe w z ⇒ z = w.";
+intLeTransThm::usage = "intLeTransThm — ⊢ ∀z w v. intLe z w ⇒ intLe w v ⇒ intLe z v.";
+intLeTotalThm::usage = "intLeTotalThm — ⊢ ∀z w. intLe z w ∨ intLe w z.";
+intLtConst::usage  = "intLtConst[] — intLt : int → int → bool, strict order. intLt z w ⟺ FST(REP z) + SND(REP w) < FST(REP w) + SND(REP z).";
+intLtDefThm::usage = "intLtDefThm — ⊢ intLt = (λz w. FST(REP z) + SND(REP w) < FST(REP w) + SND(REP z)).";
+intLtNotLeThm::usage = "intLtNotLeThm — ⊢ ∀z w. intLt z w = ¬ (intLe w z).";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -1683,6 +1693,129 @@ intMulEqZeroThm =
         leaf[ASSUME[mkEq[z2, zeroN[]]], False, ASSUME[mkEq[w2, zeroN[]]], False]]];
     HOL`Bool`GEN[zV, HOL`Bool`GEN[wV,
       HOL`Bool`DISCH[mkEq[intMulTm[zV, wV], intZero], mainBody]]]
+  ];
+
+(* ============================================================ *)
+(* Order: intLe / intLt — REP-based, subtraction-free.          *)
+(*   intLe z w ⟺ z1 + w2 ≤ w1 + z2   (i.e. z1−z2 ≤ w1−w2),      *)
+(*   intLt z w ⟺ z1 + w2 < w1 + z2,   zi/wi = FST/SND of REP.    *)
+(* Reflexivity/totality are ℕ leqRefl/leqTotal on the two sums;  *)
+(* transitivity is ℕ-linear (ARITH); antisymmetry uses           *)
+(* canonInjThm (the equal-sum hypothesis says REP z ≈ REP w, so  *)
+(* the canonical reps coincide). intLt = ¬(intLe w z) via the    *)
+(* ℕ order-trichotomy negation notLeqEqLtThm.                    *)
+(* ============================================================ *)
+
+leSum[zT_, wT_] := plusN[fstOf[repIntTm[zT]], sndOf[repIntTm[wT]]];   (* z1 + w2 *)
+intLeTy = tyFun[intTy, tyFun[intTy, boolTy]];
+
+intLeDefThm = newDefinition[mkEq[mkVar["intLe", intLeTy],
+  Module[{zV, wV}, zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    mkAbs[zV, mkAbs[wV, leqNum[leSum[zV, wV], leSum[wV, zV]]]]]]];
+intLeConst[] := mkConst["intLe", intLeTy];
+intLeTm[zT_, wT_] := mkComb[mkComb[intLeConst[], zT], wT];
+
+unfoldIntLe[zT_, wT_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[intLeDefThm, zT];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, wT];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* ⊢ ∀z. intLe z z *)
+intLeReflThm =
+  Module[{zV, z1, z2, refl},
+    zV = mkVar["z", intTy];
+    z1 = fstOf[repIntTm[zV]]; z2 = sndOf[repIntTm[zV]];
+    refl = HOL`Bool`SPEC[plusN[z1, z2], HOL`Stdlib`Num`leqReflThm];
+    HOL`Bool`GEN[zV, EQMP[HOL`Equal`SYM[unfoldIntLe[zV, zV]], refl]]
+  ];
+
+(* ⊢ ∀z w. intLe z w ⇒ intLe w z ⇒ z = w *)
+intLeAntisymThm =
+  Module[{zV, wV, rz, rw, h1, h2, le1, le2, eqSum, injInst, repZW,
+          aVar, absRepZ, absRepW, zEqW},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    rz = repIntTm[zV]; rw = repIntTm[wV];
+    h1 = ASSUME[intLeTm[zV, wV]]; h2 = ASSUME[intLeTm[wV, zV]];
+    le1 = EQMP[unfoldIntLe[zV, wV], h1];   (* z1+w2 ≤ w1+z2 *)
+    le2 = EQMP[unfoldIntLe[wV, zV], h2];   (* w1+z2 ≤ z1+w2 *)
+    eqSum = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[leSum[wV, zV], HOL`Bool`SPEC[leSum[zV, wV],
+        HOL`Stdlib`Num`leqAntisymThm]], le1], le2];   (* z1+w2 = w1+z2 *)
+    injInst = HOL`Bool`SPEC[rw, HOL`Bool`SPEC[rz, canonInjThm]];
+    repZW = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[injInst, intRepRepThm],
+      HOL`Kernel`INST[{zV -> wV}, intRepRepThm]], eqSum];   (* REP z = REP w *)
+    aVar = concl[absRepIntThm][[2]];
+    absRepZ = HOL`Kernel`INST[{aVar -> zV}, absRepIntThm];
+    absRepW = HOL`Kernel`INST[{aVar -> wV}, absRepIntThm];
+    zEqW = TRANS[HOL`Equal`SYM[absRepZ],
+      TRANS[HOL`Equal`APTERM[absIntConst[], repZW], absRepW]];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV,
+      HOL`Bool`DISCH[intLeTm[zV, wV],
+        HOL`Bool`DISCH[intLeTm[wV, zV], zEqW]]]]
+  ];
+
+(* ⊢ ∀z w v. intLe z w ⇒ intLe w v ⇒ intLe z v *)
+intLeTransThm =
+  Module[{zV, wV, vV, z1, z2, v1, v2, h1, h2, le1, le2, goalLeq, imp, leZV},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy]; vV = mkVar["v", intTy];
+    z1 = fstOf[repIntTm[zV]]; z2 = sndOf[repIntTm[zV]];
+    v1 = fstOf[repIntTm[vV]]; v2 = sndOf[repIntTm[vV]];
+    h1 = ASSUME[intLeTm[zV, wV]]; h2 = ASSUME[intLeTm[wV, vV]];
+    le1 = EQMP[unfoldIntLe[zV, wV], h1];   (* z1+w2 ≤ w1+z2 *)
+    le2 = EQMP[unfoldIntLe[wV, vV], h2];   (* w1+v2 ≤ v1+w2 *)
+    goalLeq = leqNum[plusN[z1, v2], plusN[v1, z2]];   (* z1+v2 ≤ v1+z2 *)
+    imp = HOL`Auto`Arith`arithProve[
+      impliesTm[concl[le1], impliesTm[concl[le2], goalLeq]]];
+    leZV = HOL`Bool`MP[HOL`Bool`MP[imp, le1], le2];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, HOL`Bool`GEN[vV,
+      HOL`Bool`DISCH[intLeTm[zV, wV], HOL`Bool`DISCH[intLeTm[wV, vV],
+        EQMP[HOL`Equal`SYM[unfoldIntLe[zV, vV]], leZV]]]]]]
+  ];
+
+(* ⊢ ∀z w. intLe z w ∨ intLe w z *)
+intLeTotalThm =
+  Module[{zV, wV, total, eqL, eqR, disjEq},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    total = HOL`Bool`SPEC[leSum[wV, zV], HOL`Bool`SPEC[leSum[zV, wV],
+      HOL`Stdlib`Num`leqTotalThm]];
+    eqL = HOL`Equal`SYM[unfoldIntLe[zV, wV]];
+    eqR = HOL`Equal`SYM[unfoldIntLe[wV, zV]];
+    disjEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[orC[], eqL], eqR];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, EQMP[disjEq, total]]]
+  ];
+
+ltNumI[aTm_, bTm_] := mkComb[mkComb[HOL`Stdlib`Num`ltConst[], aTm], bTm];
+intLtTy = tyFun[intTy, tyFun[intTy, boolTy]];
+
+intLtDefThm = newDefinition[mkEq[mkVar["intLt", intLtTy],
+  Module[{zV, wV}, zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    mkAbs[zV, mkAbs[wV, ltNumI[leSum[zV, wV], leSum[wV, zV]]]]]]];
+intLtConst[] := mkConst["intLt", intLtTy];
+intLtTm[zT_, wT_] := mkComb[mkComb[intLtConst[], zT], wT];
+
+unfoldIntLt[zT_, wT_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[intLtDefThm, zT];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, wT];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* ⊢ ∀z w. intLt z w = ¬ (intLe w z) *)
+intLtNotLeThm =
+  Module[{zV, wV, step1, nleEqLt, unfoldLtZW},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    step1 = HOL`Equal`APTERM[notOp[], unfoldIntLe[wV, zV]];
+    (* ¬(intLe w z) = ¬((w1+z2) ≤ (z1+w2)) *)
+    nleEqLt = HOL`Bool`SPEC[leSum[zV, wV], HOL`Bool`SPEC[leSum[wV, zV],
+      HOL`Stdlib`Num`notLeqEqLtThm]];
+    (* ¬((w1+z2) ≤ (z1+w2)) = ((z1+w2) < (w1+z2)) *)
+    unfoldLtZW = unfoldIntLt[zV, wV];   (* intLt z w = (z1+w2) < (w1+z2) *)
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV,
+      TRANS[unfoldLtZW, HOL`Equal`SYM[TRANS[step1, nleEqLt]]]]]
   ];
 
 End[];

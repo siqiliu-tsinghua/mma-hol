@@ -326,3 +326,36 @@ HOLTest`runTests["stdlib/Int: intMulEqZeroThm — no zero divisors (integral dom
     HOLTest`assertEq[concl[specZW], expected,
       "⊢ intMul (&ℤ 2) (&ℤ 0) = &ℤ 0 ⇒ &ℤ 2 = &ℤ 0 ∨ &ℤ 0 = &ℤ 0"]
   ]];
+
+(* ===== Stage f (part 1): order intLe / intLt ===== *)
+
+HOLTest`runTests["stdlib/Int: intLe/intLt constant types + order axioms hyp-free",
+  Module[{},
+    HOLTest`assertEq[constType["intLe"],
+      tyFun[HOL`Stdlib`Int`intTy, tyFun[HOL`Stdlib`Int`intTy, boolTy]],
+      "intLe : int → int → bool"];
+    HOLTest`assertEq[constType["intLt"],
+      tyFun[HOL`Stdlib`Int`intTy, tyFun[HOL`Stdlib`Int`intTy, boolTy]],
+      "intLt : int → int → bool"];
+    Scan[Function[t,
+      HOLTest`assertTrue[isThm[t] && hyp[t] === {}, "hyp-free"]],
+      {HOL`Stdlib`Int`intLeReflThm, HOL`Stdlib`Int`intLeAntisymThm,
+       HOL`Stdlib`Int`intLeTransThm, HOL`Stdlib`Int`intLeTotalThm,
+       HOL`Stdlib`Int`intLtNotLeThm}]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intLe reflexivity + antisymmetry (functional checks)",
+  Module[{one, z1, leTm, eqTm, specRefl, specAnti},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];   (* &ℤ 1 *)
+    leTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intLeConst[], a], b];
+    specRefl = HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intLeReflThm];
+    HOLTest`assertEq[concl[specRefl], leTm[z1, z1], "⊢ intLe (&ℤ 1) (&ℤ 1)"];
+    (* antisym SPEC z:=&ℤ1, w:=&ℤ1 → intLe ⇒ intLe ⇒ &ℤ1 = &ℤ1 *)
+    specAnti = HOL`Bool`SPEC[z1, HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intLeAntisymThm]];
+    HOLTest`assertTrue[
+      MatchQ[concl[specAnti], comb[comb[const["\[DoubleRightArrow]", _], _],
+        comb[comb[const["\[DoubleRightArrow]", _], _],
+          comb[comb[const["=", _], _], _]]]],
+      "⊢ intLe ⇒ intLe ⇒ = shape"]
+  ]];
