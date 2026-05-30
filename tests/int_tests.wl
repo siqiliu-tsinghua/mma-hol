@@ -130,3 +130,22 @@ HOLTest`runTests["stdlib/Int: intAdd commutativity (functional check)",
       "⊢ intAdd (&ℤ 1) (&ℤ 0) = intAdd (&ℤ 0) (&ℤ 1)"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intAddCommThm], {}, "no hyps"]
   ]];
+
+HOLTest`runTests["stdlib/Int: intAdd right identity (intAdd z (&ℤ 0) = z)",
+  Module[{one, z0, z1, specZ0, specZ1, addTm, zZero, expected0, expected1},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z0 = mkComb[HOL`Stdlib`Int`intOfNumConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    zZero = z0;   (* &ℤ 0 *)
+    addTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intAddConst[], a], b];
+    specZ0 = HOL`Bool`SPEC[z0, HOL`Stdlib`Int`intAddZeroThm];
+    specZ1 = HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intAddZeroThm];
+    expected0 = mkEq[addTm[z0, zZero], z0];
+    expected1 = mkEq[addTm[z1, zZero], z1];
+    HOLTest`assertEq[concl[specZ0], expected0, "⊢ intAdd (&ℤ 0) (&ℤ 0) = &ℤ 0"];
+    HOLTest`assertEq[concl[specZ1], expected1, "⊢ intAdd (&ℤ 1) (&ℤ 0) = &ℤ 1"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intAddZeroThm], {}, "no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intCanonIdThm] &&
+        hyp[HOL`Stdlib`Int`intCanonIdThm] === {},
+      "intCanonIdThm is a hyp-free theorem"]
+  ]];

@@ -47,6 +47,9 @@ intAddConst::usage  = "intAddConst[] — intAdd : int → int → int, addition.
 intAddDefThm::usage = "intAddDefThm — ⊢ intAdd = (λz w. ABS_int (intCanon (FST (REP_int z) + FST (REP_int w), SND (REP_int z) + SND (REP_int w)))).";
 intAddCommThm::usage = "intAddCommThm — ⊢ ∀z w. intAdd z w = intAdd w z (additive commutativity).";
 
+intCanonIdThm::usage = "intCanonIdThm — ⊢ ∀p. INT_REP p ⇒ intCanon p = p. Canonicalization is idempotent on canonical pairs.";
+intAddZeroThm::usage = "intAddZeroThm — ⊢ ∀z. intAdd z (&ℤ 0) = z. Right additive identity.";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -485,6 +488,161 @@ intAddCommThm =
     (* ⊢ ABS_int(intCanon(fz+fw, sz+sw)) = ABS_int(intCanon(fw+fz, sw+sz)) *)
     genW = HOL`Bool`GEN[wV, TRANS[ufZW, TRANS[absEq, HOL`Equal`SYM[ufWZ]]]];
     genZ = HOL`Bool`GEN[zV, genW]
+  ];
+
+(* ============================================================ *)
+(* intCanonIdThm: ⊢ ∀p. INT_REP p ⇒ intCanon p = p.              *)
+(*                                                              *)
+(* Case-split on the carve disjunction FST p = 0 ∨ SND p = 0.    *)
+(*   SND p = 0: guard 0 ≤ FST p is T → canon = (FST ∸ 0, 0) =    *)
+(*               (FST, 0), and p = (FST, 0) via surj + SND→0.    *)
+(*   FST p = 0: split on guard.                                  *)
+(*     guard T: SND ≤ 0 + 0 ≤ SND ⇒ SND = 0; both zero. canon =  *)
+(*              (0 ∸ 0, 0) = (0, 0); p = (0, 0).                 *)
+(*     guard F: canon = (0, SND ∸ 0) = (0, SND); p = (0, SND).   *)
+(* ============================================================ *)
+
+commaNumC[] := mkConst[",", tyFun[numTy, tyFun[numTy, numPairTy]]];
+
+intCanonIdThm =
+  Module[{pV, fp, sp, guard, bT, bF, canonEq, condTI, condFI,
+          leqC, monusC, intRepHyp, disjFS, surj, caseSnd0, caseFst0,
+          mainCase, dischd, genP},
+    pV = mkVar["p", numPairTy]; fp = fstOf[pV]; sp = sndOf[pV];
+    guard = leqNum[sp, fp];
+    bT = intCanonBranchT[fp, sp]; bF = intCanonBranchF[fp, sp];
+    canonEq = unfoldIntCanon[pV];
+    condTI = HOL`Bool`SPEC[bF, HOL`Bool`SPEC[bT,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numPairTy}, condTThm]]];
+    condFI = HOL`Bool`SPEC[bF, HOL`Bool`SPEC[bT,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numPairTy}, condFThm]]];
+    leqC = HOL`Stdlib`Num`leqConst[];
+    monusC = HOL`Stdlib`Num`monusConst[];
+    intRepHyp = ASSUME[mkComb[intRepConst[], pV]];
+    disjFS = EQMP[unfoldIntRep[pV], intRepHyp];
+    surj = HOL`Bool`ISPEC[pV, HOL`Stdlib`Pair`pairSurjThm];
+
+    caseSnd0 =
+      Module[{sEq0, guardRw, leqFp0, guardThm, gEqT, canonAtBT,
+              monusFpRw, bTRw, pRw},
+        sEq0 = ASSUME[mkEq[sp, zeroN[]]];
+        guardRw = HOL`Equal`APTHM[HOL`Equal`APTERM[leqC, sEq0], fp];
+        leqFp0 = HOL`Bool`SPEC[fp, HOL`Stdlib`Num`leqZeroThm];
+        guardThm = EQMP[HOL`Equal`SYM[guardRw], leqFp0];
+        gEqT = HOL`Bool`EQTINTRO[guardThm];
+        canonAtBT = TRANS[canonEq, condRewrite[gEqT, bT, bF, condTI]];
+        monusFpRw = TRANS[
+          HOL`Equal`APTERM[mkComb[monusC, fp], sEq0],
+          HOL`Bool`SPEC[fp, HOL`Stdlib`Num`monusZeroThm]];
+        bTRw = HOL`Kernel`MKCOMB[
+          HOL`Equal`APTERM[commaNumC[], monusFpRw], REFL[zeroN[]]];
+        pRw = TRANS[HOL`Equal`SYM[surj],
+          HOL`Kernel`MKCOMB[
+            HOL`Equal`APTERM[commaNumC[], REFL[fp]], sEq0]];
+        TRANS[TRANS[canonAtBT, bTRw], HOL`Equal`SYM[pRw]]
+      ];
+
+    caseFst0 =
+      Module[{fEq0, em, caseGT, caseGF},
+        fEq0 = ASSUME[mkEq[fp, zeroN[]]];
+        em = HOL`Bool`EXCLUDEDMIDDLE[guard];
+
+        caseGT =
+          Module[{gHyp, guardRw0, sndLeq0, sndEq0, gEqT, canonAtBT,
+                  monusRw, bTRw, pRw},
+            gHyp = ASSUME[guard];
+            guardRw0 = HOL`Equal`APTERM[mkComb[leqC, sp], fEq0];
+            sndLeq0 = EQMP[guardRw0, gHyp];
+            sndEq0 = HOL`Bool`MP[
+              HOL`Bool`MP[
+                HOL`Bool`SPEC[zeroN[],
+                  HOL`Bool`SPEC[sp, HOL`Stdlib`Num`leqAntisymThm]],
+                sndLeq0],
+              HOL`Bool`SPEC[sp, HOL`Stdlib`Num`leqZeroThm]];
+            gEqT = HOL`Bool`EQTINTRO[gHyp];
+            canonAtBT = TRANS[canonEq, condRewrite[gEqT, bT, bF, condTI]];
+            monusRw = TRANS[
+              HOL`Equal`APTHM[HOL`Equal`APTERM[monusC, fEq0], sp],
+              HOL`Bool`SPEC[sp, HOL`Stdlib`Num`zeroMonusThm]];
+            bTRw = HOL`Kernel`MKCOMB[
+              HOL`Equal`APTERM[commaNumC[], monusRw], REFL[zeroN[]]];
+            pRw = TRANS[HOL`Equal`SYM[surj],
+              HOL`Kernel`MKCOMB[
+                HOL`Equal`APTERM[commaNumC[], fEq0], sndEq0]];
+            TRANS[TRANS[canonAtBT, bTRw], HOL`Equal`SYM[pRw]]
+          ];
+
+        caseGF =
+          Module[{notGHyp, gEqF, canonAtBF, monusRw, bFRw, pRw},
+            notGHyp = ASSUME[mkComb[notOp[], guard]];
+            gEqF = eqFIntro[notGHyp];
+            canonAtBF = TRANS[canonEq, condRewrite[gEqF, bT, bF, condFI]];
+            monusRw = TRANS[
+              HOL`Equal`APTERM[mkComb[monusC, sp], fEq0],
+              HOL`Bool`SPEC[sp, HOL`Stdlib`Num`monusZeroThm]];
+            bFRw = HOL`Kernel`MKCOMB[
+              HOL`Equal`APTERM[commaNumC[], REFL[zeroN[]]], monusRw];
+            pRw = TRANS[HOL`Equal`SYM[surj],
+              HOL`Kernel`MKCOMB[
+                HOL`Equal`APTERM[commaNumC[], fEq0], REFL[sp]]];
+            TRANS[TRANS[canonAtBF, bFRw], HOL`Equal`SYM[pRw]]
+          ];
+
+        HOL`Bool`DISJCASES[em, caseGT, caseGF]
+      ];
+
+    mainCase = HOL`Bool`DISJCASES[disjFS, caseFst0, caseSnd0];
+    dischd = HOL`Bool`DISCH[concl[intRepHyp], mainCase];
+    genP = HOL`Bool`GEN[pV, dischd]
+  ];
+
+(* ============================================================ *)
+(* intAddZeroThm: ⊢ ∀z. intAdd z (&ℤ 0) = z (right identity).    *)
+(*                                                              *)
+(* REP(&ℤ 0) = (0,0) ⇒ FST/SND = 0 ⇒ FRz+0 = FRz, SRz+0 = SRz ⇒  *)
+(* the pair becomes (FRz, SRz) = REP z (surj) ⇒ canon(REP z) =   *)
+(* REP z (intCanonId + intRepRep) ⇒ ABS_int(REP z) = z.          *)
+(* ============================================================ *)
+
+intAddZeroThm =
+  Module[{zV, rz, fz, sz, rzero, ufAdd, repAtZero, fZero, sZero,
+          plusC, fstSimp, sndSimp, pairSimp, canonOfPair, surj,
+          canonOfSurj, pVarCanon, canonIdInst, canonRepZ,
+          aVarAbsRep, absRepZ, step1, step2, step3, step4, genZ},
+    zV = mkVar["z", intTy];
+    rz = repIntTm[zV]; fz = fstOf[rz]; sz = sndOf[rz];
+    rzero = mkComb[intOfNumConst[], zeroN[]];
+    ufAdd = unfoldIntAdd[zV, rzero];
+    (* REP_int (&ℤ 0) = (0, 0) via repIntOfNumThm INST n→0 *)
+    repAtZero = HOL`Kernel`INST[{mkVar["n", numTy] -> zeroN[]}, repIntOfNumThm];
+    fZero = TRANS[HOL`Equal`APTERM[fstNum[], repAtZero],
+      fstNumPairThm[zeroN[], zeroN[]]];
+    sZero = TRANS[HOL`Equal`APTERM[sndNum[], repAtZero],
+      sndNumPairThm[zeroN[], zeroN[]]];
+    plusC = HOL`Stdlib`Num`plusConst[];
+    fstSimp = TRANS[
+      HOL`Equal`APTERM[mkComb[plusC, fz], fZero],
+      HOL`Bool`SPEC[fz, HOL`Stdlib`Num`plusZeroEqThm]];
+    sndSimp = TRANS[
+      HOL`Equal`APTERM[mkComb[plusC, sz], sZero],
+      HOL`Bool`SPEC[sz, HOL`Stdlib`Num`plusZeroEqThm]];
+    pairSimp = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[], fstSimp], sndSimp];
+    canonOfPair = HOL`Equal`APTERM[intCanonConst[], pairSimp];
+    surj = HOL`Bool`ISPEC[rz, HOL`Stdlib`Pair`pairSurjThm];
+    canonOfSurj = HOL`Equal`APTERM[intCanonConst[], surj];
+    (* intCanonIdThm at p := REP z, MP with intRepRepThm *)
+    pVarCanon = concl[intCanonIdThm][[2, 1]];   (* the bound p in ∀p. ... *)
+    canonIdInst = HOL`Bool`SPEC[rz, intCanonIdThm];
+    canonRepZ = HOL`Bool`MP[canonIdInst, intRepRepThm];
+    aVarAbsRep = concl[absRepIntThm][[2]];
+    absRepZ = HOL`Kernel`INST[{aVarAbsRep -> zV}, absRepIntThm];
+
+    step1 = TRANS[ufAdd, HOL`Equal`APTERM[absIntConst[], canonOfPair]];
+    step2 = TRANS[step1, HOL`Equal`APTERM[absIntConst[], canonOfSurj]];
+    step3 = TRANS[step2, HOL`Equal`APTERM[absIntConst[], canonRepZ]];
+    step4 = TRANS[step3, absRepZ];
+    genZ = HOL`Bool`GEN[zV, step4]
   ];
 
 End[];
