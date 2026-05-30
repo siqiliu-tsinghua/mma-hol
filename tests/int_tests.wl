@@ -193,3 +193,39 @@ HOLTest`runTests["stdlib/Int: intAdd associativity (functional check)",
       "⊢ intAdd (intAdd (&ℤ 0) (&ℤ 1)) (&ℤ 2) = intAdd (&ℤ 0) (intAdd (&ℤ 1) (&ℤ 2))"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intAddAssocThm], {}, "no hyps"]
   ]];
+
+(* ===== Stage d (part 5): intSucc / intPred ===== *)
+
+HOLTest`runTests["stdlib/Int: intSucc/intPred constant types",
+  Module[{},
+    HOLTest`assertEq[constType["intSucc"], tyFun[HOL`Stdlib`Int`intTy, HOL`Stdlib`Int`intTy],
+      "intSucc : int → int"];
+    HOLTest`assertEq[constType["intPred"], tyFun[HOL`Stdlib`Int`intTy, HOL`Stdlib`Int`intTy],
+      "intPred : int → int"]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intPred (intSucc z) = z (round-trip)",
+  Module[{one, z1, specZ, succT, predT, expected},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];   (* &ℤ 1 *)
+    succT[t_] := mkComb[HOL`Stdlib`Int`intSuccConst[], t];
+    predT[t_] := mkComb[HOL`Stdlib`Int`intPredConst[], t];
+    specZ = HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intPredSuccThm];
+    expected = mkEq[predT[succT[z1]], z1];
+    HOLTest`assertEq[concl[specZ], expected,
+      "⊢ intPred (intSucc (&ℤ 1)) = &ℤ 1"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intPredSuccThm], {}, "no hyps"]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intSucc (intPred z) = z (round-trip)",
+  Module[{one, z1, specZ, succT, predT, expected},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    succT[t_] := mkComb[HOL`Stdlib`Int`intSuccConst[], t];
+    predT[t_] := mkComb[HOL`Stdlib`Int`intPredConst[], t];
+    specZ = HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intSuccPredThm];
+    expected = mkEq[succT[predT[z1]], z1];
+    HOLTest`assertEq[concl[specZ], expected,
+      "⊢ intSucc (intPred (&ℤ 1)) = &ℤ 1"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intSuccPredThm], {}, "no hyps"]
+  ]];
