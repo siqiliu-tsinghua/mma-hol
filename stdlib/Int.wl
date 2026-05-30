@@ -50,6 +50,11 @@ intAddCommThm::usage = "intAddCommThm — ⊢ ∀z w. intAdd z w = intAdd w z (a
 intCanonIdThm::usage = "intCanonIdThm — ⊢ ∀p. INT_REP p ⇒ intCanon p = p. Canonicalization is idempotent on canonical pairs.";
 intAddZeroThm::usage = "intAddZeroThm — ⊢ ∀z. intAdd z (&ℤ 0) = z. Right additive identity.";
 intAddNegThm::usage = "intAddNegThm — ⊢ ∀z. intAdd z (intNeg z) = &ℤ 0. Right additive inverse.";
+canonEquivThm::usage = "canonEquivThm — ⊢ ∀p. FST (intCanon p) + SND p = FST p + SND (intCanon p). intCanon p is Grothendieck-equivalent to p.";
+canonInjThm::usage = "canonInjThm — ⊢ ∀p q. INT_REP p ⇒ INT_REP q ⇒ FST p + SND q = FST q + SND p ⇒ p = q. Canonical representatives are unique within an equivalence class.";
+canonRespectsThm::usage = "canonRespectsThm — ⊢ ∀a b c d. a + d = c + b ⇒ intCanon (a, b) = intCanon (c, d). intCanon depends only on the equivalence class.";
+repIntAddThm::usage = "repIntAddThm — ⊢ ∀z w. REP_int (intAdd z w) = intCanon (FST (REP_int z) + FST (REP_int w), SND (REP_int z) + SND (REP_int w)). Characterizes intAdd's representative.";
+intAddAssocThm::usage = "intAddAssocThm — ⊢ ∀z w v. intAdd (intAdd z w) v = intAdd z (intAdd w v). Additive associativity.";
 
 Begin["`Private`"];
 
@@ -717,6 +722,309 @@ intAddNegThm =
     zeroEq = unfoldIntOfNum[zeroN[]];   (* &ℤ 0 = ABS_int(0,0) *)
     genZ = HOL`Bool`GEN[zV,
       TRANS[ufAdd, TRANS[absStep, HOL`Equal`SYM[zeroEq]]]]
+  ];
+
+(* ============================================================ *)
+(* Associativity support: the equivalence-class machinery.       *)
+(*                                                              *)
+(* A pair (a,b) stands for a−b; (a,b) and (c,d) are equivalent   *)
+(* (≈) iff a+d = c+b. intCanon maps each pair to THE canonical   *)
+(* representative of its class. Three facts drive associativity: *)
+(*   canonEquivThm    — intCanon p ≈ p.                          *)
+(*   canonInjThm      — equivalent canonical pairs are equal.    *)
+(*   canonRespectsThm — equivalent pairs canonicalize equally.   *)
+(* The num-level linear glue is discharged by ARITH (loaded      *)
+(* right after Num.wl), with FST/SND of opaque pairs abstracted  *)
+(* to atoms.                                                     *)
+(* ============================================================ *)
+
+impliesTm[xTm_, yTm_] := mkComb[mkComb[
+  mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], xTm], yTm];
+
+(* ⊢ ∀p. FST (intCanon p) + SND p = FST p + SND (intCanon p) *)
+canonEquivThm =
+  Module[{pV, fp, sp, guard, bT, bF, canonEq, condTI, condFI,
+          plusC, sucC, em, caseT, caseF},
+    pV = mkVar["p", numPairTy]; fp = fstOf[pV]; sp = sndOf[pV];
+    guard = leqNum[sp, fp];
+    bT = intCanonBranchT[fp, sp]; bF = intCanonBranchF[fp, sp];
+    canonEq = unfoldIntCanon[pV];
+    condTI = HOL`Bool`SPEC[bF, HOL`Bool`SPEC[bT,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numPairTy}, condTThm]]];
+    condFI = HOL`Bool`SPEC[bF, HOL`Bool`SPEC[bT,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numPairTy}, condFThm]]];
+    plusC = HOL`Stdlib`Num`plusConst[];
+    sucC = HOL`Stdlib`Num`sucConst[];
+    em = HOL`Bool`EXCLUDEDMIDDLE[guard];
+
+    caseT =
+      Module[{gHyp, gEqT, canonT, fstCanon, sndCanon, lhsStep, monusFact,
+              commFact, lhsToFp, lhsEqFp, rhsStep, rhsEqFp},
+        gHyp = ASSUME[guard];
+        gEqT = HOL`Bool`EQTINTRO[gHyp];
+        canonT = TRANS[canonEq, condRewrite[gEqT, bT, bF, condTI]];
+        fstCanon = TRANS[HOL`Equal`APTERM[fstNum[], canonT],
+          fstNumPairThm[monusNum[fp, sp], zeroN[]]];
+        sndCanon = TRANS[HOL`Equal`APTERM[sndNum[], canonT],
+          sndNumPairThm[monusNum[fp, sp], zeroN[]]];
+        lhsStep = HOL`Kernel`MKCOMB[
+          HOL`Equal`APTERM[plusC, fstCanon], REFL[sp]];
+        monusFact = HOL`Bool`MP[
+          HOL`Bool`SPEC[sp, HOL`Bool`SPEC[fp, HOL`Stdlib`Num`leqAddMonusThm]],
+          gHyp];   (* sp + (fp∸sp) = fp *)
+        commFact = HOL`Bool`SPEC[sp,
+          HOL`Bool`SPEC[monusNum[fp, sp], HOL`Stdlib`Num`addCommThm]];
+        lhsToFp = TRANS[commFact, monusFact];   (* (fp∸sp)+sp = fp *)
+        lhsEqFp = TRANS[lhsStep, lhsToFp];
+        rhsStep = HOL`Equal`APTERM[mkComb[plusC, fp], sndCanon];
+        rhsEqFp = TRANS[rhsStep, HOL`Bool`SPEC[fp, HOL`Stdlib`Num`plusZeroEqThm]];
+        TRANS[lhsEqFp, HOL`Equal`SYM[rhsEqFp]]
+      ];
+
+    caseF =
+      Module[{notGHyp, gEqF, canonF, fstCanon, sndCanon, ltFact, sucLeq,
+              ltUnfold, leqFpSp, monusFact, rhsStep, rhsEqSp, lhsStep,
+              zeroAddSp, lhsEqSp},
+        notGHyp = ASSUME[mkComb[notOp[], guard]];
+        gEqF = eqFIntro[notGHyp];
+        canonF = TRANS[canonEq, condRewrite[gEqF, bT, bF, condFI]];
+        fstCanon = TRANS[HOL`Equal`APTERM[fstNum[], canonF],
+          fstNumPairThm[zeroN[], monusNum[sp, fp]]];   (* FST cp = 0 *)
+        sndCanon = TRANS[HOL`Equal`APTERM[sndNum[], canonF],
+          sndNumPairThm[zeroN[], monusNum[sp, fp]]];   (* SND cp = sp∸fp *)
+        ltFact = EQMP[
+          HOL`Bool`SPEC[fp, HOL`Bool`SPEC[sp, HOL`Stdlib`Num`notLeqEqLtThm]],
+          notGHyp];   (* fp < sp *)
+        ltUnfold = Module[{a1, a2},
+          a1 = HOL`Equal`APTHM[HOL`Stdlib`Num`ltDefThm, fp];
+          a1 = TRANS[a1, BETACONV[concl[a1][[2]]]];
+          a2 = HOL`Equal`APTHM[a1, sp];
+          TRANS[a2, BETACONV[concl[a2][[2]]]]];
+        sucLeq = EQMP[ltUnfold, ltFact];   (* SUC fp ≤ sp *)
+        leqFpSp = HOL`Bool`MP[
+          HOL`Bool`MP[
+            HOL`Bool`SPEC[sp, HOL`Bool`SPEC[mkComb[sucC, fp],
+              HOL`Bool`SPEC[fp, HOL`Stdlib`Num`leqTransThm]]],
+            HOL`Bool`SPEC[fp, HOL`Stdlib`Num`leqSucThm]],
+          sucLeq];   (* fp ≤ sp *)
+        monusFact = HOL`Bool`MP[
+          HOL`Bool`SPEC[fp, HOL`Bool`SPEC[sp, HOL`Stdlib`Num`leqAddMonusThm]],
+          leqFpSp];   (* fp + (sp∸fp) = sp *)
+        rhsStep = HOL`Equal`APTERM[mkComb[plusC, fp], sndCanon];
+        rhsEqSp = TRANS[rhsStep, monusFact];
+        lhsStep = HOL`Kernel`MKCOMB[
+          HOL`Equal`APTERM[plusC, fstCanon], REFL[sp]];
+        zeroAddSp = HOL`Bool`SPEC[sp, HOL`Stdlib`Num`addLeftZeroThm];
+        lhsEqSp = TRANS[lhsStep, zeroAddSp];
+        TRANS[lhsEqSp, HOL`Equal`SYM[rhsEqSp]]
+      ];
+
+    HOL`Bool`GEN[pV, HOL`Bool`DISJCASES[em, caseT, caseF]]
+  ];
+
+(* ⊢ ∀p q. INT_REP p ⇒ INT_REP q ⇒
+            FST p + SND q = FST q + SND p ⇒ p = q                *)
+canonInjThm =
+  Module[{pV, qV, a, b, cc, d, H, repP, repQ, hypH, disjP, disjQ,
+          surjP, surjQ, assemble, arithImp, mkCase,
+          caseAC, caseAD, caseBC, caseBD, body, dH, dRq, dRp, genQ},
+    pV = mkVar["p", numPairTy]; qV = mkVar["q", numPairTy];
+    a = fstOf[pV]; b = sndOf[pV]; cc = fstOf[qV]; d = sndOf[qV];
+    H = mkEq[plusN[a, d], plusN[cc, b]];
+    repP = ASSUME[mkComb[intRepConst[], pV]];
+    repQ = ASSUME[mkComb[intRepConst[], qV]];
+    hypH = ASSUME[H];
+    disjP = EQMP[unfoldIntRep[pV], repP];   (* FST p=0 ∨ SND p=0 *)
+    disjQ = EQMP[unfoldIntRep[qV], repQ];
+    surjP = HOL`Bool`ISPEC[pV, HOL`Stdlib`Pair`pairSurjThm];
+    surjQ = HOL`Bool`ISPEC[qV, HOL`Stdlib`Pair`pairSurjThm];
+    assemble[fcEq_, scEq_] :=
+      TRANS[HOL`Equal`SYM[surjP],
+        TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], fcEq], scEq],
+          surjQ]];   (* p = q *)
+    arithImp[zeroP_, zeroQ_, goalEq_] :=
+      HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Auto`Arith`arithProve[
+          impliesTm[zeroP, impliesTm[zeroQ, impliesTm[H, goalEq]]]],
+        ASSUME[zeroP]], ASSUME[zeroQ]], hypH];
+    mkCase[zeroP_, zeroQ_] :=
+      assemble[arithImp[zeroP, zeroQ, mkEq[a, cc]],
+               arithImp[zeroP, zeroQ, mkEq[b, d]]];
+    caseAC = mkCase[mkEq[a, zeroN[]], mkEq[cc, zeroN[]]];
+    caseAD = mkCase[mkEq[a, zeroN[]], mkEq[d, zeroN[]]];
+    caseBC = mkCase[mkEq[b, zeroN[]], mkEq[cc, zeroN[]]];
+    caseBD = mkCase[mkEq[b, zeroN[]], mkEq[d, zeroN[]]];
+    body = HOL`Bool`DISJCASES[disjP,
+      HOL`Bool`DISJCASES[disjQ, caseAC, caseAD],
+      HOL`Bool`DISJCASES[disjQ, caseBC, caseBD]];
+    dH = HOL`Bool`DISCH[H, body];
+    dRq = HOL`Bool`DISCH[mkComb[intRepConst[], qV], dH];
+    dRp = HOL`Bool`DISCH[mkComb[intRepConst[], pV], dRq];
+    genQ = HOL`Bool`GEN[qV, dRp];
+    HOL`Bool`GEN[pV, genQ]
+  ];
+
+(* ⊢ ∀a b c d. a + d = c + b ⇒ intCanon (a,b) = intCanon (c,d) *)
+canonRespectsThm =
+  Module[{aV, bV, cV, dV, abPair, cdPair, c1, c2, H, repC1, repC2,
+          pVarRC, raw1, raw2, eq1, eq2, plusC, lhsS1, rhsS1, lhsS2, rhsS2,
+          bridgeGoal, bridgeImp, bridge, injInst, mpd,
+          dischd, genD, genC, genB},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    cV = mkVar["c", numTy]; dV = mkVar["d", numTy];
+    abPair = numPairCons[aV, bV]; cdPair = numPairCons[cV, dV];
+    c1 = mkComb[intCanonConst[], abPair]; c2 = mkComb[intCanonConst[], cdPair];
+    H = mkEq[plusN[aV, dV], plusN[cV, bV]];
+    plusC = HOL`Stdlib`Num`plusConst[];
+    pVarRC = mkVar["p", numPairTy];
+    repC1 = HOL`Kernel`INST[{pVarRC -> abPair}, intRepCanonThm];
+    repC2 = HOL`Kernel`INST[{pVarRC -> cdPair}, intRepCanonThm];
+    raw1 = HOL`Bool`SPEC[abPair, canonEquivThm];
+    lhsS1 = HOL`Equal`APTERM[mkComb[plusC, fstOf[c1]], sndNumPairThm[aV, bV]];
+    rhsS1 = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[plusC, fstNumPairThm[aV, bV]], REFL[sndOf[c1]]];
+    eq1 = TRANS[TRANS[HOL`Equal`SYM[lhsS1], raw1], rhsS1];   (* FST c1+b = a+SND c1 *)
+    raw2 = HOL`Bool`SPEC[cdPair, canonEquivThm];
+    lhsS2 = HOL`Equal`APTERM[mkComb[plusC, fstOf[c2]], sndNumPairThm[cV, dV]];
+    rhsS2 = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[plusC, fstNumPairThm[cV, dV]], REFL[sndOf[c2]]];
+    eq2 = TRANS[TRANS[HOL`Equal`SYM[lhsS2], raw2], rhsS2];
+    bridgeGoal = mkEq[plusN[fstOf[c1], sndOf[c2]], plusN[fstOf[c2], sndOf[c1]]];
+    bridgeImp = HOL`Auto`Arith`arithProve[
+      impliesTm[concl[eq1], impliesTm[concl[eq2], impliesTm[H, bridgeGoal]]]];
+    bridge = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[bridgeImp, eq1], eq2],
+      ASSUME[H]];
+    injInst = HOL`Bool`SPEC[c2, HOL`Bool`SPEC[c1, canonInjThm]];
+    mpd = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[injInst, repC1], repC2], bridge];
+    dischd = HOL`Bool`DISCH[H, mpd];
+    genD = HOL`Bool`GEN[dV, dischd];
+    genC = HOL`Bool`GEN[cV, genD];
+    genB = HOL`Bool`GEN[bV, genC];
+    HOL`Bool`GEN[aV, genB]
+  ];
+
+(* ============================================================ *)
+(* intAddAssocThm: ⊢ ∀z w v. intAdd (intAdd z w) v =             *)
+(*                           intAdd z (intAdd w v).              *)
+(*                                                              *)
+(* REP(intAdd z w) = intCanon(z1+w1, z2+w2) [repIntAddThm]. Both *)
+(* sides reduce to ABS_int(intCanon(SUM)) where SUM's components *)
+(* differ only by addAssoc; the canon-of-canon collapses via     *)
+(* canonRespectsThm fed a canonEquivThm-derived equivalence.     *)
+(* ============================================================ *)
+
+(* ⊢ REP_int (intAdd zT wT) = intCanon (intAddPair zT wT) *)
+repIntAddAt[zT_, wT_] :=
+  Module[{ufAdd, canonP, applyRep, rVar, repAbsInst, repCanonP, repEq},
+    ufAdd = unfoldIntAdd[zT, wT];
+    canonP = mkComb[intCanonConst[], intAddPairTm[zT, wT]];
+    applyRep = HOL`Equal`APTERM[repIntConst[], ufAdd];
+    rVar = concl[repAbsIntThm][[1, 2, 2]];
+    repAbsInst = HOL`Kernel`INST[{rVar -> canonP}, repAbsIntThm];
+    repCanonP = HOL`Kernel`INST[
+      {mkVar["p", numPairTy] -> intAddPairTm[zT, wT]}, intRepCanonThm];
+    repEq = EQMP[repAbsInst, repCanonP];
+    TRANS[applyRep, repEq]
+  ];
+
+repIntAddThm =
+  Module[{zV, wV},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, repIntAddAt[zV, wV]]]
+  ];
+
+(* ⊢ FST (intCanon (x1,x2)) + x2 = x1 + SND (intCanon (x1,x2)) *)
+canonEquivAt[x1_, x2_] :=
+  Module[{pr, cc, plusC, raw, lhsS, rhsS},
+    pr = numPairCons[x1, x2]; cc = mkComb[intCanonConst[], pr];
+    plusC = HOL`Stdlib`Num`plusConst[];
+    raw = HOL`Bool`SPEC[pr, canonEquivThm];
+    lhsS = HOL`Equal`APTERM[mkComb[plusC, fstOf[cc]], sndNumPairThm[x1, x2]];
+    rhsS = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[plusC, fstNumPairThm[x1, x2]], REFL[sndOf[cc]]];
+    TRANS[TRANS[HOL`Equal`SYM[lhsS], raw], rhsS]
+  ];
+
+intAddAssocThm =
+  Module[{zV, wV, vV, rz, rw, rv, z1, z2, w1, w2, v1, v2, s1, s2, t1, t2,
+          P, Q, cp, dq, cpf, cps, dqf, dqs, plusC, lhsUf, repZW, fstRwL,
+          sndRwL, innerL, lhsStep1, eqP, respL, lhsStep2, rhsUf, repWV,
+          fstRwR, sndRwR, innerR, rhsStep1, eqQ, respR, rhsStep2, assoc1,
+          assoc2, pairFinal, canonFinal, absFinal, body, genV, genW},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy]; vV = mkVar["v", intTy];
+    rz = repIntTm[zV]; rw = repIntTm[wV]; rv = repIntTm[vV];
+    z1 = fstOf[rz]; z2 = sndOf[rz]; w1 = fstOf[rw]; w2 = sndOf[rw];
+    v1 = fstOf[rv]; v2 = sndOf[rv];
+    s1 = plusN[z1, w1]; s2 = plusN[z2, w2];
+    t1 = plusN[w1, v1]; t2 = plusN[w2, v2];
+    P = intAddPairTm[zV, wV]; Q = intAddPairTm[wV, vV];
+    cp = mkComb[intCanonConst[], P]; dq = mkComb[intCanonConst[], Q];
+    cpf = fstOf[cp]; cps = sndOf[cp]; dqf = fstOf[dq]; dqs = sndOf[dq];
+    plusC = HOL`Stdlib`Num`plusConst[];
+
+    (* ---- LHS = ABS_int(intCanon(cpf+v1, cps+v2)) ---- *)
+    lhsUf = unfoldIntAdd[intAddTm[zV, wV], vV];
+    repZW = repIntAddAt[zV, wV];
+    fstRwL = HOL`Equal`APTERM[fstNum[], repZW];   (* FST(REP(z+w)) = cpf *)
+    sndRwL = HOL`Equal`APTERM[sndNum[], repZW];
+    innerL = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[],
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, fstRwL], REFL[v1]]],
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, sndRwL], REFL[v2]]];
+    lhsStep1 = TRANS[lhsUf,
+      HOL`Equal`APTERM[absIntConst[],
+        HOL`Equal`APTERM[intCanonConst[], innerL]]];
+    eqP = canonEquivAt[s1, s2];   (* cpf + s2 = s1 + cps *)
+    respL = Module[{respInst, target, hImp},
+      respInst = HOL`Bool`SPEC[plusN[s2, v2],
+        HOL`Bool`SPEC[plusN[s1, v1],
+          HOL`Bool`SPEC[plusN[cps, v2],
+            HOL`Bool`SPEC[plusN[cpf, v1], canonRespectsThm]]]];
+      target = mkEq[plusN[plusN[cpf, v1], plusN[s2, v2]],
+                    plusN[plusN[s1, v1], plusN[cps, v2]]];
+      hImp = HOL`Auto`Arith`arithProve[impliesTm[concl[eqP], target]];
+      HOL`Bool`MP[respInst, HOL`Bool`MP[hImp, eqP]]];
+    lhsStep2 = TRANS[lhsStep1, HOL`Equal`APTERM[absIntConst[], respL]];
+    (* LHS = ABS_int(intCanon(s1+v1, s2+v2)) *)
+
+    (* ---- RHS = ABS_int(intCanon(z1+dqf, z2+dqs)) ---- *)
+    rhsUf = unfoldIntAdd[zV, intAddTm[wV, vV]];
+    repWV = repIntAddAt[wV, vV];
+    fstRwR = HOL`Equal`APTERM[fstNum[], repWV];
+    sndRwR = HOL`Equal`APTERM[sndNum[], repWV];
+    innerR = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[],
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, REFL[z1]], fstRwR]],
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, REFL[z2]], sndRwR]];
+    rhsStep1 = TRANS[rhsUf,
+      HOL`Equal`APTERM[absIntConst[],
+        HOL`Equal`APTERM[intCanonConst[], innerR]]];
+    eqQ = canonEquivAt[t1, t2];   (* dqf + t2 = t1 + dqs *)
+    respR = Module[{respInst, target, hImp},
+      respInst = HOL`Bool`SPEC[plusN[z2, t2],
+        HOL`Bool`SPEC[plusN[z1, t1],
+          HOL`Bool`SPEC[plusN[z2, dqs],
+            HOL`Bool`SPEC[plusN[z1, dqf], canonRespectsThm]]]];
+      target = mkEq[plusN[plusN[z1, dqf], plusN[z2, t2]],
+                    plusN[plusN[z1, t1], plusN[z2, dqs]]];
+      hImp = HOL`Auto`Arith`arithProve[impliesTm[concl[eqQ], target]];
+      HOL`Bool`MP[respInst, HOL`Bool`MP[hImp, eqQ]]];
+    rhsStep2 = TRANS[rhsStep1, HOL`Equal`APTERM[absIntConst[], respR]];
+    (* RHS = ABS_int(intCanon(z1+t1, z2+t2)) *)
+
+    (* ---- align: s1+v1 = z1+t1, s2+v2 = z2+t2 by addAssoc ---- *)
+    assoc1 = HOL`Bool`SPEC[v1, HOL`Bool`SPEC[w1,
+      HOL`Bool`SPEC[z1, HOL`Stdlib`Num`addAssocThm]]];
+    assoc2 = HOL`Bool`SPEC[v2, HOL`Bool`SPEC[w2,
+      HOL`Bool`SPEC[z2, HOL`Stdlib`Num`addAssocThm]]];
+    pairFinal = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[], assoc1], assoc2];
+    canonFinal = HOL`Equal`APTERM[intCanonConst[], pairFinal];
+    absFinal = HOL`Equal`APTERM[absIntConst[], canonFinal];
+    body = TRANS[lhsStep2, TRANS[absFinal, HOL`Equal`SYM[rhsStep2]]];
+    genV = HOL`Bool`GEN[vV, body];
+    genW = HOL`Bool`GEN[wV, genV];
+    HOL`Bool`GEN[zV, genW]
   ];
 
 End[];

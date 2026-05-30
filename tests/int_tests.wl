@@ -163,3 +163,33 @@ HOLTest`runTests["stdlib/Int: intAdd right inverse (intAdd z (intNeg z) = &ℤ 0
       "⊢ intAdd (&ℤ 1) (intNeg (&ℤ 1)) = &ℤ 0"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intAddNegThm], {}, "no hyps"]
   ]];
+
+(* ===== Stage d (part 4): additive associativity ===== *)
+
+HOLTest`runTests["stdlib/Int: canon equivalence-class lemmas are hyp-free",
+  Module[{},
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`canonEquivThm] &&
+        hyp[HOL`Stdlib`Int`canonEquivThm] === {}, "canonEquivThm"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`canonInjThm] &&
+        hyp[HOL`Stdlib`Int`canonInjThm] === {}, "canonInjThm"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`canonRespectsThm] &&
+        hyp[HOL`Stdlib`Int`canonRespectsThm] === {}, "canonRespectsThm"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`repIntAddThm] &&
+        hyp[HOL`Stdlib`Int`repIntAddThm] === {}, "repIntAddThm"]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intAdd associativity (functional check)",
+  Module[{one, two, z0, z1, z2, addTm, specZWV, expected},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    two = mkComb[HOL`Stdlib`Num`sucConst[], one];
+    z0 = mkComb[HOL`Stdlib`Int`intOfNumConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    z2 = mkComb[HOL`Stdlib`Int`intOfNumConst[], two];
+    addTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intAddConst[], a], b];
+    specZWV = HOL`Bool`SPEC[z2, HOL`Bool`SPEC[z1,
+      HOL`Bool`SPEC[z0, HOL`Stdlib`Int`intAddAssocThm]]];
+    expected = mkEq[addTm[addTm[z0, z1], z2], addTm[z0, addTm[z1, z2]]];
+    HOLTest`assertEq[concl[specZWV], expected,
+      "⊢ intAdd (intAdd (&ℤ 0) (&ℤ 1)) (&ℤ 2) = intAdd (&ℤ 0) (intAdd (&ℤ 1) (&ℤ 2))"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intAddAssocThm], {}, "no hyps"]
+  ]];
