@@ -402,3 +402,48 @@ HOLTest`runTests["stdlib/Int: mult-by-nonneg monotonicity + ℕ crossMultLeqThm 
     HOLTest`assertEq[concl[specMul], expMul,
       "⊢ intLe (&ℤ0)(&ℤ1) ⇒ intLe (&ℤ1)(&ℤ1) ⇒ intLe (intMul (&ℤ1)(&ℤ1)) (intMul (&ℤ1)(&ℤ1))"]
   ]];
+
+(* ===== Stage g: &ℤ homomorphism + intAbs ===== *)
+
+HOLTest`runTests["stdlib/Int: &ℤ ring/order homomorphism (functional checks)",
+  Module[{mV, nV, ofNum, addTm, mulTm, leTm, plusN, timesN, leqN, specAdd, specMul, specLe},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    ofNum[t_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], t];
+    addTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intAddConst[], a], b];
+    mulTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intMulConst[], a], b];
+    leTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intLeConst[], a], b];
+    plusN[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`plusConst[], a], b];
+    timesN[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`timesConst[], a], b];
+    leqN[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+    specAdd = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, HOL`Stdlib`Int`intOfNumAddThm]];
+    HOLTest`assertEq[concl[specAdd],
+      mkEq[ofNum[plusN[mV, nV]], addTm[ofNum[mV], ofNum[nV]]],
+      "⊢ &ℤ(m+n) = intAdd (&ℤ m) (&ℤ n)"];
+    specMul = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, HOL`Stdlib`Int`intOfNumMulThm]];
+    HOLTest`assertEq[concl[specMul],
+      mkEq[ofNum[timesN[mV, nV]], mulTm[ofNum[mV], ofNum[nV]]],
+      "⊢ &ℤ(m*n) = intMul (&ℤ m) (&ℤ n)"];
+    specLe = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, HOL`Stdlib`Int`intOfNumLeThm]];
+    HOLTest`assertEq[concl[specLe],
+      mkEq[leTm[ofNum[mV], ofNum[nV]], leqN[mV, nV]],
+      "⊢ intLe (&ℤ m) (&ℤ n) = (m ≤ n)"];
+    Scan[Function[t, HOLTest`assertEq[hyp[t], {}, "no hyps"]],
+      {HOL`Stdlib`Int`intOfNumAddThm, HOL`Stdlib`Int`intOfNumMulThm,
+       HOL`Stdlib`Int`intOfNumLeThm}]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intAbs (type + lemmas hyp-free + functional check)",
+  Module[{one, z1, absTm, negTm, ofNum, specNum, expNum},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    ofNum[t_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], t];
+    z1 = ofNum[one];
+    absTm[a_] := mkComb[HOL`Stdlib`Int`intAbsConst[], a];
+    HOLTest`assertEq[constType["intAbs"],
+      tyFun[HOL`Stdlib`Int`intTy, HOL`Stdlib`Int`intTy], "intAbs : int → int"];
+    Scan[Function[t, HOLTest`assertEq[hyp[t], {}, "no hyps"]],
+      {HOL`Stdlib`Int`intAbsNumThm, HOL`Stdlib`Int`intAbsNegThm,
+       HOL`Stdlib`Int`intAbsNonnegThm}];
+    (* intAbs (&ℤ 1) = &ℤ 1 *)
+    specNum = HOL`Bool`SPEC[one, HOL`Stdlib`Int`intAbsNumThm];
+    HOLTest`assertEq[concl[specNum], mkEq[absTm[z1], z1], "⊢ intAbs (&ℤ 1) = &ℤ 1"]
+  ]];
