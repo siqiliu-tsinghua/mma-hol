@@ -63,6 +63,13 @@ intPredDefThm::usage = "intPredDefThm — ⊢ intPred = (λz. intAdd z (intNeg (
 intPredSuccThm::usage = "intPredSuccThm — ⊢ ∀z. intPred (intSucc z) = z.";
 intSuccPredThm::usage = "intSuccPredThm — ⊢ ∀z. intSucc (intPred z) = z.";
 
+intMulConst::usage  = "intMulConst[] — intMul : int → int → int, multiplication. (a−b)(c−d) = (ac+bd)−(ad+bc).";
+intMulDefThm::usage = "intMulDefThm — ⊢ intMul = (λz w. ABS_int (intCanon (FST(REP z)*FST(REP w) + SND(REP z)*SND(REP w), FST(REP z)*SND(REP w) + SND(REP z)*FST(REP w)))).";
+repIntMulThm::usage = "repIntMulThm — ⊢ ∀z w. REP_int (intMul z w) = intCanon (FST(REP z)*FST(REP w) + SND(REP z)*SND(REP w), FST(REP z)*SND(REP w) + SND(REP z)*FST(REP w)).";
+intMulCommThm::usage = "intMulCommThm — ⊢ ∀z w. intMul z w = intMul w z.";
+intMulOneThm::usage = "intMulOneThm — ⊢ ∀z. intMul z (&ℤ (SUC 0)) = z. Right multiplicative identity.";
+intMulZeroThm::usage = "intMulZeroThm — ⊢ ∀z. intMul z (&ℤ 0) = &ℤ 0. Right absorbing element.";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -1108,6 +1115,170 @@ intSuccPredThm =
       HOL`Equal`APTERM[mkComb[intAddConst[], zV], innerEq]];   (* = intAdd z (&ℤ 0) *)
     step4 = TRANS[step3, HOL`Bool`SPEC[zV, intAddZeroThm]];   (* = z *)
     HOL`Bool`GEN[zV, step4]
+  ];
+
+(* ============================================================ *)
+(* intMul : int → int → int — multiplication.                   *)
+(*   (a−b)(c−d) = (ac+bd) − (ad+bc), so intMul z w canonicalizes *)
+(*   (z1*w1 + z2*w2, z1*w2 + z2*w1) where z1=FST(REP z) etc.     *)
+(* repIntMulThm mirrors repIntAddThm (reusable for distributivity *)
+(* / associativity); comm/identity/zero follow as for add but    *)
+(* with num timesComm / timesZero / oneTimes lemmas (products    *)
+(* are opaque to ARITH, so this glue is explicit num rewriting). *)
+(* ============================================================ *)
+
+timesNC[] := HOL`Stdlib`Num`timesConst[];
+timesN[aTm_, bTm_] := mkComb[mkComb[timesNC[], aTm], bTm];
+intMulTy = tyFun[intTy, tyFun[intTy, intTy]];
+
+intMulPairTm[zT_, wT_] :=
+  Module[{rz, rw, z1, z2, w1, w2},
+    rz = repIntTm[zT]; rw = repIntTm[wT];
+    z1 = fstOf[rz]; z2 = sndOf[rz]; w1 = fstOf[rw]; w2 = sndOf[rw];
+    numPairCons[plusN[timesN[z1, w1], timesN[z2, w2]],
+                plusN[timesN[z1, w2], timesN[z2, w1]]]
+  ];
+
+intMulDefThm = newDefinition[mkEq[mkVar["intMul", intMulTy],
+  Module[{zV, wV}, zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    mkAbs[zV, mkAbs[wV,
+      mkComb[absIntConst[],
+        mkComb[intCanonConst[], intMulPairTm[zV, wV]]]]]]]];
+
+intMulConst[] := mkConst["intMul", intMulTy];
+intMulTm[zT_, wT_] := mkComb[mkComb[intMulConst[], zT], wT];
+
+unfoldIntMul[zT_, wT_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[intMulDefThm, zT];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, wT];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
+  ];
+
+(* ⊢ REP_int (intMul zT wT) = intCanon (intMulPair zT wT) *)
+repIntMulAt[zT_, wT_] :=
+  Module[{ufMul, canonP, applyRep, rVar, repAbsInst, repCanonP, repEq},
+    ufMul = unfoldIntMul[zT, wT];
+    canonP = mkComb[intCanonConst[], intMulPairTm[zT, wT]];
+    applyRep = HOL`Equal`APTERM[repIntConst[], ufMul];
+    rVar = concl[repAbsIntThm][[1, 2, 2]];
+    repAbsInst = HOL`Kernel`INST[{rVar -> canonP}, repAbsIntThm];
+    repCanonP = HOL`Kernel`INST[
+      {mkVar["p", numPairTy] -> intMulPairTm[zT, wT]}, intRepCanonThm];
+    repEq = EQMP[repAbsInst, repCanonP];
+    TRANS[applyRep, repEq]
+  ];
+
+repIntMulThm =
+  Module[{zV, wV}, zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, repIntMulAt[zV, wV]]]];
+
+(* ⊢ m * n = n * m  at chosen m, n *)
+timesCommAt[mTm_, nTm_] :=
+  HOL`Bool`SPEC[nTm, HOL`Bool`SPEC[mTm, HOL`Stdlib`Num`timesCommThm]];
+
+(* ⊢ ∀z w. intMul z w = intMul w z *)
+intMulCommThm =
+  Module[{zV, wV, rz, rw, z1, z2, w1, w2, ufZW, ufWZ, fstEq, sndC1,
+          addCInst, sndEq, pairEq, genW},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    rz = repIntTm[zV]; rw = repIntTm[wV];
+    z1 = fstOf[rz]; z2 = sndOf[rz]; w1 = fstOf[rw]; w2 = sndOf[rw];
+    ufZW = unfoldIntMul[zV, wV];
+    ufWZ = unfoldIntMul[wV, zV];
+    fstEq = HOL`Kernel`MKCOMB[                       (* z1*w1+z2*w2 = w1*z1+w2*z2 *)
+      HOL`Equal`APTERM[HOL`Stdlib`Num`plusConst[], timesCommAt[z1, w1]],
+      timesCommAt[z2, w2]];
+    sndC1 = HOL`Kernel`MKCOMB[                        (* z1*w2+z2*w1 = w2*z1+w1*z2 *)
+      HOL`Equal`APTERM[HOL`Stdlib`Num`plusConst[], timesCommAt[z1, w2]],
+      timesCommAt[z2, w1]];
+    addCInst = HOL`Bool`SPEC[timesN[w1, z2],          (* w2*z1+w1*z2 = w1*z2+w2*z1 *)
+      HOL`Bool`SPEC[timesN[w2, z1], HOL`Stdlib`Num`addCommThm]];
+    sndEq = TRANS[sndC1, addCInst];
+    pairEq = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[], fstEq], sndEq];
+    genW = HOL`Bool`GEN[wV, TRANS[ufZW,
+      TRANS[HOL`Equal`APTERM[absIntConst[],
+        HOL`Equal`APTERM[intCanonConst[], pairEq]], HOL`Equal`SYM[ufWZ]]]];
+    HOL`Bool`GEN[zV, genW]
+  ];
+
+(* ⊢ n * (SUC 0) = n  (via timesComm + oneTimes) *)
+timesOneAt[nTm_] :=
+  TRANS[timesCommAt[nTm, mkComb[HOL`Stdlib`Num`sucConst[], zeroN[]]],
+    HOL`Bool`SPEC[nTm, HOL`Stdlib`Num`oneTimesEqThm]];
+
+(* ⊢ ∀z. intMul z (&ℤ (SUC 0)) = z *)
+intMulOneThm =
+  Module[{zV, rz, z1, z2, suc0, intOne, ufMul, repAtOne, fstW, sndW,
+          z1w1, z2w2, fc, z1w2, z2w1, sc, pairEq, surj, pairToRep,
+          canonRepZ, canonEq, aVar, absRepZ, plusC, timesC},
+    zV = mkVar["z", intTy]; rz = repIntTm[zV]; z1 = fstOf[rz]; z2 = sndOf[rz];
+    suc0 = mkComb[HOL`Stdlib`Num`sucConst[], zeroN[]];
+    intOne = intOfNumTm[suc0];
+    plusC = HOL`Stdlib`Num`plusConst[]; timesC = timesNC[];
+    ufMul = unfoldIntMul[zV, intOne];
+    repAtOne = HOL`Kernel`INST[{mkVar["n", numTy] -> suc0}, repIntOfNumThm];
+    fstW = TRANS[HOL`Equal`APTERM[fstNum[], repAtOne],
+      fstNumPairThm[suc0, zeroN[]]];   (* FST(REP(&ℤ1)) = SUC 0 *)
+    sndW = TRANS[HOL`Equal`APTERM[sndNum[], repAtOne],
+      sndNumPairThm[suc0, zeroN[]]];   (* SND(REP(&ℤ1)) = 0 *)
+    z1w1 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z1], fstW], timesOneAt[z1]];
+    z2w2 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z2], sndW],
+      HOL`Bool`SPEC[z2, HOL`Stdlib`Num`timesZeroEqThm]];
+    fc = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, z1w1], z2w2],
+      HOL`Bool`SPEC[z1, HOL`Stdlib`Num`plusZeroEqThm]];   (* = z1 *)
+    z1w2 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z1], sndW],
+      HOL`Bool`SPEC[z1, HOL`Stdlib`Num`timesZeroEqThm]];
+    z2w1 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z2], fstW], timesOneAt[z2]];
+    sc = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, z1w2], z2w1],
+      HOL`Bool`SPEC[z2, HOL`Stdlib`Num`addLeftZeroThm]];   (* = z2 *)
+    pairEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], fc], sc];
+    surj = HOL`Bool`ISPEC[rz, HOL`Stdlib`Pair`pairSurjThm];
+    pairToRep = TRANS[pairEq, surj];   (* pair = REP z *)
+    canonRepZ = HOL`Bool`MP[HOL`Bool`SPEC[rz, intCanonIdThm], intRepRepThm];
+    canonEq = TRANS[HOL`Equal`APTERM[intCanonConst[], pairToRep], canonRepZ];
+    aVar = concl[absRepIntThm][[2]];
+    absRepZ = HOL`Kernel`INST[{aVar -> zV}, absRepIntThm];
+    HOL`Bool`GEN[zV, TRANS[ufMul,
+      TRANS[HOL`Equal`APTERM[absIntConst[], canonEq], absRepZ]]]
+  ];
+
+(* ⊢ ∀z. intMul z (&ℤ 0) = &ℤ 0 *)
+intMulZeroThm =
+  Module[{zV, rz, z1, z2, intZero, ufMul, repAtZero, fstW0, sndW0,
+          z1w1, z2w2, fc, z1w2, z2w1, sc, pairEq, zeroPair, canonIdZero,
+          canonEq, zeroEq, plusC, timesC},
+    zV = mkVar["z", intTy]; rz = repIntTm[zV]; z1 = fstOf[rz]; z2 = sndOf[rz];
+    intZero = intOfNumTm[zeroN[]];
+    plusC = HOL`Stdlib`Num`plusConst[]; timesC = timesNC[];
+    ufMul = unfoldIntMul[zV, intZero];
+    repAtZero = HOL`Kernel`INST[{mkVar["n", numTy] -> zeroN[]}, repIntOfNumThm];
+    fstW0 = TRANS[HOL`Equal`APTERM[fstNum[], repAtZero],
+      fstNumPairThm[zeroN[], zeroN[]]];
+    sndW0 = TRANS[HOL`Equal`APTERM[sndNum[], repAtZero],
+      sndNumPairThm[zeroN[], zeroN[]]];
+    z1w1 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z1], fstW0],
+      HOL`Bool`SPEC[z1, HOL`Stdlib`Num`timesZeroEqThm]];
+    z2w2 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z2], sndW0],
+      HOL`Bool`SPEC[z2, HOL`Stdlib`Num`timesZeroEqThm]];
+    fc = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, z1w1], z2w2],
+      HOL`Bool`SPEC[zeroN[], HOL`Stdlib`Num`plusZeroEqThm]];   (* = 0 *)
+    z1w2 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z1], sndW0],
+      HOL`Bool`SPEC[z1, HOL`Stdlib`Num`timesZeroEqThm]];
+    z2w1 = TRANS[HOL`Equal`APTERM[mkComb[timesC, z2], fstW0],
+      HOL`Bool`SPEC[z2, HOL`Stdlib`Num`timesZeroEqThm]];
+    sc = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, z1w2], z2w1],
+      HOL`Bool`SPEC[zeroN[], HOL`Stdlib`Num`plusZeroEqThm]];   (* = 0 *)
+    pairEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], fc], sc];
+    zeroPair = numPairCons[zeroN[], zeroN[]];
+    canonIdZero = HOL`Bool`MP[HOL`Bool`SPEC[zeroPair, intCanonIdThm],
+      intRepZeroPairThm];   (* intCanon(0,0) = (0,0) *)
+    canonEq = TRANS[HOL`Equal`APTERM[intCanonConst[], pairEq], canonIdZero];
+    zeroEq = unfoldIntOfNum[zeroN[]];   (* &ℤ 0 = ABS_int(0,0) *)
+    HOL`Bool`GEN[zV, TRANS[ufMul,
+      TRANS[HOL`Equal`APTERM[absIntConst[], canonEq], HOL`Equal`SYM[zeroEq]]]]
   ];
 
 End[];

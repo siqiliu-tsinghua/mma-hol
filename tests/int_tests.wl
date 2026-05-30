@@ -229,3 +229,46 @@ HOLTest`runTests["stdlib/Int: intSucc (intPred z) = z (round-trip)",
       "⊢ intSucc (intPred (&ℤ 1)) = &ℤ 1"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intSuccPredThm], {}, "no hyps"]
   ]];
+
+(* ===== Stage e (part 1): intMul — def, comm, identity, zero ===== *)
+
+HOLTest`runTests["stdlib/Int: intMul constant type + repIntMulThm",
+  Module[{},
+    HOLTest`assertEq[constType["intMul"],
+      tyFun[HOL`Stdlib`Int`intTy, tyFun[HOL`Stdlib`Int`intTy, HOL`Stdlib`Int`intTy]],
+      "intMul : int → int → int"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Int`repIntMulThm] &&
+        hyp[HOL`Stdlib`Int`repIntMulThm] === {}, "repIntMulThm hyp-free"]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intMul commutativity (functional check)",
+  Module[{one, two, z1, z2, mulTm, specZW, expected},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    two = mkComb[HOL`Stdlib`Num`sucConst[], one];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    z2 = mkComb[HOL`Stdlib`Int`intOfNumConst[], two];
+    mulTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intMulConst[], a], b];
+    specZW = HOL`Bool`SPEC[z2, HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intMulCommThm]];
+    expected = mkEq[mulTm[z1, z2], mulTm[z2, z1]];
+    HOLTest`assertEq[concl[specZW], expected,
+      "⊢ intMul (&ℤ 1) (&ℤ 2) = intMul (&ℤ 2) (&ℤ 1)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulCommThm], {}, "no hyps"]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intMul right identity / zero (functional checks)",
+  Module[{one, two, z2, intOne, intZero, mulTm, specOne, specZero, expOne, expZero},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    two = mkComb[HOL`Stdlib`Num`sucConst[], one];
+    z2 = mkComb[HOL`Stdlib`Int`intOfNumConst[], two];
+    intOne = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    intZero = mkComb[HOL`Stdlib`Int`intOfNumConst[], HOL`Stdlib`Num`zeroConst[]];
+    mulTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intMulConst[], a], b];
+    specOne = HOL`Bool`SPEC[z2, HOL`Stdlib`Int`intMulOneThm];
+    specZero = HOL`Bool`SPEC[z2, HOL`Stdlib`Int`intMulZeroThm];
+    expOne = mkEq[mulTm[z2, intOne], z2];
+    expZero = mkEq[mulTm[z2, intZero], intZero];
+    HOLTest`assertEq[concl[specOne], expOne, "⊢ intMul (&ℤ 2) (&ℤ 1) = &ℤ 2"];
+    HOLTest`assertEq[concl[specZero], expZero, "⊢ intMul (&ℤ 2) (&ℤ 0) = &ℤ 0"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulOneThm], {}, "intMulOne no hyps"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulZeroThm], {}, "intMulZero no hyps"]
+  ]];
