@@ -49,6 +49,7 @@ intAddCommThm::usage = "intAddCommThm — ⊢ ∀z w. intAdd z w = intAdd w z (a
 
 intCanonIdThm::usage = "intCanonIdThm — ⊢ ∀p. INT_REP p ⇒ intCanon p = p. Canonicalization is idempotent on canonical pairs.";
 intAddZeroThm::usage = "intAddZeroThm — ⊢ ∀z. intAdd z (&ℤ 0) = z. Right additive identity.";
+intAddNegThm::usage = "intAddNegThm — ⊢ ∀z. intAdd z (intNeg z) = &ℤ 0. Right additive inverse.";
 
 Begin["`Private`"];
 
@@ -643,6 +644,79 @@ intAddZeroThm =
     step3 = TRANS[step2, HOL`Equal`APTERM[absIntConst[], canonRepZ]];
     step4 = TRANS[step3, absRepZ];
     genZ = HOL`Bool`GEN[zV, step4]
+  ];
+
+(* ============================================================ *)
+(* intAddNegThm: ⊢ ∀z. intAdd z (intNeg z) = &ℤ 0 (right inverse). *)
+(*                                                              *)
+(* REP(intNeg z) = (SND R, FST R) (repIntNeg), so the summed     *)
+(* pair is (FST R + SND R, SND R + FST R); both components equal  *)
+(* c := FST R + SND R (addComm on the second). intCanon (c, c)    *)
+(* has guard c ≤ c = T, branch (c ∸ c, 0) = (0, 0) (monusSelf);   *)
+(* ABS_int (0, 0) = &ℤ 0 (unfold &ℤ at 0).                        *)
+(* ============================================================ *)
+
+intAddNegThm =
+  Module[{zV, rz, fz, sz, negZ, ufAdd, repNeg, fstNegEq, sndNegEq,
+          plusC, leqC, monusC, cTm, ccPair, fstSum, sndSum0, commEq,
+          sndSum, pairSimp, canonOfPair, canonEq, fstCC, sndCC,
+          leqReflC, guardThm, gEqT, bT, bF, condTI, canonAtBT,
+          monusRw, bTRw, canonZero, canonFull, absStep, zeroEq, genZ},
+    zV = mkVar["z", intTy];
+    rz = repIntTm[zV]; fz = fstOf[rz]; sz = sndOf[rz];
+    negZ = intNegTm[zV];
+    ufAdd = unfoldIntAdd[zV, negZ];
+    (* ⊢ intAdd z (intNeg z) = ABS_int(intCanon(FRz+FR(neg), SRz+SR(neg))) *)
+    repNeg = repIntNegThm;   (* REP(intNeg z) = (SND R, FST R) *)
+    fstNegEq = TRANS[HOL`Equal`APTERM[fstNum[], repNeg],
+      fstNumPairThm[sz, fz]];   (* FST(REP(intNeg z)) = SND R = sz *)
+    sndNegEq = TRANS[HOL`Equal`APTERM[sndNum[], repNeg],
+      sndNumPairThm[sz, fz]];   (* SND(REP(intNeg z)) = FST R = fz *)
+    plusC = HOL`Stdlib`Num`plusConst[];
+    leqC = HOL`Stdlib`Num`leqConst[];
+    monusC = HOL`Stdlib`Num`monusConst[];
+    cTm = plusN[fz, sz];   (* c = FST R + SND R *)
+    ccPair = numPairCons[cTm, cTm];
+    (* first summand: fz + FST(REP(neg)) = fz + sz = c *)
+    fstSum = HOL`Equal`APTERM[mkComb[plusC, fz], fstNegEq];
+    (* second summand: sz + SND(REP(neg)) = sz + fz = (comm) fz + sz = c *)
+    sndSum0 = HOL`Equal`APTERM[mkComb[plusC, sz], sndNegEq];
+    commEq = HOL`Bool`SPEC[fz, HOL`Bool`SPEC[sz, HOL`Stdlib`Num`addCommThm]];
+    sndSum = TRANS[sndSum0, commEq];
+    pairSimp = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[], fstSum], sndSum];
+    (* ⊢ (FRz+FR(neg), SRz+SR(neg)) = (c, c) *)
+    canonOfPair = HOL`Equal`APTERM[intCanonConst[], pairSimp];
+    canonEq = unfoldIntCanon[ccPair];   (* intCanon(c,c) = COND … *)
+    fstCC = fstNumPairThm[cTm, cTm];   (* FST(c,c) = c *)
+    sndCC = sndNumPairThm[cTm, cTm];   (* SND(c,c) = c *)
+    leqReflC = HOL`Bool`SPEC[cTm, HOL`Stdlib`Num`leqReflThm];   (* c ≤ c *)
+    (* guard SND(c,c) ≤ FST(c,c) from c ≤ c by un-simplifying both args *)
+    guardThm = EQMP[
+      HOL`Kernel`MKCOMB[
+        HOL`Equal`APTERM[leqC, HOL`Equal`SYM[sndCC]],
+        HOL`Equal`SYM[fstCC]],
+      leqReflC];
+    gEqT = HOL`Bool`EQTINTRO[guardThm];
+    bT = intCanonBranchT[fstOf[ccPair], sndOf[ccPair]];
+    bF = intCanonBranchF[fstOf[ccPair], sndOf[ccPair]];
+    condTI = HOL`Bool`SPEC[bF, HOL`Bool`SPEC[bT,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numPairTy}, condTThm]]];
+    canonAtBT = TRANS[canonEq, condRewrite[gEqT, bT, bF, condTI]];
+    (* ⊢ intCanon(c,c) = (FST(c,c) ∸ SND(c,c), 0) *)
+    monusRw = TRANS[
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[monusC, fstCC], sndCC],
+      HOL`Bool`SPEC[cTm, HOL`Stdlib`Num`monusSelfThm]];
+    (* ⊢ FST(c,c) ∸ SND(c,c) = c ∸ c = 0 *)
+    bTRw = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[commaNumC[], monusRw], REFL[zeroN[]]];
+    canonZero = TRANS[canonAtBT, bTRw];   (* intCanon(c,c) = (0,0) *)
+    canonFull = TRANS[canonOfPair, canonZero];
+    absStep = HOL`Equal`APTERM[absIntConst[], canonFull];
+    (* ⊢ ABS_int(intCanon(…)) = ABS_int(0,0) *)
+    zeroEq = unfoldIntOfNum[zeroN[]];   (* &ℤ 0 = ABS_int(0,0) *)
+    genZ = HOL`Bool`GEN[zV,
+      TRANS[ufAdd, TRANS[absStep, HOL`Equal`SYM[zeroEq]]]]
   ];
 
 End[];

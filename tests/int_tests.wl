@@ -149,3 +149,17 @@ HOLTest`runTests["stdlib/Int: intAdd right identity (intAdd z (&ℤ 0) = z)",
         hyp[HOL`Stdlib`Int`intCanonIdThm] === {},
       "intCanonIdThm is a hyp-free theorem"]
   ]];
+
+HOLTest`runTests["stdlib/Int: intAdd right inverse (intAdd z (intNeg z) = &ℤ 0)",
+  Module[{one, z1, specZ1, addTm, neg, zZero, expected1},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];   (* &ℤ 1 *)
+    zZero = mkComb[HOL`Stdlib`Int`intOfNumConst[], HOL`Stdlib`Num`zeroConst[]];
+    addTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intAddConst[], a], b];
+    neg[t_] := mkComb[HOL`Stdlib`Int`intNegConst[], t];
+    specZ1 = HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intAddNegThm];
+    expected1 = mkEq[addTm[z1, neg[z1]], zZero];
+    HOLTest`assertEq[concl[specZ1], expected1,
+      "⊢ intAdd (&ℤ 1) (intNeg (&ℤ 1)) = &ℤ 0"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intAddNegThm], {}, "no hyps"]
+  ]];
