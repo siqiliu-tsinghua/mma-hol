@@ -359,3 +359,26 @@ HOLTest`runTests["stdlib/Int: intLe reflexivity + antisymmetry (functional check
           comb[comb[const["=", _], _], _]]]],
       "⊢ intLe ⇒ intLe ⇒ = shape"]
   ]];
+
+HOLTest`runTests["stdlib/Int: order/arith compatibility (functional checks)",
+  Module[{one, z1, leTm, addTm, negTm, specAdd, specNeg, expAdd, expNeg},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];   (* &ℤ 1 *)
+    leTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intLeConst[], a], b];
+    addTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intAddConst[], a], b];
+    negTm[a_] := mkComb[HOL`Stdlib`Int`intNegConst[], a];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intLeAddMonoThm], {}, "addMono no hyps"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intLeNegThm], {}, "neg no hyps"];
+    (* addMono SPEC z:=w:=u:=&ℤ1 → intLe (&ℤ1)(&ℤ1) ⇒ intLe (1+1)(1+1) *)
+    specAdd = HOL`Bool`SPEC[z1, HOL`Bool`SPEC[z1, HOL`Bool`SPEC[z1,
+      HOL`Stdlib`Int`intLeAddMonoThm]]];
+    expAdd = mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+        leTm[z1, z1]], leTm[addTm[z1, z1], addTm[z1, z1]]];
+    HOLTest`assertEq[concl[specAdd], expAdd,
+      "⊢ intLe (&ℤ1)(&ℤ1) ⇒ intLe (intAdd (&ℤ1)(&ℤ1)) (intAdd (&ℤ1)(&ℤ1))"];
+    specNeg = HOL`Bool`SPEC[z1, HOL`Bool`SPEC[z1, HOL`Stdlib`Int`intLeNegThm]];
+    expNeg = mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+        leTm[z1, z1]], leTm[negTm[z1], negTm[z1]]];
+    HOLTest`assertEq[concl[specNeg], expNeg,
+      "⊢ intLe (&ℤ1)(&ℤ1) ⇒ intLe (intNeg (&ℤ1)) (intNeg (&ℤ1))"]
+  ]];

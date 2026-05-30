@@ -82,6 +82,8 @@ intLeTotalThm::usage = "intLeTotalThm — ⊢ ∀z w. intLe z w ∨ intLe w z.";
 intLtConst::usage  = "intLtConst[] — intLt : int → int → bool, strict order. intLt z w ⟺ FST(REP z) + SND(REP w) < FST(REP w) + SND(REP z).";
 intLtDefThm::usage = "intLtDefThm — ⊢ intLt = (λz w. FST(REP z) + SND(REP w) < FST(REP w) + SND(REP z)).";
 intLtNotLeThm::usage = "intLtNotLeThm — ⊢ ∀z w. intLt z w = ¬ (intLe w z).";
+intLeAddMonoThm::usage = "intLeAddMonoThm — ⊢ ∀z w u. intLe z w ⇒ intLe (intAdd z u) (intAdd w u). Additive monotonicity.";
+intLeNegThm::usage = "intLeNegThm — ⊢ ∀z w. intLe z w ⇒ intLe (intNeg w) (intNeg z). Negation reverses order.";
 
 Begin["`Private`"];
 
@@ -1816,6 +1818,85 @@ intLtNotLeThm =
     unfoldLtZW = unfoldIntLt[zV, wV];   (* intLt z w = (z1+w2) < (w1+z2) *)
     HOL`Bool`GEN[zV, HOL`Bool`GEN[wV,
       TRANS[unfoldLtZW, HOL`Equal`SYM[TRANS[step1, nleEqLt]]]]]
+  ];
+
+(* ============================================================ *)
+(* Order/arithmetic compatibility.                              *)
+(*   intLeAddMonoThm: intLe z w ⇒ intLe (z+u) (w+u).            *)
+(*   intLeNegThm:     intLe z w ⇒ intLe (−w) (−z).             *)
+(* Both unfold intLe at the operation result, whose REP FST/SND  *)
+(* are opaque canon (add) / a swap (neg). Add: canonEquivAt at   *)
+(* the two summed pairs relates those to the raw sums, and ARITH  *)
+(* closes the residual ℕ ≤. Neg: repIntNegThm rewrites the       *)
+(* swapped REP, leaving a commuted copy of the hypothesis.       *)
+(* ============================================================ *)
+
+(* ⊢ ∀z w u. intLe z w ⇒ intLe (intAdd z u) (intAdd w u) *)
+intLeAddMonoThm =
+  Module[{zV, wV, uV, z1, z2, w1, w2, u1, u2, plusC, leqC, hypLe, leZW,
+          addZU, addWU, pZU, pWU, cpZU, cpWU, aa, bb, cc, dd, repZU, repWU,
+          rFstZU, rSndZU, rFstWU, rSndWU, ezu, ewu, goalLeq, imp, leqABCD,
+          unfoldGoal, eqX, eqY, leqEq, final},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy]; uV = mkVar["u", intTy];
+    z1 = fstOf[repIntTm[zV]]; z2 = sndOf[repIntTm[zV]];
+    w1 = fstOf[repIntTm[wV]]; w2 = sndOf[repIntTm[wV]];
+    u1 = fstOf[repIntTm[uV]]; u2 = sndOf[repIntTm[uV]];
+    plusC = HOL`Stdlib`Num`plusConst[]; leqC = HOL`Stdlib`Num`leqConst[];
+    hypLe = ASSUME[intLeTm[zV, wV]];
+    leZW = EQMP[unfoldIntLe[zV, wV], hypLe];   (* z1+w2 ≤ w1+z2 *)
+    addZU = intAddTm[zV, uV]; addWU = intAddTm[wV, uV];
+    pZU = intAddPairTm[zV, uV]; pWU = intAddPairTm[wV, uV];
+    cpZU = mkComb[intCanonConst[], pZU]; cpWU = mkComb[intCanonConst[], pWU];
+    aa = fstOf[cpZU]; bb = sndOf[cpZU]; cc = fstOf[cpWU]; dd = sndOf[cpWU];
+    repZU = repIntAddAt[zV, uV]; repWU = repIntAddAt[wV, uV];
+    rFstZU = HOL`Equal`APTERM[fstNum[], repZU];   (* FST(R(z+u)) = aa *)
+    rSndZU = HOL`Equal`APTERM[sndNum[], repZU];   (* SND(R(z+u)) = bb *)
+    rFstWU = HOL`Equal`APTERM[fstNum[], repWU];
+    rSndWU = HOL`Equal`APTERM[sndNum[], repWU];
+    ezu = canonEquivAt[plusN[z1, u1], plusN[z2, u2]];   (* aa+(z2+u2) = (z1+u1)+bb *)
+    ewu = canonEquivAt[plusN[w1, u1], plusN[w2, u2]];   (* cc+(w2+u2) = (w1+u1)+dd *)
+    goalLeq = leqNum[plusN[aa, dd], plusN[cc, bb]];   (* aa+dd ≤ cc+bb *)
+    imp = HOL`Auto`Arith`arithProve[
+      impliesTm[concl[ezu], impliesTm[concl[ewu],
+        impliesTm[concl[leZW], goalLeq]]]];
+    leqABCD = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[imp, ezu], ewu], leZW];
+    unfoldGoal = unfoldIntLe[addZU, addWU];
+    eqX = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, rFstZU], rSndWU];
+    eqY = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, rFstWU], rSndZU];
+    leqEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[leqC, eqX], eqY];
+    final = EQMP[HOL`Equal`SYM[TRANS[unfoldGoal, leqEq]], leqABCD];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, HOL`Bool`GEN[uV,
+      HOL`Bool`DISCH[intLeTm[zV, wV], final]]]]
+  ];
+
+(* ⊢ ∀z w. intLe z w ⇒ intLe (intNeg w) (intNeg z) *)
+intLeNegThm =
+  Module[{zV, wV, z1, z2, w1, w2, plusC, leqC, hypLe, leZW, negW, negZ,
+          repNegW, repNegZ, fstNegW, sndNegW, fstNegZ, sndNegZ, goalLeq,
+          imp, leqWZ, unfoldGoal, eqX, eqY, leqEq, final},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    z1 = fstOf[repIntTm[zV]]; z2 = sndOf[repIntTm[zV]];
+    w1 = fstOf[repIntTm[wV]]; w2 = sndOf[repIntTm[wV]];
+    plusC = HOL`Stdlib`Num`plusConst[]; leqC = HOL`Stdlib`Num`leqConst[];
+    hypLe = ASSUME[intLeTm[zV, wV]];
+    leZW = EQMP[unfoldIntLe[zV, wV], hypLe];   (* z1+w2 ≤ w1+z2 *)
+    negW = intNegTm[wV]; negZ = intNegTm[zV];
+    repNegW = HOL`Kernel`INST[{zV -> wV}, repIntNegThm];   (* REP(−w) = (w2,w1) *)
+    repNegZ = repIntNegThm;                                (* REP(−z) = (z2,z1) *)
+    fstNegW = TRANS[HOL`Equal`APTERM[fstNum[], repNegW], fstNumPairThm[w2, w1]];
+    sndNegW = TRANS[HOL`Equal`APTERM[sndNum[], repNegW], sndNumPairThm[w2, w1]];
+    fstNegZ = TRANS[HOL`Equal`APTERM[fstNum[], repNegZ], fstNumPairThm[z2, z1]];
+    sndNegZ = TRANS[HOL`Equal`APTERM[sndNum[], repNegZ], sndNumPairThm[z2, z1]];
+    goalLeq = leqNum[plusN[w2, z1], plusN[z2, w1]];   (* w2+z1 ≤ z2+w1 *)
+    imp = HOL`Auto`Arith`arithProve[impliesTm[concl[leZW], goalLeq]];
+    leqWZ = HOL`Bool`MP[imp, leZW];
+    unfoldGoal = unfoldIntLe[negW, negZ];
+    eqX = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, fstNegW], sndNegZ];
+    eqY = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, fstNegZ], sndNegW];
+    leqEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[leqC, eqX], eqY];
+    final = EQMP[HOL`Equal`SYM[TRANS[unfoldGoal, leqEq]], leqWZ];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV,
+      HOL`Bool`DISCH[intLeTm[zV, wV], final]]]
   ];
 
 End[];
