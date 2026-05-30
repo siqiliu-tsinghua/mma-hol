@@ -283,9 +283,9 @@ HOLTest`runTests["FTA stage 3.c: permAppendConsThm — PERM (APPEND l1 (CONS x l
       "shape: ∀x l1 l2. PERM _ _"];
 ]];
 
-HOLTest`runTests["FTA stage 3.d: multEqZeroThm — ⊢ ∀x a. x*a = 0 ⇒ x = 0 ∨ a = 0",
+HOLTest`runTests["FTA stage 3.d: multEqZeroThm (now Num) — ⊢ ∀m n. m*n = 0 ⇒ m = 0 ∨ n = 0",
   Module[{dThm, c},
-    dThm = HOL`Stdlib`FTA`multEqZeroThm;
+    dThm = HOL`Stdlib`Num`multEqZeroThm;
     c = concl[dThm];
     HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
     HOLTest`assertTrue[

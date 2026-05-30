@@ -1780,3 +1780,17 @@ HOLTest`runTests["stdlib/Num: ground monus 1 ∸ 2 = 0 (truncates)",
     HOLTest`assertEq[concl[TRANS[sZeroSubSS, zeroSubS]],
       mkEq[monusN[mkNumN[1], mkNumN[2]], mkNumN[0]], "⊢ 1 ∸ 2 = 0"]
   ]];
+
+HOLTest`runTests["stdlib/Num: multEqZeroThm — no zero divisors",
+  Module[{mV, nV, timesN, inst, mp2, mp0},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    timesN[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`timesConst[], a], b];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`multEqZeroThm], {}, "no hyps"];
+    (* SPEC m:=2, n:=0; MP with 2*0=0 ⇒ 2=0 ∨ 0=0 *)
+    inst = HOL`Bool`SPEC[mkNumN[0], HOL`Bool`SPEC[mkNumN[2],
+      HOL`Stdlib`Num`multEqZeroThm]];
+    HOLTest`assertTrue[
+      MatchQ[concl[inst], comb[comb[const["\[DoubleRightArrow]", _], _],
+        comb[comb[const["\[Or]", _], _], _]]],
+      "⊢ 2*0=0 ⇒ 2=0 ∨ 0=0 shape"]
+  ]];

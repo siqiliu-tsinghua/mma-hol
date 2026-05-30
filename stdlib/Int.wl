@@ -71,6 +71,7 @@ intMulOneThm::usage = "intMulOneThm — ⊢ ∀z. intMul z (&ℤ (SUC 0)) = z. R
 intMulZeroThm::usage = "intMulZeroThm — ⊢ ∀z. intMul z (&ℤ 0) = &ℤ 0. Right absorbing element.";
 intMulDistribThm::usage = "intMulDistribThm — ⊢ ∀z w v. intMul z (intAdd w v) = intAdd (intMul z w) (intMul z v). Left distributivity of intMul over intAdd.";
 intMulAssocThm::usage = "intMulAssocThm — ⊢ ∀z w v. intMul (intMul z w) v = intMul z (intMul w v). Multiplicative associativity.";
+intMulEqZeroThm::usage = "intMulEqZeroThm — ⊢ ∀z w. intMul z w = &ℤ 0 ⇒ z = &ℤ 0 ∨ w = &ℤ 0. ℤ has no zero divisors (integral domain).";
 
 Begin["`Private`"];
 
@@ -1583,6 +1584,105 @@ intMulAssocThm =
     genV = HOL`Bool`GEN[vV, body];
     genW = HOL`Bool`GEN[wV, genV];
     HOL`Bool`GEN[zV, genW]
+  ];
+
+(* ============================================================ *)
+(* intMulEqZeroThm: ⊢ ∀z w. intMul z w = &ℤ 0 ⇒ z = &ℤ 0 ∨ w = &ℤ 0. *)
+(* ℤ has no zero divisors (integral domain).                    *)
+(*                                                              *)
+(* intMul z w = &ℤ 0 ⟹ REP(intMul z w) = (0,0) ⟹ (canonEquivAt)  *)
+(* the two product-pair components are equal:                    *)
+(*   z1*w1 + z2*w2 = z1*w2 + z2*w1   (KEY).                      *)
+(* Case-split z, w on their canonical carve (one component each   *)
+(* is 0); each leaf reduces KEY — via the vanishing products and  *)
+(* ARITH — to a single surviving product = 0, then num            *)
+(* multEqZeroThm gives a zero factor, which with the leaf's known  *)
+(* zero component makes z (or w) = &ℤ 0.                          *)
+(* ============================================================ *)
+
+(* from FST(REP x) = 0 and SND(REP x) = 0 derive x = &ℤ 0 *)
+intEqZeroFrom[xV_, rx_, fstEq_, sndEq_] :=
+  Module[{surj, repX0, aVar, absRepX, zeroEq},
+    surj = HOL`Bool`ISPEC[rx, HOL`Stdlib`Pair`pairSurjThm];
+    repX0 = TRANS[HOL`Equal`SYM[surj],
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], fstEq], sndEq]];   (* rx = (0,0) *)
+    aVar = concl[absRepIntThm][[2]];
+    absRepX = HOL`Kernel`INST[{aVar -> xV}, absRepIntThm];   (* ABS_int(rx) = x *)
+    zeroEq = unfoldIntOfNum[zeroN[]];   (* &ℤ 0 = ABS_int(0,0) *)
+    TRANS[HOL`Equal`SYM[absRepX],
+      TRANS[HOL`Equal`APTERM[absIntConst[], repX0], HOL`Equal`SYM[zeroEq]]]
+  ];
+
+intMulEqZeroThm =
+  Module[{zV, wV, rz, rw, z1, z2, w1, w2, zw1, zw2, plusC, timesC,
+          intZero, zEqZeroTm, wEqZeroTm, H, repMul, repAtZero, repMulZero,
+          canonZeroEq, fstCp0, sndCp0, cEq, lhsRw, rhsRw, eq2, key,
+          disjZ, disjW, leaf, mainBody},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    rz = repIntTm[zV]; rw = repIntTm[wV];
+    z1 = fstOf[rz]; z2 = sndOf[rz]; w1 = fstOf[rw]; w2 = sndOf[rw];
+    plusC = HOL`Stdlib`Num`plusConst[]; timesC = timesNC[];
+    zw1 = plusN[timesN[z1, w1], timesN[z2, w2]];
+    zw2 = plusN[timesN[z1, w2], timesN[z2, w1]];
+    intZero = intOfNumTm[zeroN[]];
+    zEqZeroTm = mkEq[zV, intZero]; wEqZeroTm = mkEq[wV, intZero];
+    H = ASSUME[mkEq[intMulTm[zV, wV], intZero]];
+    repMul = repIntMulAt[zV, wV];   (* REP(intMul z w) = intCanon(zw1,zw2) *)
+    repAtZero = HOL`Kernel`INST[{mkVar["n", numTy] -> zeroN[]}, repIntOfNumThm];
+    repMulZero = TRANS[HOL`Equal`APTERM[repIntConst[], H], repAtZero];
+    canonZeroEq = TRANS[HOL`Equal`SYM[repMul], repMulZero];   (* intCanon(zw1,zw2) = (0,0) *)
+    fstCp0 = TRANS[HOL`Equal`APTERM[fstNum[], canonZeroEq], fstNumPairThm[zeroN[], zeroN[]]];
+    sndCp0 = TRANS[HOL`Equal`APTERM[sndNum[], canonZeroEq], sndNumPairThm[zeroN[], zeroN[]]];
+    cEq = canonEquivAt[zw1, zw2];   (* FST(cp)+zw2 = zw1+SND(cp) *)
+    lhsRw = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, fstCp0], REFL[zw2]];
+    rhsRw = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, REFL[zw1]], sndCp0];
+    eq2 = TRANS[TRANS[HOL`Equal`SYM[lhsRw], cEq], rhsRw];   (* 0+zw2 = zw1+0 *)
+    key = TRANS[TRANS[
+      HOL`Equal`SYM[HOL`Bool`SPEC[zw2, HOL`Stdlib`Num`addLeftZeroThm]], eq2],
+      HOL`Bool`SPEC[zw1, HOL`Stdlib`Num`plusZeroEqThm]];   (* zw2 = zw1 *)
+    disjZ = EQMP[unfoldIntRep[rz], intRepRepThm];   (* z1=0 ∨ z2=0 *)
+    disjW = EQMP[unfoldIntRep[rw],
+      HOL`Kernel`INST[{zV -> wV}, intRepRepThm]];   (* w1=0 ∨ w2=0 *)
+
+    leaf[zZeroEq_, zIsFst_, wZeroEq_, wIsFst_] :=
+      Module[{zZ, zS, wZ, wS, survProd, vZZwZ, vZZwS, vZSwZ, survImp,
+              survZero, mez, zSz, wSz, zRes, wRes, zBranch, wBranch},
+        zZ = If[zIsFst, z1, z2]; zS = If[zIsFst, z2, z1];
+        wZ = If[wIsFst, w1, w2]; wS = If[wIsFst, w2, w1];
+        survProd = timesN[zS, wS];
+        vZZwZ = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[timesC, zZeroEq], REFL[wZ]],
+          HOL`Bool`SPEC[wZ, HOL`Stdlib`Num`timesLeftZeroThm]];
+        vZZwS = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[timesC, zZeroEq], REFL[wS]],
+          HOL`Bool`SPEC[wS, HOL`Stdlib`Num`timesLeftZeroThm]];
+        vZSwZ = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[timesC, REFL[zS]], wZeroEq],
+          HOL`Bool`SPEC[zS, HOL`Stdlib`Num`timesZeroEqThm]];
+        survImp = HOL`Auto`Arith`arithProve[
+          impliesTm[concl[key], impliesTm[concl[vZZwZ], impliesTm[concl[vZZwS],
+            impliesTm[concl[vZSwZ], mkEq[survProd, zeroN[]]]]]]];
+        survZero = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+          survImp, key], vZZwZ], vZZwS], vZSwZ];   (* zS*wS = 0 *)
+        mez = HOL`Bool`MP[
+          HOL`Bool`SPEC[wS, HOL`Bool`SPEC[zS, HOL`Stdlib`Num`multEqZeroThm]],
+          survZero];   (* zS = 0 ∨ wS = 0 *)
+        zSz = ASSUME[mkEq[zS, zeroN[]]]; wSz = ASSUME[mkEq[wS, zeroN[]]];
+        zRes = intEqZeroFrom[zV, rz,
+          If[zIsFst, zZeroEq, zSz], If[zIsFst, zSz, zZeroEq]];
+        wRes = intEqZeroFrom[wV, rw,
+          If[wIsFst, wZeroEq, wSz], If[wIsFst, wSz, wZeroEq]];
+        zBranch = HOL`Bool`DISJ1[zRes, wEqZeroTm];
+        wBranch = HOL`Bool`DISJ2[wRes, zEqZeroTm];
+        HOL`Bool`DISJCASES[mez, zBranch, wBranch]
+      ];
+
+    mainBody = HOL`Bool`DISJCASES[disjZ,
+      HOL`Bool`DISJCASES[disjW,
+        leaf[ASSUME[mkEq[z1, zeroN[]]], True, ASSUME[mkEq[w1, zeroN[]]], True],
+        leaf[ASSUME[mkEq[z1, zeroN[]]], True, ASSUME[mkEq[w2, zeroN[]]], False]],
+      HOL`Bool`DISJCASES[disjW,
+        leaf[ASSUME[mkEq[z2, zeroN[]]], False, ASSUME[mkEq[w1, zeroN[]]], True],
+        leaf[ASSUME[mkEq[z2, zeroN[]]], False, ASSUME[mkEq[w2, zeroN[]]], False]]];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV,
+      HOL`Bool`DISCH[mkEq[intMulTm[zV, wV], intZero], mainBody]]]
   ];
 
 End[];

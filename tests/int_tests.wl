@@ -308,3 +308,21 @@ HOLTest`runTests["stdlib/Int: intMul associativity (functional check)",
       "⊢ intMul (intMul (&ℤ 1) (&ℤ 2)) (&ℤ 3) = intMul (&ℤ 1) (intMul (&ℤ 2) (&ℤ 3))"];
     HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulAssocThm], {}, "no hyps"]
   ]];
+
+HOLTest`runTests["stdlib/Int: intMulEqZeroThm — no zero divisors (integral domain)",
+  Module[{two, z2, intZero, mulTm, specZW, expected},
+    two = mkComb[HOL`Stdlib`Num`sucConst[],
+      mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]]];
+    z2 = mkComb[HOL`Stdlib`Int`intOfNumConst[], two];
+    intZero = mkComb[HOL`Stdlib`Int`intOfNumConst[], HOL`Stdlib`Num`zeroConst[]];
+    mulTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intMulConst[], a], b];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulEqZeroThm], {}, "no hyps"];
+    (* SPEC z:=&ℤ2, w:=&ℤ0 → (intMul (&ℤ2)(&ℤ0)=&ℤ0) ⇒ &ℤ2=&ℤ0 ∨ &ℤ0=&ℤ0 *)
+    specZW = HOL`Bool`SPEC[intZero, HOL`Bool`SPEC[z2, HOL`Stdlib`Int`intMulEqZeroThm]];
+    expected = mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+        mkEq[mulTm[z2, intZero], intZero]],
+      mkComb[mkComb[mkConst["\[Or]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+        mkEq[z2, intZero]], mkEq[intZero, intZero]]];
+    HOLTest`assertEq[concl[specZW], expected,
+      "⊢ intMul (&ℤ 2) (&ℤ 0) = &ℤ 0 ⇒ &ℤ 2 = &ℤ 0 ∨ &ℤ 0 = &ℤ 0"]
+  ]];

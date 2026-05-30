@@ -101,6 +101,7 @@ ltSucThm::usage = "ltSucThm — ⊢ ∀n. n < SUC n.";
 numCasesThm::usage         = "numCasesThm — ⊢ ∀n. n = 0 ∨ (∃m. n = SUC m).";
 addEqZeroLeftThm::usage    = "addEqZeroLeftThm — ⊢ ∀m n. m + n = 0 ⇒ m = 0.";
 addEqZeroRightThm::usage   = "addEqZeroRightThm — ⊢ ∀m n. m + n = 0 ⇒ n = 0.";
+multEqZeroThm::usage       = "multEqZeroThm — ⊢ ∀m n. m * n = 0 ⇒ m = 0 ∨ n = 0. ℕ has no zero divisors (ℤ integral-domain prerequisite).";
 leqAntisymThm::usage       = "leqAntisymThm — ⊢ ∀m n. m ≤ n ⇒ n ≤ m ⇒ m = n.";
 leqTotalThm::usage         = "leqTotalThm — ⊢ ∀m n. m ≤ n ∨ n ≤ m.";
 
@@ -3148,6 +3149,39 @@ addEqZeroRightThm =
     dischHyp = HOL`Bool`DISCH[hypTm, nEqZero];
     genN = HOL`Bool`GEN[nV, dischHyp];
     genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* multEqZeroThm : ⊢ ∀m n. m * n = 0 ⇒ m = 0 ∨ n = 0             *)
+(*                                                              *)
+(* Case on n (numCasesThm). n = 0: right disjunct. n = SUC k:    *)
+(* m * SUC k = m*k + m (timesSucEq); = 0 forces m = 0            *)
+(* (addEqZeroRight). ℕ has no zero divisors.                     *)
+(* ============================================================ *)
+
+multEqZeroThm =
+  Module[{mV, nV, hypAssum, disjN, case1, case2, body},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    hypAssum = ASSUME[mkEq[timesTm[mV, nV], zeroConst[]]];
+    disjN = HOL`Bool`SPEC[nV, numCasesThm];   (* n = 0 ∨ ∃k. n = SUC k *)
+    case1 = HOL`Bool`DISJ2[ASSUME[mkEq[nV, zeroConst[]]], mkEq[mV, zeroConst[]]];
+    case2 =
+      Module[{kV, exTm, sucK, kHyp, rw1, tsuc, mnEq, plus0, mEq0, dj},
+        kV = mkVar["k", numTy]; sucK = mkComb[sucConst[], kV];
+        exTm = concl[disjN][[2]];
+        kHyp = ASSUME[mkEq[nV, sucK]];
+        rw1 = HOL`Equal`APTERM[mkComb[timesConst[], mV], kHyp];   (* m*n = m*(SUC k) *)
+        tsuc = HOL`Bool`SPEC[kV, HOL`Bool`SPEC[mV, timesSucEqThm]];
+        mnEq = TRANS[rw1, tsuc];   (* m*n = m*k + m *)
+        plus0 = TRANS[HOL`Equal`SYM[mnEq], hypAssum];   (* m*k + m = 0 *)
+        mEq0 = HOL`Bool`MP[HOL`Bool`SPEC[mV,
+          HOL`Bool`SPEC[timesTm[mV, kV], addEqZeroRightThm]], plus0];   (* m = 0 *)
+        dj = HOL`Bool`DISJ1[mEq0, mkEq[nV, zeroConst[]]];
+        HOL`Bool`CHOOSE[kV, ASSUME[exTm], dj]
+      ];
+    body = HOL`Bool`DISJCASES[disjN, case1, case2];
+    HOL`Bool`GEN[mV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[mkEq[timesTm[mV, nV], zeroConst[]], body]]]
   ];
 
 (* ============================================================ *)

@@ -42,7 +42,8 @@ permAllThm::usage = "permAllThm — ⊢ ∀p l1 l2. PERM l1 l2 ⇒ ALL p l1 = AL
 memSplitThm::usage = "memSplitThm — ⊢ ∀x l. MEM x l ⇒ ∃l1 l2. l = APPEND l1 (CONS x l2). Membership induces a split: a witnessed member can be extracted with the surrounding prefix and suffix. (FTA stage 3.c.)";
 permAppendConsThm::usage = "permAppendConsThm — ⊢ ∀x l1 l2. PERM (APPEND l1 (CONS x l2)) (CONS x (APPEND l1 l2)). Moving CONS-x across the prefix l1 is a permutation. (FTA stage 3.c.)";
 
-multEqZeroThm::usage = "multEqZeroThm — ⊢ ∀x a. x * a = 0 ⇒ x = 0 ∨ a = 0. No zero divisors in ℕ. (FTA stage 3.d helper.)";
+(* multEqZeroThm (m*n=0 ⇒ m=0∨n=0) now lives in Num.wl — see
+   HOL`Stdlib`Num`multEqZeroThm; used below in multLeftCancelThm. *)
 multLeftCancelThm::usage = "multLeftCancelThm — ⊢ ∀x. ¬(x = 0) ⇒ ∀a b. x * a = x * b ⇒ a = b. Left multiplicative cancellation in ℕ. (FTA stage 3.d helper.)";
 primeNotZeroThm::usage = "primeNotZeroThm — ⊢ ∀p. prime p ⇒ ¬(p = 0). (FTA stage 3.d helper.)";
 primesEqIfDividesThm::usage = "primesEqIfDividesThm — ⊢ ∀p q. prime p ⇒ prime q ⇒ divides p q ⇒ p = q. Two primes are equal whenever one divides the other. (FTA stage 3.d helper.)";
@@ -2115,59 +2116,9 @@ permAppendConsThm =
     ]
   ];
 
-(* ============================================================ *)
-(* multEqZeroThm  (stage-3.d helper)                             *)
-(*   ⊢ ∀x a. x * a = 0 ⇒ x = 0 ∨ a = 0.                          *)
-(* Cases on x via numCasesThm. x = 0: DISJ1. x = SUC k:           *)
-(*   SUC k * a = a + k * a (timesLeftSucThm), so a + k * a = 0;   *)
-(*   addEqZeroLeftThm gives a = 0; DISJ2.                          *)
-(* ============================================================ *)
-
-multEqZeroThm =
-  Module[{xV, aV, kV, hypH, casesX, zeroBranch, sucBranch, exKBody,
-          body, dischHyp, gens},
-    xV = mkVar["xMZ", numTy];
-    aV = mkVar["aMZ", numTy];
-    kV = mkVar["kMZ", numTy];
-
-    hypH = ASSUME[mkEq[timesN[xV, aV], zeroN[]]];
-    casesX = HOL`Bool`SPEC[xV, HOL`Stdlib`Num`numCasesThm];
-    (* ⊢ x = 0 ∨ ∃m. x = SUC m *)
-
-    zeroBranch = Module[{xEq0Hyp},
-      xEq0Hyp = ASSUME[mkEq[xV, zeroN[]]];
-      HOL`Bool`DISJ1[xEq0Hyp, mkEq[aV, zeroN[]]]
-    ];
-
-    sucBranch = Module[{exKHyp, xEqSucKHyp, sucMultEqZ, timesLeftAt,
-                       addEqZ, aEq0, chosen},
-      exKBody = mkComb[mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]],
-        mkAbs[kV, mkEq[xV, sucN[kV]]]];
-      exKHyp = ASSUME[exKBody];
-      xEqSucKHyp = ASSUME[mkEq[xV, sucN[kV]]];
-
-      sucMultEqZ = HOL`Drule`SUBS[{xEqSucKHyp}, hypH];
-      (* (xEqSucK, hypH) ⊢ SUC k * a = 0 *)
-      timesLeftAt = HOL`Bool`SPEC[aV, HOL`Bool`SPEC[kV,
-        HOL`Stdlib`Num`timesLeftSucThm]];
-      (* ⊢ SUC k * a = a + k * a *)
-      addEqZ = TRANS[HOL`Equal`SYM[timesLeftAt], sucMultEqZ];
-      (* (…) ⊢ a + k * a = 0 *)
-      aEq0 = HOL`Bool`MP[
-        HOL`Bool`SPEC[timesN[kV, aV],
-          HOL`Bool`SPEC[aV, HOL`Stdlib`Num`addEqZeroLeftThm]],
-        addEqZ];
-      (* (…) ⊢ a = 0 *)
-      chosen = HOL`Bool`CHOOSE[kV, exKHyp,
-        HOL`Bool`DISJ2[aEq0, mkEq[xV, zeroN[]]]];
-      chosen
-    ];
-
-    body = HOL`Bool`DISJCASES[casesX, zeroBranch, sucBranch];
-    dischHyp = HOL`Bool`DISCH[mkEq[timesN[xV, aV], zeroN[]], body];
-    gens = HOL`Bool`GEN[xV, HOL`Bool`GEN[aV, dischHyp]];
-    gens
-  ];
+(* multEqZeroThm (∀m n. m*n=0 ⇒ m=0∨n=0) was a stage-3.d helper here;
+   it is a fundamental ℕ fact and now lives in Num.wl. multLeftCancelThm
+   below uses HOL`Stdlib`Num`multEqZeroThm. *)
 
 (* ============================================================ *)
 (* multLeftCancelThm  (stage-3.d helper)                         *)
@@ -2223,7 +2174,7 @@ multLeftCancelThm =
       symEq = HOL`Equal`SYM[eqVia0];
       (* (eqHyp) ⊢ x * bLocal = 0 *)
       bEq0Disj = HOL`Bool`MP[
-        HOL`Bool`SPEC[bLocal, HOL`Bool`SPEC[xV, multEqZeroThm]],
+        HOL`Bool`SPEC[bLocal, HOL`Bool`SPEC[xV, HOL`Stdlib`Num`multEqZeroThm]],
         symEq];
       (* (eqHyp) ⊢ x = 0 ∨ bLocal = 0 *)
       bEq0 = HOL`Bool`DISJCASES[bEq0Disj,
