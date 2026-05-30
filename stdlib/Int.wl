@@ -84,6 +84,7 @@ intLtDefThm::usage = "intLtDefThm — ⊢ intLt = (λz w. FST(REP z) + SND(REP w
 intLtNotLeThm::usage = "intLtNotLeThm — ⊢ ∀z w. intLt z w = ¬ (intLe w z).";
 intLeAddMonoThm::usage = "intLeAddMonoThm — ⊢ ∀z w u. intLe z w ⇒ intLe (intAdd z u) (intAdd w u). Additive monotonicity.";
 intLeNegThm::usage = "intLeNegThm — ⊢ ∀z w. intLe z w ⇒ intLe (intNeg w) (intNeg z). Negation reverses order.";
+intLeMulNonnegThm::usage = "intLeMulNonnegThm — ⊢ ∀z w u. intLe (&ℤ 0) u ⇒ intLe z w ⇒ intLe (intMul u z) (intMul u w). Monotonicity of intMul by a nonnegative factor.";
 
 Begin["`Private`"];
 
@@ -1897,6 +1898,84 @@ intLeNegThm =
     final = EQMP[HOL`Equal`SYM[TRANS[unfoldGoal, leqEq]], leqWZ];
     HOL`Bool`GEN[zV, HOL`Bool`GEN[wV,
       HOL`Bool`DISCH[intLeTm[zV, wV], final]]]
+  ];
+
+(* ============================================================ *)
+(* intLeMulNonnegThm: ⊢ ∀z w u.                                 *)
+(*   intLe (&ℤ 0) u ⇒ intLe z w ⇒ intLe (intMul u z) (intMul u w). *)
+(*                                                              *)
+(* intLe (&ℤ 0) u unfolds to u2 ≤ u1 (REP(&ℤ0) = (0,0)). The     *)
+(* goal unfolds to aa+dd ≤ cc+bb over the opaque canon FST/SND of *)
+(* the two product REPs; canonEquivAt at the product pairs       *)
+(* relates those to the raw product sums, reducing it to the ℕ   *)
+(* inequality KEY (fUZ + sUW ≤ fUW + sUZ). KEY is the cross       *)
+(* inequality crossMultLeqThm at (u1, u2, z1+w2, w1+z2), with its *)
+(* product-of-sums distributed back to monomials; ARITH does the  *)
+(* two linear gluing steps. (Products are opaque to ARITH, so the *)
+(* multiplicative content lives entirely in crossMultLeqThm.)     *)
+(* ============================================================ *)
+
+intLeMulNonnegThm =
+  Module[{zV, wV, uV, z1, z2, w1, w2, u1, u2, plusC, leqC, intZero, hyp0,
+          le0u, repAtZero, fstZ0, sndZ0, lhsEq, rhsEq, u2leU1, hypZW, leZW,
+          mulUZ, mulUW, cpUZ, cpUW, aa, bb, cc, dd, repUZ, repUW, rFstUZ,
+          rSndUZ, rFstUW, rSndUW, fUZ, sUZ, fUW, sUW, euz, euw, crossInst,
+          crossApplied, d1, d2, d3, d4, keyGoal, keyImp, key, goalABCD,
+          abcdImp, leqABCD, unfoldGoal, eqX, eqY, leqEq, final},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy]; uV = mkVar["u", intTy];
+    z1 = fstOf[repIntTm[zV]]; z2 = sndOf[repIntTm[zV]];
+    w1 = fstOf[repIntTm[wV]]; w2 = sndOf[repIntTm[wV]];
+    u1 = fstOf[repIntTm[uV]]; u2 = sndOf[repIntTm[uV]];
+    plusC = HOL`Stdlib`Num`plusConst[]; leqC = HOL`Stdlib`Num`leqConst[];
+    intZero = intOfNumTm[zeroN[]];
+    hyp0 = ASSUME[intLeTm[intZero, uV]];
+    le0u = EQMP[unfoldIntLe[intZero, uV], hyp0];
+    repAtZero = HOL`Kernel`INST[{mkVar["n", numTy] -> zeroN[]}, repIntOfNumThm];
+    fstZ0 = TRANS[HOL`Equal`APTERM[fstNum[], repAtZero], fstNumPairThm[zeroN[], zeroN[]]];
+    sndZ0 = TRANS[HOL`Equal`APTERM[sndNum[], repAtZero], sndNumPairThm[zeroN[], zeroN[]]];
+    lhsEq = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, fstZ0], REFL[u2]],
+      HOL`Bool`SPEC[u2, HOL`Stdlib`Num`addLeftZeroThm]];   (* FST(R&ℤ0)+u2 = u2 *)
+    rhsEq = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, REFL[u1]], sndZ0],
+      HOL`Bool`SPEC[u1, HOL`Stdlib`Num`plusZeroEqThm]];   (* u1+SND(R&ℤ0) = u1 *)
+    u2leU1 = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[leqC, lhsEq], rhsEq], le0u];
+    hypZW = ASSUME[intLeTm[zV, wV]];
+    leZW = EQMP[unfoldIntLe[zV, wV], hypZW];   (* z1+w2 ≤ w1+z2 *)
+    mulUZ = intMulTm[uV, zV]; mulUW = intMulTm[uV, wV];
+    cpUZ = mkComb[intCanonConst[], intMulPairTm[uV, zV]];
+    cpUW = mkComb[intCanonConst[], intMulPairTm[uV, wV]];
+    aa = fstOf[cpUZ]; bb = sndOf[cpUZ]; cc = fstOf[cpUW]; dd = sndOf[cpUW];
+    repUZ = repIntMulAt[uV, zV]; repUW = repIntMulAt[uV, wV];
+    rFstUZ = HOL`Equal`APTERM[fstNum[], repUZ]; rSndUZ = HOL`Equal`APTERM[sndNum[], repUZ];
+    rFstUW = HOL`Equal`APTERM[fstNum[], repUW]; rSndUW = HOL`Equal`APTERM[sndNum[], repUW];
+    fUZ = plusN[timesN[u1, z1], timesN[u2, z2]]; sUZ = plusN[timesN[u1, z2], timesN[u2, z1]];
+    fUW = plusN[timesN[u1, w1], timesN[u2, w2]]; sUW = plusN[timesN[u1, w2], timesN[u2, w1]];
+    euz = canonEquivAt[fUZ, sUZ];   (* aa + sUZ = fUZ + bb *)
+    euw = canonEquivAt[fUW, sUW];   (* cc + sUW = fUW + dd *)
+    (* KEY: fUZ + sUW ≤ fUW + sUZ, via crossMultLeqThm *)
+    crossInst = HOL`Bool`SPEC[plusN[w1, z2], HOL`Bool`SPEC[plusN[z1, w2],
+      HOL`Bool`SPEC[u2, HOL`Bool`SPEC[u1, HOL`Stdlib`Num`crossMultLeqThm]]]];
+    crossApplied = HOL`Bool`MP[HOL`Bool`MP[crossInst, u2leU1], leZW];
+    (* u1*(z1+w2)+u2*(w1+z2) ≤ u1*(w1+z2)+u2*(z1+w2) *)
+    d1 = timesDistribLeftAt[u1, z1, w2]; d2 = timesDistribLeftAt[u2, w1, z2];
+    d3 = timesDistribLeftAt[u1, w1, z2]; d4 = timesDistribLeftAt[u2, z1, w2];
+    keyGoal = leqNum[plusN[fUZ, sUW], plusN[fUW, sUZ]];
+    keyImp = HOL`Auto`Arith`arithProve[
+      impliesTm[concl[crossApplied], impliesTm[concl[d1], impliesTm[concl[d2],
+        impliesTm[concl[d3], impliesTm[concl[d4], keyGoal]]]]]];
+    key = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      keyImp, crossApplied], d1], d2], d3], d4];
+    goalABCD = leqNum[plusN[aa, dd], plusN[cc, bb]];
+    abcdImp = HOL`Auto`Arith`arithProve[
+      impliesTm[concl[euz], impliesTm[concl[euw], impliesTm[keyGoal, goalABCD]]]];
+    leqABCD = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[abcdImp, euz], euw], key];
+    unfoldGoal = unfoldIntLe[mulUZ, mulUW];
+    eqX = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, rFstUZ], rSndUW];
+    eqY = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC, rFstUW], rSndUZ];
+    leqEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[leqC, eqX], eqY];
+    final = EQMP[HOL`Equal`SYM[TRANS[unfoldGoal, leqEq]], leqABCD];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, HOL`Bool`GEN[uV,
+      HOL`Bool`DISCH[intLeTm[intZero, uV],
+        HOL`Bool`DISCH[intLeTm[zV, wV], final]]]]]
   ];
 
 End[];

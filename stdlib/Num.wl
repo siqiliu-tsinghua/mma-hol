@@ -142,6 +142,7 @@ leqAddRightMonoThm::usage  = "leqAddRightMonoThm — ⊢ ∀m n p. m ≤ n ⇒ m
 leqAddLeftMonoThm::usage   = "leqAddLeftMonoThm — ⊢ ∀m n p. m ≤ n ⇒ p + m ≤ p + n. ≤ monotone in adding on the left.";
 leqAddMonoThm::usage       = "leqAddMonoThm — ⊢ ∀a b c d. a ≤ b ⇒ c ≤ d ⇒ a + c ≤ b + d. Two-sided additive monotonicity of ≤; the core leq-additivity lemma the ARITH Farkas verifier sums with.";
 leqMultLeftThm::usage      = "leqMultLeftThm — ⊢ ∀k a b. a ≤ b ⇒ k * a ≤ k * b. Scaling ≤ by a nonneg constant on the left; the ARITH verifier scales each hypothesis by its Farkas multiplier with this.";
+crossMultLeqThm::usage     = "crossMultLeqThm — ⊢ ∀a b p q. b ≤ a ⇒ p ≤ q ⇒ a*p + b*q ≤ a*q + b*p. Rearrangement/cross inequality; the multiplicative core of ℤ order-by-nonneg monotonicity.";
 leqAddLeftCancelThm::usage = "leqAddLeftCancelThm — ⊢ ∀v a b. v + a ≤ v + b ⇒ a ≤ b. Cancel a shared left summand from ≤; the verifier strips the common variable part after summing scaled inequalities.";
 
 gcdExistsThm::usage      = "gcdExistsThm — ⊢ ∀a b. ∃d. divides d a ∧ divides d b ∧ ∀e. (divides e a ∧ divides e b) ⇒ divides e d.";
@@ -5319,6 +5320,59 @@ leqMultLeftThm =
     genB = HOL`Bool`GEN[bV, disch];
     genA = HOL`Bool`GEN[aV, genB];
     genK = HOL`Bool`GEN[kV, genA]
+  ];
+
+(* ============================================================ *)
+(* crossMultLeqThm : ⊢ ∀a b p q. b ≤ a ⇒ p ≤ q ⇒                 *)
+(*                    a*p + b*q ≤ a*q + b*p.                     *)
+(*                                                              *)
+(* Witness q = p + j from p ≤ q. Then b*q = b*p + b*j and        *)
+(* a*q = a*p + a*j (distrib); both target sides reduce to        *)
+(* (a*p + b*p) + (b*j | a*j), and b*j ≤ a*j (leqMultLeft+comm     *)
+(* on b ≤ a) lifts through leqAddLeftMono. The slack is k*j ≥ 0  *)
+(* implicitly. (No ARITH — Num precedes auto/Arith.wl.)          *)
+(* ============================================================ *)
+
+crossMultLeqThm =
+  Module[{aV, bV, pV, qV, h1, h2, exPQ, jV, jEq, bqEq, aqEq, jbLeJa, bjLeAj,
+          ap, bp, aj, bj, apbp, lhsForm, rhsForm, leqStep, leqCong, goalThm,
+          chosen},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    pV = mkVar["p", numTy]; qV = mkVar["q", numTy];
+    h1 = ASSUME[leqTm[bV, aV]]; h2 = ASSUME[leqTm[pV, qV]];
+    exPQ = EQMP[unfoldLeq[pV, qV], h2];   (* ∃j. p + j = q *)
+    jV = mkVar["j", numTy];
+    jEq = ASSUME[mkEq[plusTm[pV, jV], qV]];   (* p + j = q *)
+    bqEq = TRANS[HOL`Equal`APTERM[mkComb[timesConst[], bV], HOL`Equal`SYM[jEq]],
+      HOL`Bool`SPEC[jV, HOL`Bool`SPEC[pV, HOL`Bool`SPEC[bV, timesDistribLeftThm]]]];
+    (* b*q = b*p + b*j *)
+    aqEq = TRANS[HOL`Equal`APTERM[mkComb[timesConst[], aV], HOL`Equal`SYM[jEq]],
+      HOL`Bool`SPEC[jV, HOL`Bool`SPEC[pV, HOL`Bool`SPEC[aV, timesDistribLeftThm]]]];
+    (* a*q = a*p + a*j *)
+    jbLeJa = HOL`Bool`MP[HOL`Bool`SPEC[aV, HOL`Bool`SPEC[bV,
+      HOL`Bool`SPEC[jV, leqMultLeftThm]]], h1];   (* j*b ≤ j*a *)
+    bjLeAj = EQMP[HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[leqConst[],
+        HOL`Bool`SPEC[bV, HOL`Bool`SPEC[jV, timesCommThm]]],
+      HOL`Bool`SPEC[aV, HOL`Bool`SPEC[jV, timesCommThm]]], jbLeJa];   (* b*j ≤ a*j *)
+    ap = timesTm[aV, pV]; bp = timesTm[bV, pV];
+    aj = timesTm[aV, jV]; bj = timesTm[bV, jV];
+    apbp = plusTm[ap, bp];
+    lhsForm = TRANS[HOL`Equal`APTERM[mkComb[plusConst[], ap], bqEq],
+      HOL`Equal`SYM[HOL`Bool`SPEC[bj, HOL`Bool`SPEC[bp,
+        HOL`Bool`SPEC[ap, addAssocThm]]]]];   (* a*p+b*q = (a*p+b*p)+b*j *)
+    rhsForm = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusConst[], aqEq], REFL[bp]],
+      HOL`Bool`SPEC[bp, HOL`Bool`SPEC[aj, HOL`Bool`SPEC[ap, addRightCommThm]]]];
+    (* a*q+b*p = (a*p+b*p)+a*j *)
+    leqStep = HOL`Bool`MP[HOL`Bool`SPEC[apbp, HOL`Bool`SPEC[aj,
+      HOL`Bool`SPEC[bj, leqAddLeftMonoThm]]], bjLeAj];
+    (* (a*p+b*p)+b*j ≤ (a*p+b*p)+a*j *)
+    leqCong = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[leqConst[], HOL`Equal`SYM[lhsForm]], HOL`Equal`SYM[rhsForm]];
+    goalThm = EQMP[leqCong, leqStep];   (* a*p+b*q ≤ a*q+b*p *)
+    chosen = HOL`Bool`CHOOSE[jV, exPQ, goalThm];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[pV, HOL`Bool`GEN[qV,
+      HOL`Bool`DISCH[leqTm[bV, aV], HOL`Bool`DISCH[leqTm[pV, qV], chosen]]]]]]
   ];
 
 (* leqAddLeftCancelThm : ⊢ ∀v a b. v + a ≤ v + b ⇒ a ≤ b *)

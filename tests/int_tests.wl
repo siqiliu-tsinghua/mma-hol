@@ -382,3 +382,23 @@ HOLTest`runTests["stdlib/Int: order/arith compatibility (functional checks)",
     HOLTest`assertEq[concl[specNeg], expNeg,
       "⊢ intLe (&ℤ1)(&ℤ1) ⇒ intLe (intNeg (&ℤ1)) (intNeg (&ℤ1))"]
   ]];
+
+HOLTest`runTests["stdlib/Int: mult-by-nonneg monotonicity + ℕ crossMultLeqThm hyp-free",
+  Module[{one, z1, intZero, leTm, mulTm, specMul, expMul},
+    one = mkComb[HOL`Stdlib`Num`sucConst[], HOL`Stdlib`Num`zeroConst[]];
+    z1 = mkComb[HOL`Stdlib`Int`intOfNumConst[], one];
+    intZero = mkComb[HOL`Stdlib`Int`intOfNumConst[], HOL`Stdlib`Num`zeroConst[]];
+    leTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intLeConst[], a], b];
+    mulTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intMulConst[], a], b];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Num`crossMultLeqThm], {}, "crossMult no hyps"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intLeMulNonnegThm], {}, "mulNonneg no hyps"];
+    (* SPEC z:=w:=u:=&ℤ1 → intLe(&ℤ0)(&ℤ1) ⇒ intLe(&ℤ1)(&ℤ1) ⇒ intLe (1*1)(1*1) *)
+    specMul = HOL`Bool`SPEC[z1, HOL`Bool`SPEC[z1, HOL`Bool`SPEC[z1,
+      HOL`Stdlib`Int`intLeMulNonnegThm]]];
+    expMul = mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+        leTm[intZero, z1]],
+      mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+        leTm[z1, z1]], leTm[mulTm[z1, z1], mulTm[z1, z1]]]];
+    HOLTest`assertEq[concl[specMul], expMul,
+      "⊢ intLe (&ℤ0)(&ℤ1) ⇒ intLe (&ℤ1)(&ℤ1) ⇒ intLe (intMul (&ℤ1)(&ℤ1)) (intMul (&ℤ1)(&ℤ1))"]
+  ]];
