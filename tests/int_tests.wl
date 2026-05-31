@@ -447,3 +447,42 @@ HOLTest`runTests["stdlib/Int: intAbs (type + lemmas hyp-free + functional check)
     specNum = HOL`Bool`SPEC[one, HOL`Stdlib`Int`intAbsNumThm];
     HOLTest`assertEq[concl[specNum], mkEq[absTm[z1], z1], "⊢ intAbs (&ℤ 1) = &ℤ 1"]
   ]];
+
+(* ===== Stage h: bidirectional induction + supporting lemmas ===== *)
+
+HOLTest`runTests["stdlib/Int: stage-h supporting lemmas hyp-free",
+  Module[{},
+    Scan[Function[t, HOLTest`assertTrue[isThm[t] && hyp[t] === {}, "hyp-free"]],
+      {HOL`Stdlib`Int`negUniqueThm, HOL`Stdlib`Int`intNegAddThm,
+       HOL`Stdlib`Int`intNegSuccThm, HOL`Stdlib`Int`intSuccOfNumThm,
+       HOL`Stdlib`Int`intNegZeroThm, HOL`Stdlib`Int`intCasesThm}]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intNegSucc dihedral + intSuccOfNum (functional checks)",
+  Module[{nV, zV, negTm, succTm, predTm, ofNum, sucN, specDih, specSON},
+    nV = mkVar["n", numTy]; zV = mkVar["z", HOL`Stdlib`Int`intTy];
+    negTm[a_] := mkComb[HOL`Stdlib`Int`intNegConst[], a];
+    succTm[a_] := mkComb[HOL`Stdlib`Int`intSuccConst[], a];
+    predTm[a_] := mkComb[HOL`Stdlib`Int`intPredConst[], a];
+    ofNum[t_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], t];
+    sucN[t_] := mkComb[HOL`Stdlib`Num`sucConst[], t];
+    specDih = HOL`Bool`SPEC[zV, HOL`Stdlib`Int`intNegSuccThm];
+    HOLTest`assertEq[concl[specDih], mkEq[negTm[succTm[zV]], predTm[negTm[zV]]],
+      "⊢ intNeg (intSucc z) = intPred (intNeg z)"];
+    specSON = HOL`Bool`SPEC[nV, HOL`Stdlib`Int`intSuccOfNumThm];
+    HOLTest`assertEq[concl[specSON], mkEq[succTm[ofNum[nV]], ofNum[sucN[nV]]],
+      "⊢ intSucc (&ℤ n) = &ℤ (SUC n)"]
+  ]];
+
+HOLTest`runTests["stdlib/Int: intInductionThm shape (∀P. base ∧ step ⇒ ∀z. P z)",
+  Module[{c},
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intInductionThm], {}, "no hyps"];
+    c = concl[HOL`Stdlib`Int`intInductionThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[const["\[ForAll]", _], abs[bvar[0, _],
+        comb[comb[const["\[DoubleRightArrow]", _],
+          comb[comb[const["\[And]", _], _], _]],
+          comb[const["\[ForAll]", _], abs[bvar[0, _],
+            comb[bvar[1, _], bvar[0, _]], _]]], _]]],
+      "shape: ∀P. (P(&ℤ0) ∧ step) ⇒ ∀z. P z"]
+  ]];

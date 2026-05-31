@@ -95,6 +95,14 @@ intAbsNumThm::usage = "intAbsNumThm — ⊢ ∀n. intAbs (&ℤ n) = &ℤ n.";
 intAbsNegThm::usage = "intAbsNegThm — ⊢ ∀z. intAbs (intNeg z) = intAbs z.";
 intAbsNonnegThm::usage = "intAbsNonnegThm — ⊢ ∀z. intLe (&ℤ 0) (intAbs z).";
 
+negUniqueThm::usage = "negUniqueThm — ⊢ ∀a b. intAdd a b = &ℤ 0 ⇒ b = intNeg a. Additive inverses are unique.";
+intNegAddThm::usage = "intNegAddThm — ⊢ ∀z w. intNeg (intAdd z w) = intAdd (intNeg z) (intNeg w). Negation distributes over addition.";
+intNegSuccThm::usage = "intNegSuccThm — ⊢ ∀z. intNeg (intSucc z) = intPred (intNeg z). Negation conjugates successor to predecessor (the dihedral RSR = S⁻¹ relation).";
+intSuccOfNumThm::usage = "intSuccOfNumThm — ⊢ ∀n. intSucc (&ℤ n) = &ℤ (SUC n).";
+intNegZeroThm::usage = "intNegZeroThm — ⊢ intNeg (&ℤ 0) = &ℤ 0.";
+intCasesThm::usage = "intCasesThm — ⊢ ∀z. (∃n. z = &ℤ n) ∨ (∃n. z = intNeg (&ℤ n)). Sign decomposition.";
+intInductionThm::usage = "intInductionThm — ⊢ ∀P. P (&ℤ 0) ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intPred z)) ⇒ ∀z. P z. Bidirectional integer induction.";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -2133,6 +2141,208 @@ intAbsNonnegThm =
     leAbsVal = EQMP[HOL`Equal`SYM[leInst], leZero];   (* intLe(&ℤ0)(&ℤ(z1+z2)) *)
     congEq = HOL`Equal`APTERM[mkComb[intLeConst[], intZero], absEq];
     HOL`Bool`GEN[zV, EQMP[HOL`Equal`SYM[congEq], leAbsVal]]
+  ];
+
+(* ============================================================ *)
+(* Bidirectional integer induction (the capstone).             *)
+(*   P(&ℤ0) ∧ (∀z. P z ⇒ P(intSucc z) ∧ P(intPred z)) ⇒ ∀z. P z. *)
+(*                                                              *)
+(* Supporting: negUnique (inverses unique, group algebra) →      *)
+(* intNegAdd (−(z+w) = −z + −w) → intNegSucc (the dihedral       *)
+(* −(z+1) = (−z)−1). Plus intSuccOfNum (intSucc(&ℤn)=&ℤ(SUC n)), *)
+(* intNegZero, and the sign decomposition intCases. The proof    *)
+(* runs numInductionThm twice: up through &ℤ n (via intSucc), and *)
+(* down through intNeg(&ℤ n) (via intPred = intNeg∘intSucc∘intNeg). *)
+(* ============================================================ *)
+
+(* intAdd (&ℤ 0) z = z  and  intAdd (intNeg z) z = &ℤ 0  (left id/inverse). *)
+leftIdAt[zT_] :=
+  TRANS[HOL`Bool`SPEC[zT, HOL`Bool`SPEC[intOfNumTm[zeroN[]], intAddCommThm]],
+    HOL`Bool`SPEC[zT, intAddZeroThm]];
+leftInvAt[zT_] :=
+  TRANS[HOL`Bool`SPEC[zT, HOL`Bool`SPEC[intNegTm[zT], intAddCommThm]],
+    HOL`Bool`SPEC[zT, intAddNegThm]];
+
+negUniqueThm =
+  Module[{aV, bV, intZeroT, h, e1, e2, e3, e4, e5, negaEqB},
+    aV = mkVar["a", intTy]; bV = mkVar["b", intTy];
+    intZeroT = intOfNumTm[zeroN[]];
+    h = ASSUME[mkEq[intAddTm[aV, bV], intZeroT]];
+    e1 = HOL`Equal`SYM[HOL`Bool`SPEC[intNegTm[aV], intAddZeroThm]];
+    e2 = HOL`Equal`APTERM[mkComb[intAddConst[], intNegTm[aV]], HOL`Equal`SYM[h]];
+    e3 = HOL`Equal`SYM[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV,
+      HOL`Bool`SPEC[intNegTm[aV], intAddAssocThm]]]];
+    e4 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intAddConst[], leftInvAt[aV]], REFL[bV]];
+    e5 = leftIdAt[bV];
+    negaEqB = TRANS[e1, TRANS[e2, TRANS[e3, TRANS[e4, e5]]]];   (* −a = b *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[mkEq[intAddTm[aV, bV], intZeroT], HOL`Equal`SYM[negaEqB]]]]
+  ];
+
+intNegAddThm =
+  Module[{zV, wV, nz, nw, c1, i1, i2, i3, i4, innerEq, c2, c3, sumZero,
+          negUniqInst, bEqNeg},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy];
+    nz = intNegTm[zV]; nw = intNegTm[wV];
+    c1 = HOL`Bool`SPEC[intAddTm[nz, nw], HOL`Bool`SPEC[wV,
+      HOL`Bool`SPEC[zV, intAddAssocThm]]];
+    i1 = HOL`Equal`APTERM[mkComb[intAddConst[], wV],
+      HOL`Bool`SPEC[nw, HOL`Bool`SPEC[nz, intAddCommThm]]];
+    i2 = HOL`Equal`SYM[HOL`Bool`SPEC[nz, HOL`Bool`SPEC[nw,
+      HOL`Bool`SPEC[wV, intAddAssocThm]]]];
+    i3 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intAddConst[],
+      HOL`Bool`SPEC[wV, intAddNegThm]], REFL[nz]];
+    i4 = leftIdAt[nz];
+    innerEq = TRANS[i1, TRANS[i2, TRANS[i3, i4]]];   (* w+(nz+nw) = nz *)
+    c2 = HOL`Equal`APTERM[mkComb[intAddConst[], zV], innerEq];
+    c3 = HOL`Bool`SPEC[zV, intAddNegThm];
+    sumZero = TRANS[c1, TRANS[c2, c3]];   (* (z+w)+(nz+nw) = &ℤ0 *)
+    negUniqInst = HOL`Bool`SPEC[intAddTm[nz, nw],
+      HOL`Bool`SPEC[intAddTm[zV, wV], negUniqueThm]];
+    bEqNeg = HOL`Bool`MP[negUniqInst, sumZero];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, HOL`Equal`SYM[bEqNeg]]]
+  ];
+
+intNegSuccThm =
+  Module[{zV, ufNegSucc, negAddInst, ufPredNeg},
+    zV = mkVar["z", intTy];
+    ufNegSucc = HOL`Equal`APTERM[intNegConst[], unfoldIntSucc[zV]];
+    negAddInst = HOL`Bool`SPEC[intOneTm, HOL`Bool`SPEC[zV, intNegAddThm]];
+    ufPredNeg = unfoldIntPred[intNegTm[zV]];
+    HOL`Bool`GEN[zV,
+      TRANS[ufNegSucc, TRANS[negAddInst, HOL`Equal`SYM[ufPredNeg]]]]
+  ];
+
+intSuccOfNumThm =
+  Module[{nV, suc0, ufSucc, addHom, nSucEq},
+    nV = mkVar["n", numTy]; suc0 = mkComb[HOL`Stdlib`Num`sucConst[], zeroN[]];
+    ufSucc = unfoldIntSucc[intOfNumTm[nV]];
+    addHom = HOL`Bool`SPEC[suc0, HOL`Bool`SPEC[nV, intOfNumAddThm]];
+    nSucEq = TRANS[
+      HOL`Bool`SPEC[zeroN[], HOL`Bool`SPEC[nV, HOL`Stdlib`Num`plusSucEqThm]],
+      HOL`Equal`APTERM[HOL`Stdlib`Num`sucConst[],
+        HOL`Bool`SPEC[nV, HOL`Stdlib`Num`plusZeroEqThm]]];   (* n+SUC0 = SUC n *)
+    HOL`Bool`GEN[nV, TRANS[ufSucc, TRANS[HOL`Equal`SYM[addHom],
+      HOL`Equal`APTERM[intOfNumConst[], nSucEq]]]]
+  ];
+
+intNegZeroThm =
+  Module[{ufNeg, repZ, fst0, snd0, swapEq},
+    ufNeg = unfoldIntNeg[intOfNumTm[zeroN[]]];
+    repZ = HOL`Kernel`INST[{mkVar["n", numTy] -> zeroN[]}, repIntOfNumThm];
+    fst0 = TRANS[HOL`Equal`APTERM[fstNum[], repZ], fstNumPairThm[zeroN[], zeroN[]]];
+    snd0 = TRANS[HOL`Equal`APTERM[sndNum[], repZ], sndNumPairThm[zeroN[], zeroN[]]];
+    swapEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], snd0], fst0];
+    TRANS[ufNeg, TRANS[HOL`Equal`APTERM[absIntConst[], swapEq],
+      HOL`Equal`SYM[unfoldIntOfNum[zeroN[]]]]]
+  ];
+
+intCasesThm =
+  Module[{existsNumC, zV, rz, z1, z2, disjZ, absRepZ, surj, exNumBody,
+          exNegBody, negEqAbs, caseFst0, caseSnd0},
+    existsNumC = mkConst["∃", tyFun[tyFun[numTy, boolTy], boolTy]];
+    zV = mkVar["z", intTy]; rz = repIntTm[zV];
+    z1 = fstOf[rz]; z2 = sndOf[rz];
+    disjZ = EQMP[unfoldIntRep[rz], intRepRepThm];
+    absRepZ = HOL`Kernel`INST[{concl[absRepIntThm][[2]] -> zV}, absRepIntThm];
+    surj = HOL`Bool`ISPEC[rz, HOL`Stdlib`Pair`pairSurjThm];
+    exNumBody = mkComb[existsNumC, mkAbs[mkVar["n", numTy],
+      mkEq[zV, intOfNumTm[mkVar["n", numTy]]]]];
+    exNegBody = mkComb[existsNumC, mkAbs[mkVar["n", numTy],
+      mkEq[zV, intNegTm[intOfNumTm[mkVar["n", numTy]]]]]];
+    negEqAbs[kTm_] := Module[{ufN, repK, fK, sK, sw},
+      ufN = unfoldIntNeg[intOfNumTm[kTm]];
+      repK = HOL`Kernel`INST[{mkVar["n", numTy] -> kTm}, repIntOfNumThm];
+      fK = TRANS[HOL`Equal`APTERM[fstNum[], repK], fstNumPairThm[kTm, zeroN[]]];
+      sK = TRANS[HOL`Equal`APTERM[sndNum[], repK], sndNumPairThm[kTm, zeroN[]]];
+      sw = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], sK], fK];
+      TRANS[ufN, HOL`Equal`APTERM[absIntConst[], sw]]];
+    caseFst0 = Module[{z1eq, repEq, zEq, negAbs, zEqNeg, exNeg},
+      z1eq = ASSUME[mkEq[z1, zeroN[]]];
+      repEq = TRANS[HOL`Equal`SYM[surj],
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], z1eq], REFL[z2]]];
+      zEq = TRANS[HOL`Equal`SYM[absRepZ], HOL`Equal`APTERM[absIntConst[], repEq]];
+      negAbs = negEqAbs[z2];
+      zEqNeg = TRANS[zEq, HOL`Equal`SYM[negAbs]];
+      exNeg = HOL`Bool`EXISTS[exNegBody, z2, zEqNeg];
+      HOL`Bool`DISJ2[exNeg, exNumBody]];
+    caseSnd0 = Module[{z2eq, repEq, zEq, zEqNum, exNum},
+      z2eq = ASSUME[mkEq[z2, zeroN[]]];
+      repEq = TRANS[HOL`Equal`SYM[surj],
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[commaNumC[], REFL[z1]], z2eq]];
+      zEq = TRANS[HOL`Equal`SYM[absRepZ], HOL`Equal`APTERM[absIntConst[], repEq]];
+      zEqNum = TRANS[zEq, HOL`Equal`SYM[unfoldIntOfNum[z1]]];
+      exNum = HOL`Bool`EXISTS[exNumBody, z1, zEqNum];
+      HOL`Bool`DISJ1[exNum, exNegBody]];
+    HOL`Bool`GEN[zV, HOL`Bool`DISJCASES[disjZ, caseFst0, caseSnd0]]
+  ];
+
+intInductionThm =
+  Module[{forallIntC, andC2, andTmL, PV, appP, zStepV, intZeroT, stepTm,
+          conjTm, conj, base, stepAll, mkNumInd, posAll, negAll, zV,
+          casesZ, leftEx, rightEx, branch1, branch2, pZ, allZ},
+    forallIntC = mkConst["∀", tyFun[tyFun[intTy, boolTy], boolTy]];
+    andC2 = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    andTmL[aTm_, bTm_] := mkComb[mkComb[andC2, aTm], bTm];
+    PV = mkVar["P", tyFun[intTy, boolTy]];
+    appP[t_] := mkComb[PV, t];
+    intZeroT = intOfNumTm[zeroN[]];
+    zStepV = mkVar["z", intTy];
+    stepTm = mkComb[forallIntC, mkAbs[zStepV,
+      impliesTm[appP[zStepV],
+        andTmL[appP[intSuccTm[zStepV]], appP[intPredTm[zStepV]]]]]];
+    conjTm = andTmL[appP[intZeroT], stepTm];
+    conj = ASSUME[conjTm];
+    base = HOL`Bool`CONJUNCT1[conj];
+    stepAll = HOL`Bool`CONJUNCT2[conj];
+    mkNumInd[gBuild_, baseThm_, stepBuild_] :=
+      Module[{nFv, pLam, specInd, specBeta, nL, ihP, stepGen},
+        nFv = mkVar["n", numTy];
+        pLam = mkAbs[nFv, appP[gBuild[nFv]]];
+        specInd = HOL`Bool`ISPEC[pLam, HOL`Stdlib`Num`numInductionThm];
+        specBeta = HOL`Drule`CONVRULE[
+          HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInd];
+        nL = mkVar["n", numTy];
+        ihP = ASSUME[appP[gBuild[nL]]];
+        stepGen = HOL`Bool`GEN[nL,
+          HOL`Bool`DISCH[appP[gBuild[nL]], stepBuild[nL, ihP]]];
+        HOL`Bool`MP[specBeta, HOL`Bool`CONJ[baseThm, stepGen]]
+      ];
+    posAll = mkNumInd[intOfNumTm[#] &, base,
+      Function[{nL, ihP}, Module[{stepInst, succConj, pSucc, succEq},
+        stepInst = HOL`Bool`SPEC[intOfNumTm[nL], stepAll];
+        succConj = HOL`Bool`MP[stepInst, ihP];
+        pSucc = HOL`Bool`CONJUNCT1[succConj];
+        succEq = HOL`Bool`SPEC[nL, intSuccOfNumThm];
+        EQMP[HOL`Equal`APTERM[PV, succEq], pSucc]]]];
+    negAll = mkNumInd[intNegTm[intOfNumTm[#]] &,
+      EQMP[HOL`Equal`SYM[HOL`Equal`APTERM[PV, intNegZeroThm]], base],
+      Function[{nL, ihP}, Module[{stepInst, predConj, pPred, predEq},
+        stepInst = HOL`Bool`SPEC[intNegTm[intOfNumTm[nL]], stepAll];
+        predConj = HOL`Bool`MP[stepInst, ihP];
+        pPred = HOL`Bool`CONJUNCT2[predConj];
+        predEq = TRANS[
+          HOL`Equal`SYM[HOL`Bool`SPEC[intOfNumTm[nL], intNegSuccThm]],
+          HOL`Equal`APTERM[intNegConst[], HOL`Bool`SPEC[nL, intSuccOfNumThm]]];
+        EQMP[HOL`Equal`APTERM[PV, predEq], pPred]]]];
+    zV = mkVar["zz", intTy];
+    casesZ = HOL`Bool`SPEC[zV, intCasesThm];
+    leftEx = concl[casesZ][[1, 2]]; rightEx = concl[casesZ][[2]];
+    branch1 = Module[{nC, eqHyp, pAtNum, congP},
+      nC = mkVar["nc", numTy];
+      eqHyp = ASSUME[mkEq[zV, intOfNumTm[nC]]];
+      pAtNum = HOL`Bool`SPEC[nC, posAll];
+      congP = HOL`Equal`APTERM[PV, eqHyp];
+      HOL`Bool`CHOOSE[nC, ASSUME[leftEx], EQMP[HOL`Equal`SYM[congP], pAtNum]]];
+    branch2 = Module[{nC, eqHyp, pAtNeg, congP},
+      nC = mkVar["nc", numTy];
+      eqHyp = ASSUME[mkEq[zV, intNegTm[intOfNumTm[nC]]]];
+      pAtNeg = HOL`Bool`SPEC[nC, negAll];
+      congP = HOL`Equal`APTERM[PV, eqHyp];
+      HOL`Bool`CHOOSE[nC, ASSUME[rightEx], EQMP[HOL`Equal`SYM[congP], pAtNeg]]];
+    pZ = HOL`Bool`DISJCASES[casesZ, branch1, branch2];
+    allZ = HOL`Bool`GEN[zV, pZ];
+    HOL`Bool`GEN[PV, HOL`Bool`DISCH[conjTm, allZ]]
   ];
 
 End[];
