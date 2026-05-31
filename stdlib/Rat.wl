@@ -22,12 +22,19 @@
 BeginPackage["HOL`Stdlib`Rat`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
-  "HOL`Stdlib`Pair`", "HOL`Stdlib`Num`", "HOL`Stdlib`Int`", "HOL`Auto`Arith`"
+  "HOL`Stdlib`Pair`", "HOL`Stdlib`Num`", "HOL`Stdlib`FTA`", "HOL`Stdlib`Int`",
+  "HOL`Auto`Arith`"
 }];
 
 dividesZeroImpZeroThm::usage = "dividesZeroImpZeroThm — ⊢ ∀n. divides 0 n ⇒ n = 0.";
 dividesOneThm::usage         = "dividesOneThm — ⊢ ∀d. divides d (SUC 0) ⇒ d = SUC 0.";
 gcdOneRightThm::usage        = "gcdOneRightThm — ⊢ ∀a. gcd a (SUC 0) = SUC 0.";
+
+exDivConst::usage   = "exDivConst[] — exDiv : num → num → num, exact quotient exDiv n g = ε c. n = g * c. Well-behaved only when g divides n; chosen over DIV so divides g n ⇒ n = g*(exDiv n g) follows from selectAx with no division-uniqueness lemma.";
+exDivDefThm::usage  = "exDivDefThm — ⊢ exDiv = (λn g. ε c. n = g * c).";
+exDivThm::usage     = "exDivThm — ⊢ ∀g n. divides g n ⇒ n = g * exDiv n g. Exact division via the Hilbert-ε witness.";
+exDivOneThm::usage  = "exDivOneThm — ⊢ ∀n. exDiv n (SUC 0) = n.";
+exDivZeroThm::usage = "exDivZeroThm — ⊢ ∀g. ¬ (g = 0) ⇒ exDiv 0 g = 0.";
 
 intNatAbsConst::usage  = "intNatAbsConst[] — intNatAbs : int → num, |z| as a natural = FST(REP_int z) + SND(REP_int z).";
 intNatAbsDefThm::usage = "intNatAbsDefThm — ⊢ intNatAbs = (λz. FST (REP_int z) + SND (REP_int z)).";
@@ -182,6 +189,94 @@ gcdOneRightThm =
       HOL`Bool`SPEC[aV, HOL`Stdlib`Num`gcdDividesRightThm]];  (* divides (gcd a 1) 1 *)
     eq = HOL`Bool`MP[HOL`Bool`SPEC[gcdTm[aV, oneN[]], dividesOneThm], gdiv];
     HOL`Bool`GEN[aV, eq]                                      (* gcd a 1 = 1 *)
+  ];
+
+(* ============================================================ *)
+(* exDiv — exact quotient via Hilbert ε (proper home Num.wl)    *)
+(* exDiv n g = ε c. n = g * c. When g divides n this is the     *)
+(* unique quotient, and exDivThm falls straight out of selectAx *)
+(* with no need for a DIV/MOD-uniqueness lemma.                 *)
+(* ============================================================ *)
+
+selectC[ty_] := mkConst["@", tyFun[tyFun[ty, boolT], ty]];
+
+exDivTy = tyFun[numTy, tyFun[numTy, numTy]];
+
+exDivDefThm = newDefinition[mkEq[
+  mkVar["exDiv", exDivTy],
+  Module[{nV, gV, cV},
+    nV = mkVar["n", numTy]; gV = mkVar["g", numTy]; cV = mkVar["c", numTy];
+    mkAbs[nV, mkAbs[gV,
+      mkComb[selectC[numTy], mkAbs[cV, mkEq[nV, timesTm[gV, cV]]]]]]]
+]];
+
+exDivConst[] := mkConst["exDiv", exDivTy];
+exDivTm[nT_, gT_] := mkComb[mkComb[exDivConst[], nT], gT];
+
+(* ⊢ exDiv n g = (@ c. n = g * c) *)
+unfoldExDiv[nT_, gT_] :=
+  Module[{ap1, beta1, ap2, beta2},
+    ap1 = HOL`Equal`APTHM[exDivDefThm, nT];
+    beta1 = BETACONV[concl[ap1][[2]]];
+    ap2 = HOL`Equal`APTHM[TRANS[ap1, beta1], gT];
+    beta2 = BETACONV[concl[ap2][[2]]];
+    TRANS[ap2, beta2]
+  ];
+
+(* ⊢ ∀g n. divides g n ⇒ n = g * exDiv n g *)
+exDivThm =
+  Module[{gV, nV, hyp, exTh, pred, selTh, unf, apTerm, result},
+    gV = mkVar["g", numTy]; nV = mkVar["n", numTy];
+    hyp = ASSUME[dividesTm[gV, nV]];                    (* divides g n *)
+    exTh = EQMP[unfoldDivides[gV, nV], hyp];            (* ∃c. n = g * c *)
+    pred = concl[exTh][[2]];                            (* λc. n = g * c *)
+    selTh = HOL`Stdlib`Num`selectOfExists[pred, exTh];  (* n = g * (@pred) *)
+    unf = unfoldExDiv[nV, gV];                          (* exDiv n g = @(λc. n=g*c) *)
+    apTerm = HOL`Equal`APTERM[
+      mkComb[HOL`Stdlib`Num`timesConst[], gV], HOL`Equal`SYM[unf]]; (* g*@pred = g*exDiv n g *)
+    result = TRANS[selTh, apTerm];                      (* n = g * exDiv n g *)
+    HOL`Bool`GEN[gV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[dividesTm[gV, nV], result]]]
+  ];
+
+(* ⊢ ∀n. exDiv n (SUC 0) = n *)
+exDivOneThm =
+  Module[{nV, oneT, oneTimesN, nEqOneTimesN, existsBody, exTh, divThm,
+          eqStep, oneTimesEx, result},
+    nV = mkVar["n", numTy]; oneT = oneN[];
+    oneTimesN = HOL`Bool`SPEC[nV, HOL`Stdlib`Num`oneTimesEqThm];  (* SUC 0 * n = n *)
+    nEqOneTimesN = HOL`Equal`SYM[oneTimesN];            (* n = SUC 0 * n *)
+    existsBody = concl[unfoldDivides[oneT, nV]][[2]];   (* ∃c. n = SUC 0 * c *)
+    exTh = HOL`Bool`EXISTS[existsBody, nV, nEqOneTimesN];
+    divThm = EQMP[HOL`Equal`SYM[unfoldDivides[oneT, nV]], exTh];  (* divides (SUC 0) n *)
+    eqStep = HOL`Bool`MP[
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[oneT, exDivThm]], divThm];  (* n = SUC 0 * exDiv n (SUC 0) *)
+    oneTimesEx = HOL`Bool`SPEC[exDivTm[nV, oneT], HOL`Stdlib`Num`oneTimesEqThm];
+    result = HOL`Equal`SYM[TRANS[eqStep, oneTimesEx]];  (* exDiv n (SUC 0) = n *)
+    HOL`Bool`GEN[nV, result]
+  ];
+
+(* ⊢ ∀g. ¬ (g = 0) ⇒ exDiv 0 g = 0 *)
+exDivZeroThm =
+  Module[{gV, zeroT, divisG0, eqStep, prodEq0, disj, notGEq0,
+          falseTh, case1, case2, elim, gEq0Tm, exDiv0gEq0Tm},
+    gV = mkVar["g", numTy]; zeroT = zeroN[];
+    divisG0 = HOL`Bool`SPEC[gV, HOL`Stdlib`Num`dividesZeroThm];   (* divides g 0 *)
+    eqStep = HOL`Bool`MP[
+      HOL`Bool`SPEC[zeroT, HOL`Bool`SPEC[gV, exDivThm]], divisG0]; (* 0 = g * exDiv 0 g *)
+    prodEq0 = HOL`Equal`SYM[eqStep];                    (* g * exDiv 0 g = 0 *)
+    disj = HOL`Bool`MP[
+      HOL`Bool`SPEC[exDivTm[zeroT, gV],
+        HOL`Bool`SPEC[gV, HOL`Stdlib`Num`multEqZeroThm]],
+      prodEq0];                                         (* g = 0 ∨ exDiv 0 g = 0 *)
+    gEq0Tm = mkEq[gV, zeroT];
+    exDiv0gEq0Tm = mkEq[exDivTm[zeroT, gV], zeroT];
+    notGEq0 = ASSUME[notTm[gEq0Tm]];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notGEq0], ASSUME[gEq0Tm]];  (* F *)
+    case1 = HOL`Bool`CONTR[exDiv0gEq0Tm, falseTh];
+    case2 = ASSUME[exDiv0gEq0Tm];
+    elim = HOL`Bool`DISJCASES[disj, case1, case2];      (* ¬(g=0) ⊢ exDiv 0 g = 0 *)
+    HOL`Bool`GEN[gV, HOL`Bool`DISCH[notTm[gEq0Tm], elim]]
   ];
 
 (* ============================================================ *)

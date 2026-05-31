@@ -79,3 +79,22 @@ HOLTest`runTests["stdlib/Rat: ratOfIntInjThm — ⊢ ∀a b. &ℚ a = &ℚ b ⇒
         comb[comb[const["⇒", _], comb[comb[const["=", _], _], _]],
           comb[comb[const["=", _], _], _]]]],
     "shape: ∀a b. &ℚ a = &ℚ b ⇒ a = b"]];
+
+(* ===== stage c: exDiv (exact quotient via Hilbert ε) ===== *)
+
+HOLTest`runTests["stdlib/Rat: exDivThm — ⊢ ∀g n. divides g n ⇒ n = g * exDiv n g",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`exDivThm],
+      HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["⇒", _], comb[comb[const["divides", _], _], _]],
+          comb[comb[const["=", _], _], _]]]],
+    "shape: ∀g n. divides g n ⇒ n = g * exDiv n g"]];
+
+HOLTest`runTests["stdlib/Rat: exDivOneThm — ⊢ ∀n. exDiv n (SUC 0) = n",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivOneThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`exDivOneThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: exDivZeroThm — ⊢ ∀g. ¬(g = 0) ⇒ exDiv 0 g = 0",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`exDivZeroThm], "is a theorem"]];
