@@ -40,6 +40,10 @@ HOLTest`runTests["stdlib/Rat: gcdZeroRightThm — ⊢ ∀a. gcd a 0 = a",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdZeroRightThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdZeroRightThm], "is a theorem"]];
 
+HOLTest`runTests["stdlib/Rat: gcdRecThm — ⊢ ∀a b. ¬(b=0) ⇒ gcd a b = gcd b (a MOD b)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdRecThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdRecThm], "is a theorem"]];
+
 (* ===== intNatAbs ===== *)
 
 HOLTest`runTests["stdlib/Rat: intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0",

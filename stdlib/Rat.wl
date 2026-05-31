@@ -468,6 +468,51 @@ gcdZeroRightThm =
     HOL`Bool`GEN[aV, eq]
   ];
 
+(* ⊢ ∀a b. ¬ (b = 0) ⇒ gcd a b = gcd b (a MOD b) *)
+(* g1 = gcd a b, g2 = gcd b r (r = a MOD b). Mutual divisibility:    *)
+(*   g1 | a, g1 | b ⇒ g1 | (b*q+r)=a, so g1 | r (dividesAddRight),    *)
+(*     hence g1 | gcd b r (gcdUniversal).                            *)
+(*   g2 | b, g2 | r ⇒ g2 | b*q+r = a (dividesAdd), so g2 | gcd a b.   *)
+(*   dividesAntisym closes g1 = g2. (a = b*q+r kept additive — no     *)
+(*   monus.) The a→(b*q+r) rewrites use APTERM/EQMP, NOT SUBS, since  *)
+(*   `a` also occurs inside gcd a b.                                  *)
+gcdRecThm =
+  Module[{aV, bV, notB0, qTm, rTm, bqTm, divPair, aEq, g1, g2,
+          g1DivA, g1DivB, g1DivBq, g1DivBqR, g1DivR, g1Divg2,
+          g2DivB, g2DivR, g2DivBq, g2DivBqR, g2DivA, g2Divg1, eq},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    notB0 = ASSUME[notTm[mkEq[bV, zeroN[]]]];
+    qTm = divTmR[aV, bV]; rTm = modTmR[aV, bV]; bqTm = timesTm[bV, qTm];
+    divPair = HOL`Bool`MP[
+      HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`divisionPairThm]], notB0];
+    aEq = HOL`Bool`CONJUNCT1[divPair];                    (* a = b*q + r *)
+    g1 = gcdTm[aV, bV]; g2 = gcdTm[bV, rTm];
+    g1DivA = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`gcdDividesLeftThm]];   (* g1 | a *)
+    g1DivB = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`gcdDividesRightThm]];  (* g1 | b *)
+    g1DivBq = HOL`Bool`MP[HOL`Bool`SPEC[qTm, HOL`Bool`SPEC[bV,
+      HOL`Bool`SPEC[g1, HOL`Stdlib`Num`dividesMultRightThm]]], g1DivB];  (* g1 | (b*q) *)
+    g1DivBqR = EQMP[HOL`Equal`APTERM[dividesHead[g1], aEq], g1DivA];     (* g1 | (b*q + r) *)
+    g1DivR = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[rTm, HOL`Bool`SPEC[bqTm,
+      HOL`Bool`SPEC[g1, HOL`Stdlib`Num`dividesAddRightThm]]], g1DivBq], g1DivBqR];  (* g1 | r *)
+    g1Divg2 = HOL`Bool`MP[HOL`Bool`SPEC[g1, HOL`Bool`SPEC[rTm,
+      HOL`Bool`SPEC[bV, HOL`Stdlib`Num`gcdUniversalThm]]],
+      HOL`Bool`CONJ[g1DivB, g1DivR]];                     (* g1 | gcd b r *)
+    g2DivB = HOL`Bool`SPEC[rTm, HOL`Bool`SPEC[bV, HOL`Stdlib`Num`gcdDividesLeftThm]];   (* g2 | b *)
+    g2DivR = HOL`Bool`SPEC[rTm, HOL`Bool`SPEC[bV, HOL`Stdlib`Num`gcdDividesRightThm]];  (* g2 | r *)
+    g2DivBq = HOL`Bool`MP[HOL`Bool`SPEC[qTm, HOL`Bool`SPEC[bV,
+      HOL`Bool`SPEC[g2, HOL`Stdlib`Num`dividesMultRightThm]]], g2DivB];  (* g2 | (b*q) *)
+    g2DivBqR = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[rTm, HOL`Bool`SPEC[bqTm,
+      HOL`Bool`SPEC[g2, HOL`Stdlib`Num`dividesAddThm]]], g2DivBq], g2DivR];  (* g2 | (b*q + r) *)
+    g2DivA = EQMP[HOL`Equal`APTERM[dividesHead[g2], HOL`Equal`SYM[aEq]], g2DivBqR]; (* g2 | a *)
+    g2Divg1 = HOL`Bool`MP[HOL`Bool`SPEC[g2, HOL`Bool`SPEC[bV,
+      HOL`Bool`SPEC[aV, HOL`Stdlib`Num`gcdUniversalThm]]],
+      HOL`Bool`CONJ[g2DivA, g2DivB]];                     (* g2 | gcd a b *)
+    eq = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[g2, HOL`Bool`SPEC[g1, dividesAntisymThm]], g1Divg2], g2Divg1];  (* g1 = g2 *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[notTm[mkEq[bV, zeroN[]]], eq]]]
+  ];
+
 (* ============================================================ *)
 (* intNatAbs : int → num                                        *)
 (* ============================================================ *)
