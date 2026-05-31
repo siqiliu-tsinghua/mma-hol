@@ -112,3 +112,22 @@ HOLTest`runTests["stdlib/Rat: gcdNonzeroFromRightThm — ⊢ ∀a b. ¬(b=0) ⇒
 HOLTest`runTests["stdlib/Rat: coprimeReducedThm — ⊢ ∀a b. ¬(gcd a b=0) ⇒ gcd (exDiv a (gcd a b)) (exDiv b (gcd a b)) = SUC 0",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`coprimeReducedThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`coprimeReducedThm], "is a theorem"]];
+
+(* ===== stage c: intDivNat (exact division of an int by a nat) ===== *)
+
+HOLTest`runTests["stdlib/Rat: intDivNat : int → num → int",
+  HOLTest`assertEq[HOL`Kernel`constType["intDivNat"],
+    tyFun[mkType["int", {}], tyFun[mkType["num", {}], mkType["int", {}]]],
+    "intDivNat : int → num → int"]];
+
+HOLTest`runTests["stdlib/Rat: repIntDivNatThm — ⊢ ∀z g. ¬(g=0) ⇒ REP_int (intDivNat z g) = (..,..)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`repIntDivNatThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`repIntDivNatThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: intDivNatOneThm — ⊢ ∀z. intDivNat z (SUC 0) = z",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intDivNatOneThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intDivNatOneThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: intNatAbsIntDivNatThm — ⊢ ∀z g. ¬(g=0) ⇒ intNatAbs (intDivNat z g) = exDiv (intNatAbs z) g",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsIntDivNatThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsIntDivNatThm], "is a theorem"]];

@@ -40,6 +40,12 @@ dividesMultBothLeftThm::usage = "dividesMultBothLeftThm — ⊢ ∀g h x. divide
 gcdNonzeroFromRightThm::usage = "gcdNonzeroFromRightThm — ⊢ ∀a b. ¬ (b = 0) ⇒ ¬ (gcd a b = 0).";
 coprimeReducedThm::usage = "coprimeReducedThm — ⊢ ∀a b. ¬ (gcd a b = 0) ⇒ gcd (exDiv a (gcd a b)) (exDiv b (gcd a b)) = SUC 0. Dividing both arguments by their gcd makes them coprime.";
 
+intDivNatConst::usage  = "intDivNatConst[] — intDivNat : int → num → int, exact division of an integer by a natural, componentwise on the canonical rep: intDivNat z g = ABS_int (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g).";
+intDivNatDefThm::usage = "intDivNatDefThm — ⊢ intDivNat = (λz g. ABS_int (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g)).";
+repIntDivNatThm::usage = "repIntDivNatThm — ⊢ ∀z g. ¬ (g = 0) ⇒ REP_int (intDivNat z g) = (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g).";
+intDivNatOneThm::usage = "intDivNatOneThm — ⊢ ∀z. intDivNat z (SUC 0) = z.";
+intNatAbsIntDivNatThm::usage = "intNatAbsIntDivNatThm — ⊢ ∀z g. ¬ (g = 0) ⇒ intNatAbs (intDivNat z g) = exDiv (intNatAbs z) g.";
+
 intNatAbsConst::usage  = "intNatAbsConst[] — intNatAbs : int → num, |z| as a natural = FST(REP_int z) + SND(REP_int z).";
 intNatAbsDefThm::usage = "intNatAbsDefThm — ⊢ intNatAbs = (λz. FST (REP_int z) + SND (REP_int z)).";
 intNatAbsZeroThm::usage = "intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0.";
@@ -410,6 +416,177 @@ intNatAbsZeroThm =
       HOL`Equal`APTERM[HOL`Stdlib`Num`plusConst[], fstZ], sndZ]; (* .. + .. = 0 + 0 *)
     addZ = HOL`Bool`SPEC[zeroN[], HOL`Stdlib`Num`addLeftZeroThm]; (* 0 + 0 = 0 *)
     TRANS[unfoldIntNatAbs[z0], TRANS[sumEq, addZ]]
+  ];
+
+(* ============================================================ *)
+(* intDivNat : int → num → int — exact division by a natural,   *)
+(* componentwise on the canonical rep.                          *)
+(* ============================================================ *)
+
+absIntC[] := HOL`Stdlib`Int`absIntConst[];
+plusC[]   := HOL`Stdlib`Num`plusConst[];
+numPairConsC[] := mkConst[",", tyFun[numTy, tyFun[numTy, numPairTy]]];
+numPairCons[a_, b_] := mkComb[mkComb[numPairConsC[], a], b];
+
+(* ⊢ INT_REP p = (FST p = 0 ∨ SND p = 0) *)
+unfoldIntRep[pT_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[HOL`Stdlib`Int`intRepDefThm, pT];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* ⊢ m + 0 = m  (no addRightZeroThm in Num; via addComm + addLeftZero) *)
+addZeroRightAt[mT_] :=
+  TRANS[HOL`Bool`SPEC[zeroN[], HOL`Bool`SPEC[mT, HOL`Stdlib`Num`addCommThm]],
+        HOL`Bool`SPEC[mT, HOL`Stdlib`Num`addLeftZeroThm]];
+
+intDivNatTy = tyFun[intTy, tyFun[numTy, intTy]];
+
+intDivNatDefThm = newDefinition[mkEq[
+  mkVar["intDivNat", intDivNatTy],
+  Module[{zV, gV},
+    zV = mkVar["z", intTy]; gV = mkVar["g", numTy];
+    mkAbs[zV, mkAbs[gV,
+      mkComb[absIntC[],
+        numPairCons[
+          exDivTm[mkComb[fstNN[], repInt[zV]], gV],
+          exDivTm[mkComb[sndNN[], repInt[zV]], gV]]]]]]
+]];
+
+intDivNatConst[] := mkConst["intDivNat", intDivNatTy];
+intDivNatTm[zT_, gT_] := mkComb[mkComb[intDivNatConst[], zT], gT];
+
+(* ⊢ intDivNat z g = ABS_int (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g) *)
+unfoldIntDivNat[zT_, gT_] :=
+  Module[{ap1, beta1, ap2, beta2},
+    ap1 = HOL`Equal`APTHM[intDivNatDefThm, zT];
+    beta1 = BETACONV[concl[ap1][[2]]];
+    ap2 = HOL`Equal`APTHM[TRANS[ap1, beta1], gT];
+    beta2 = BETACONV[concl[ap2][[2]]];
+    TRANS[ap2, beta2]
+  ];
+
+(* ⊢ ∀z g. ¬ (g = 0) ⇒ REP_int (intDivNat z g) =
+       (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g) *)
+repIntDivNatThm =
+  Module[{zV, gV, notG0, repZ, fstRepZ, sndRepZ, qF, qS, pairTm,
+          exDivZeroG, intRepDisj, fstPairEq, sndPairEq, fstPairTm0,
+          sndPairTm0, caseFst, caseSnd, repPairDisj, intRepPair, rVar,
+          repAbsInst, repEqPair, unfDiv, apRep, repBody},
+    zV = mkVar["z", intTy]; gV = mkVar["g", numTy];
+    notG0 = ASSUME[notTm[mkEq[gV, zeroN[]]]];
+    repZ = repInt[zV];
+    fstRepZ = mkComb[fstNN[], repZ]; sndRepZ = mkComb[sndNN[], repZ];
+    qF = exDivTm[fstRepZ, gV]; qS = exDivTm[sndRepZ, gV];
+    pairTm = numPairCons[qF, qS];
+    exDivZeroG = HOL`Bool`MP[HOL`Bool`SPEC[gV, exDivZeroThm], notG0];  (* exDiv 0 g = 0 *)
+    intRepDisj = EQMP[unfoldIntRep[repZ], HOL`Stdlib`Int`intRepRepThm]; (* FST(REP z)=0 ∨ SND(REP z)=0 *)
+    fstPairEq = fstNumAt[qF, qS];                       (* FST pair = qF *)
+    sndPairEq = sndNumAt[qF, qS];                       (* SND pair = qS *)
+    fstPairTm0 = mkEq[mkComb[fstNN[], pairTm], zeroN[]];
+    sndPairTm0 = mkEq[mkComb[sndNN[], pairTm], zeroN[]];
+    caseFst = Module[{h, exF, qFeq0, fstPair0},
+      h = ASSUME[mkEq[fstRepZ, zeroN[]]];               (* FST(REP z)=0 *)
+      exF = HOL`Equal`APTHM[HOL`Equal`APTERM[exDivConst[], h], gV];  (* qF = exDiv 0 g *)
+      qFeq0 = TRANS[exF, exDivZeroG];                   (* qF = 0 *)
+      fstPair0 = TRANS[fstPairEq, qFeq0];               (* FST pair = 0 *)
+      HOL`Bool`DISJ1[fstPair0, sndPairTm0]];
+    caseSnd = Module[{h, exS, qSeq0, sndPair0},
+      h = ASSUME[mkEq[sndRepZ, zeroN[]]];               (* SND(REP z)=0 *)
+      exS = HOL`Equal`APTHM[HOL`Equal`APTERM[exDivConst[], h], gV];  (* qS = exDiv 0 g *)
+      qSeq0 = TRANS[exS, exDivZeroG];                   (* qS = 0 *)
+      sndPair0 = TRANS[sndPairEq, qSeq0];               (* SND pair = 0 *)
+      HOL`Bool`DISJ2[sndPair0, fstPairTm0]];
+    repPairDisj = HOL`Bool`DISJCASES[intRepDisj, caseFst, caseSnd]; (* FST pair=0 ∨ SND pair=0 *)
+    intRepPair = EQMP[HOL`Equal`SYM[unfoldIntRep[pairTm]], repPairDisj];  (* INT_REP pair *)
+    rVar = concl[HOL`Stdlib`Int`repAbsIntThm][[1, 2, 2]];
+    repAbsInst = HOL`Kernel`INST[{rVar -> pairTm}, HOL`Stdlib`Int`repAbsIntThm];
+    repEqPair = EQMP[repAbsInst, intRepPair];           (* REP (ABS pair) = pair *)
+    unfDiv = unfoldIntDivNat[zV, gV];                   (* intDivNat z g = ABS pair *)
+    apRep = HOL`Equal`APTERM[HOL`Stdlib`Int`repIntConst[], unfDiv];
+    repBody = TRANS[apRep, repEqPair];                  (* REP (intDivNat z g) = pair *)
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[gV,
+      HOL`Bool`DISCH[notTm[mkEq[gV, zeroN[]]], repBody]]]
+  ];
+
+(* ⊢ ∀z. intDivNat z (SUC 0) = z *)
+intDivNatOneThm =
+  Module[{zV, repZ, fstRepZ, sndRepZ, repAt1, exF, exS, pairEqProj,
+          surjAtRepZ, repEqRepZ, apAbs, aVar, absRepZ, absRepAtDiv, result},
+    zV = mkVar["z", intTy];
+    repZ = repInt[zV]; fstRepZ = mkComb[fstNN[], repZ]; sndRepZ = mkComb[sndNN[], repZ];
+    repAt1 = HOL`Bool`MP[
+      HOL`Bool`SPEC[oneN[], HOL`Bool`SPEC[zV, repIntDivNatThm]], oneNotZeroThm];
+    exF = HOL`Bool`SPEC[fstRepZ, exDivOneThm];          (* exDiv(FST(REP z))(SUC 0) = FST(REP z) *)
+    exS = HOL`Bool`SPEC[sndRepZ, exDivOneThm];          (* exDiv(SND(REP z))(SUC 0) = SND(REP z) *)
+    pairEqProj = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[numPairConsC[], exF], exS];      (* (..,..) = (FST(REP z), SND(REP z)) *)
+    surjAtRepZ = HOL`Bool`SPEC[repZ,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> numTy, mkVarType["B"] -> numTy},
+        HOL`Stdlib`Pair`pairSurjThm]];                  (* (FST(REP z), SND(REP z)) = REP z *)
+    repEqRepZ = TRANS[TRANS[repAt1, pairEqProj], surjAtRepZ];  (* REP(intDivNat z 1) = REP z *)
+    apAbs = HOL`Equal`APTERM[absIntC[], repEqRepZ];     (* ABS(REP(intDivNat z 1)) = ABS(REP z) *)
+    aVar = concl[HOL`Stdlib`Int`absRepIntThm][[2]];
+    absRepZ = HOL`Kernel`INST[{aVar -> zV}, HOL`Stdlib`Int`absRepIntThm];  (* ABS(REP z) = z *)
+    absRepAtDiv = HOL`Kernel`INST[{aVar -> intDivNatTm[zV, oneN[]]},
+      HOL`Stdlib`Int`absRepIntThm];                     (* ABS(REP(intDivNat z 1)) = intDivNat z 1 *)
+    result = TRANS[HOL`Equal`SYM[absRepAtDiv], TRANS[apAbs, absRepZ]];
+    HOL`Bool`GEN[zV, result]
+  ];
+
+(* ⊢ ∀z g. ¬ (g = 0) ⇒ intNatAbs (intDivNat z g) = exDiv (intNatAbs z) g *)
+intNatAbsIntDivNatThm =
+  Module[{zV, gV, notG0, repZ, fstRepZ, sndRepZ, qF, qS, exDivZeroG,
+          unfNAdiv, repAt, fstRepDiv, sndRepDiv, sumEq, lhsEq,
+          intRepDisj, sumArgTm, caseFst, caseSnd, elim, unfNAz,
+          rhsArgEq, result},
+    zV = mkVar["z", intTy]; gV = mkVar["g", numTy];
+    notG0 = ASSUME[notTm[mkEq[gV, zeroN[]]]];
+    repZ = repInt[zV];
+    fstRepZ = mkComb[fstNN[], repZ]; sndRepZ = mkComb[sndNN[], repZ];
+    qF = exDivTm[fstRepZ, gV]; qS = exDivTm[sndRepZ, gV];
+    sumArgTm = plusTm[fstRepZ, sndRepZ];                (* FST(REP z) + SND(REP z) *)
+    exDivZeroG = HOL`Bool`MP[HOL`Bool`SPEC[gV, exDivZeroThm], notG0];
+    (* LHS: intNatAbs(intDivNat z g) = qF + qS *)
+    unfNAdiv = unfoldIntNatAbs[intDivNatTm[zV, gV]];
+    repAt = HOL`Bool`MP[
+      HOL`Bool`SPEC[gV, HOL`Bool`SPEC[zV, repIntDivNatThm]], notG0]; (* REP(intDivNat z g) = pair *)
+    fstRepDiv = TRANS[HOL`Equal`APTERM[fstNN[], repAt], fstNumAt[qF, qS]];
+    sndRepDiv = TRANS[HOL`Equal`APTERM[sndNN[], repAt], sndNumAt[qF, qS]];
+    sumEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], fstRepDiv], sndRepDiv];
+    lhsEq = TRANS[unfNAdiv, sumEq];                     (* intNatAbs(intDivNat z g) = qF + qS *)
+    intRepDisj = EQMP[unfoldIntRep[repZ], HOL`Stdlib`Int`intRepRepThm];
+    (* goal of the case-split: qF + qS = exDiv (FST(REP z)+SND(REP z)) g *)
+    caseFst = Module[{h, qFeq0, lhsToQs, sumArgEq, rhsEqQs},
+      h = ASSUME[mkEq[fstRepZ, zeroN[]]];               (* FST(REP z)=0 *)
+      qFeq0 = TRANS[HOL`Equal`APTHM[HOL`Equal`APTERM[exDivConst[], h], gV], exDivZeroG]; (* qF = 0 *)
+      lhsToQs = TRANS[
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], qFeq0], REFL[qS]],
+        HOL`Bool`SPEC[qS, HOL`Stdlib`Num`addLeftZeroThm]];  (* qF + qS = qS *)
+      sumArgEq = TRANS[
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], h], REFL[sndRepZ]],
+        HOL`Bool`SPEC[sndRepZ, HOL`Stdlib`Num`addLeftZeroThm]];  (* FST(REP z)+SND(REP z) = SND(REP z) *)
+      rhsEqQs = HOL`Equal`APTHM[HOL`Equal`APTERM[exDivConst[], sumArgEq], gV]; (* exDiv(sumArg)g = qS *)
+      TRANS[lhsToQs, HOL`Equal`SYM[rhsEqQs]]];          (* qF + qS = exDiv(sumArg)g *)
+    caseSnd = Module[{h, qSeq0, lhsToQf, sumArgEq, rhsEqQf},
+      h = ASSUME[mkEq[sndRepZ, zeroN[]]];               (* SND(REP z)=0 *)
+      qSeq0 = TRANS[HOL`Equal`APTHM[HOL`Equal`APTERM[exDivConst[], h], gV], exDivZeroG]; (* qS = 0 *)
+      lhsToQf = TRANS[
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[qF]], qSeq0],
+        addZeroRightAt[qF]];                            (* qF + qS = qF *)
+      sumArgEq = TRANS[
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[fstRepZ]], h],
+        addZeroRightAt[fstRepZ]];                       (* FST(REP z)+SND(REP z) = FST(REP z) *)
+      rhsEqQf = HOL`Equal`APTHM[HOL`Equal`APTERM[exDivConst[], sumArgEq], gV]; (* exDiv(sumArg)g = qF *)
+      TRANS[lhsToQf, HOL`Equal`SYM[rhsEqQf]]];          (* qF + qS = exDiv(sumArg)g *)
+    elim = HOL`Bool`DISJCASES[intRepDisj, caseFst, caseSnd]; (* qF + qS = exDiv(sumArg)g *)
+    unfNAz = unfoldIntNatAbs[zV];                       (* intNatAbs z = FST(REP z)+SND(REP z) *)
+    rhsArgEq = HOL`Equal`SYM[
+      HOL`Equal`APTHM[HOL`Equal`APTERM[exDivConst[], unfNAz], gV]];
+                                                        (* exDiv(sumArg)g = exDiv(intNatAbs z)g *)
+    result = TRANS[TRANS[lhsEq, elim], rhsArgEq];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[gV,
+      HOL`Bool`DISCH[notTm[mkEq[gV, zeroN[]]], result]]]
   ];
 
 (* ============================================================ *)
