@@ -131,3 +131,29 @@ HOLTest`runTests["stdlib/Rat: intDivNatOneThm — ⊢ ∀z. intDivNat z (SUC 0) 
 HOLTest`runTests["stdlib/Rat: intNatAbsIntDivNatThm — ⊢ ∀z g. ¬(g=0) ⇒ intNatAbs (intDivNat z g) = exDiv (intNatAbs z) g",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsIntDivNatThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsIntDivNatThm], "is a theorem"]];
+
+(* ===== stage c: ratCanon (gcd-reduction to lowest terms) ===== *)
+
+HOLTest`runTests["stdlib/Rat: ratCanon : int × num → int × num",
+  Module[{ratPairTy},
+    ratPairTy = HOL`Stdlib`Pair`prodTy[mkType["int", {}], mkType["num", {}]];
+    HOLTest`assertEq[HOL`Kernel`constType["ratCanon"],
+      tyFun[ratPairTy, ratPairTy], "ratCanon : int × num → int × num"]]];
+
+HOLTest`runTests["stdlib/Rat: ratCanonLandsThm — ⊢ ∀p. ¬(SND p = 0) ⇒ RAT_REP (ratCanon p)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonLandsThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratCanonLandsThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["⇒", _], _],
+          comb[const["RAT_REP", _], comb[const["ratCanon", _], _]]]]],
+    "shape: ∀p. ¬(SND p=0) ⇒ RAT_REP (ratCanon p)"]];
+
+HOLTest`runTests["stdlib/Rat: ratCanonIdThm — ⊢ ∀p. RAT_REP p ⇒ ratCanon p = p",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonIdThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratCanonIdThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["⇒", _], comb[const["RAT_REP", _], _]],
+          comb[comb[const["=", _], comb[const["ratCanon", _], _]], _]]]],
+    "shape: ∀p. RAT_REP p ⇒ ratCanon p = p"]];

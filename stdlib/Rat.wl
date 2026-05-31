@@ -46,6 +46,11 @@ repIntDivNatThm::usage = "repIntDivNatThm — ⊢ ∀z g. ¬ (g = 0) ⇒ REP_int
 intDivNatOneThm::usage = "intDivNatOneThm — ⊢ ∀z. intDivNat z (SUC 0) = z.";
 intNatAbsIntDivNatThm::usage = "intNatAbsIntDivNatThm — ⊢ ∀z g. ¬ (g = 0) ⇒ intNatAbs (intDivNat z g) = exDiv (intNatAbs z) g.";
 
+ratCanonConst::usage  = "ratCanonConst[] — ratCanon : int × num → int × num, reduces a fraction to lowest terms: ratCanon p = (intDivNat (FST p) g, exDiv (SND p) g) with g = gcd (intNatAbs (FST p)) (SND p).";
+ratCanonDefThm::usage = "ratCanonDefThm — ⊢ ratCanon = (λp. (intDivNat (FST p) g, exDiv (SND p) g)) where g = gcd (intNatAbs (FST p)) (SND p).";
+ratCanonLandsThm::usage = "ratCanonLandsThm — ⊢ ∀p. ¬ (SND p = 0) ⇒ RAT_REP (ratCanon p). gcd-reduction of a positive-denominator fraction is canonical.";
+ratCanonIdThm::usage = "ratCanonIdThm — ⊢ ∀p. RAT_REP p ⇒ ratCanon p = p. ratCanon is the identity on already-canonical reps.";
+
 intNatAbsConst::usage  = "intNatAbsConst[] — intNatAbs : int → num, |z| as a natural = FST(REP_int z) + SND(REP_int z).";
 intNatAbsDefThm::usage = "intNatAbsDefThm — ⊢ intNatAbs = (λz. FST (REP_int z) + SND (REP_int z)).";
 intNatAbsZeroThm::usage = "intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0.";
@@ -705,6 +710,108 @@ ratOfIntInjThm =
     conj1 = HOL`Bool`CONJUNCT1[mpInj];                  (* a = b *)
     dischd = HOL`Bool`DISCH[concl[hyp], conj1];
     HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, dischd]]
+  ];
+
+(* ============================================================ *)
+(* ratCanon — gcd-reduction to lowest terms                     *)
+(* ============================================================ *)
+
+ratPairConsC[] := mkConst[",", tyFun[intTy, tyFun[numTy, ratPairTy]]];
+
+ratCanonTy = tyFun[ratPairTy, ratPairTy];
+
+ratCanonDefThm = newDefinition[mkEq[
+  mkVar["ratCanon", ratCanonTy],
+  Module[{pV, fstP, sndP, gExpr},
+    pV = mkVar["p", ratPairTy];
+    fstP = mkComb[fstIN[], pV]; sndP = mkComb[sndIN[], pV];
+    gExpr = gcdTm[mkComb[intNatAbsConst[], fstP], sndP];
+    mkAbs[pV, ratPairCons[intDivNatTm[fstP, gExpr], exDivTm[sndP, gExpr]]]]
+]];
+
+ratCanonConst[] := mkConst["ratCanon", ratCanonTy];
+ratCanonTm[pT_] := mkComb[ratCanonConst[], pT];
+
+(* ⊢ ratCanon p = (intDivNat (FST p) g, exDiv (SND p) g),  g = gcd (intNatAbs (FST p)) (SND p) *)
+unfoldRatCanon[pT_] :=
+  Module[{ap},
+    ap = HOL`Equal`APTHM[ratCanonDefThm, pT];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]
+  ];
+
+(* ⊢ ∀p. ¬ (SND p = 0) ⇒ RAT_REP (ratCanon p) *)
+ratCanonLandsThm =
+  Module[{pV, fstP, sndP, aTm, bTm, gTm, numTmrt, denTm, ratCanonP,
+          notB0, notG0, ucanon, sndCanon, divGB, bEq, denEq0Tm, denEq0,
+          bEq0, falseTh, notDen0, notSndCanon0, fstCanon, naFstCanon,
+          naDivEq, naFstCanonEq, gcdArgsEq, coprime, gcdCanonEq, conj},
+    pV = mkVar["p", ratPairTy];
+    fstP = mkComb[fstIN[], pV]; sndP = mkComb[sndIN[], pV];
+    aTm = mkComb[intNatAbsConst[], fstP]; bTm = sndP;
+    gTm = gcdTm[aTm, bTm];
+    numTmrt = intDivNatTm[fstP, gTm]; denTm = exDivTm[bTm, gTm];
+    ratCanonP = ratCanonTm[pV];
+    notB0 = ASSUME[notTm[mkEq[bTm, zeroN[]]]];          (* ¬(SND p = 0) *)
+    notG0 = HOL`Bool`MP[
+      HOL`Bool`SPEC[bTm, HOL`Bool`SPEC[aTm, gcdNonzeroFromRightThm]], notB0]; (* ¬(gcd a b=0) *)
+    ucanon = unfoldRatCanon[pV];                        (* ratCanon p = (numTmrt, denTm) *)
+    sndCanon = TRANS[HOL`Equal`APTERM[sndIN[], ucanon], sndINatAt[numTmrt, denTm]];
+                                                        (* SND(ratCanon p) = denTm *)
+    (* ¬(SND(ratCanon p) = 0) *)
+    divGB = HOL`Bool`SPEC[bTm, HOL`Bool`SPEC[aTm, HOL`Stdlib`Num`gcdDividesRightThm]];  (* divides g b *)
+    bEq = HOL`Bool`MP[HOL`Bool`SPEC[bTm, HOL`Bool`SPEC[gTm, exDivThm]], divGB];  (* b = g * denTm *)
+    denEq0Tm = mkEq[denTm, zeroN[]];
+    denEq0 = ASSUME[denEq0Tm];
+    bEq0 = TRANS[bEq, TRANS[
+      HOL`Equal`APTERM[mkComb[HOL`Stdlib`Num`timesConst[], gTm], denEq0],
+      HOL`Bool`SPEC[gTm, HOL`Stdlib`Num`timesZeroEqThm]]];   (* SND p = 0 *)
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notB0], bEq0];
+    notDen0 = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[denEq0Tm, falseTh]];  (* ¬(denTm = 0) *)
+    notSndCanon0 = HOL`Drule`SUBS[{HOL`Equal`SYM[sndCanon]}, notDen0];  (* ¬(SND(ratCanon p)=0) *)
+    (* gcd (intNatAbs (FST(ratCanon p))) (SND(ratCanon p)) = SUC 0 *)
+    fstCanon = TRANS[HOL`Equal`APTERM[fstIN[], ucanon], fstINatAt[numTmrt, denTm]];
+                                                        (* FST(ratCanon p) = numTmrt *)
+    naFstCanon = HOL`Equal`APTERM[intNatAbsConst[], fstCanon]; (* intNatAbs(FST(ratCanon p)) = intNatAbs numTmrt *)
+    naDivEq = HOL`Bool`MP[
+      HOL`Bool`SPEC[gTm, HOL`Bool`SPEC[fstP, intNatAbsIntDivNatThm]], notG0];
+                                                        (* intNatAbs numTmrt = exDiv a g *)
+    naFstCanonEq = TRANS[naFstCanon, naDivEq];          (* intNatAbs(FST(ratCanon p)) = exDiv a g *)
+    gcdArgsEq = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[HOL`Stdlib`Num`gcdConst[], naFstCanonEq], sndCanon];
+                                                        (* gcd .. .. = gcd (exDiv a g)(exDiv b g) *)
+    coprime = HOL`Bool`MP[
+      HOL`Bool`SPEC[bTm, HOL`Bool`SPEC[aTm, coprimeReducedThm]], notG0];  (* gcd(exDiv a g)(exDiv b g) = SUC 0 *)
+    gcdCanonEq = TRANS[gcdArgsEq, coprime];
+    conj = HOL`Bool`CONJ[notSndCanon0, gcdCanonEq];
+    HOL`Bool`GEN[pV, HOL`Bool`DISCH[notTm[mkEq[bTm, zeroN[]]],
+      EQMP[HOL`Equal`SYM[unfoldRatRep[ratCanonP]], conj]]]
+  ];
+
+(* ⊢ ∀p. RAT_REP p ⇒ ratCanon p = p *)
+ratCanonIdThm =
+  Module[{pV, fstP, sndP, aTm, bTm, gTm, numTmrt, denTm, ratRepAssume,
+          gEq1, ucanon, numEq, denEq, pairEq, surjP, result},
+    pV = mkVar["p", ratPairTy];
+    fstP = mkComb[fstIN[], pV]; sndP = mkComb[sndIN[], pV];
+    aTm = mkComb[intNatAbsConst[], fstP]; bTm = sndP;
+    gTm = gcdTm[aTm, bTm];
+    numTmrt = intDivNatTm[fstP, gTm]; denTm = exDivTm[bTm, gTm];
+    ratRepAssume = ASSUME[mkComb[ratRepConst[], pV]];   (* RAT_REP p *)
+    gEq1 = HOL`Bool`CONJUNCT2[EQMP[unfoldRatRep[pV], ratRepAssume]];  (* gcd a b = SUC 0 *)
+    ucanon = unfoldRatCanon[pV];                        (* ratCanon p = (numTmrt, denTm) *)
+    numEq = TRANS[
+      HOL`Equal`APTERM[mkComb[intDivNatConst[], fstP], gEq1],
+      HOL`Bool`SPEC[fstP, intDivNatOneThm]];            (* intDivNat (FST p) g = FST p *)
+    denEq = TRANS[
+      HOL`Equal`APTERM[mkComb[exDivConst[], sndP], gEq1],
+      HOL`Bool`SPEC[sndP, exDivOneThm]];                (* exDiv (SND p) g = SND p *)
+    pairEq = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[ratPairConsC[], numEq], denEq];  (* (numTmrt, denTm) = (FST p, SND p) *)
+    surjP = HOL`Bool`SPEC[pV,
+      HOL`Kernel`INSTTYPE[{mkVarType["A"] -> intTy, mkVarType["B"] -> numTy},
+        HOL`Stdlib`Pair`pairSurjThm]];                  (* (FST p, SND p) = p *)
+    result = TRANS[TRANS[ucanon, pairEq], surjP];       (* ratCanon p = p *)
+    HOL`Bool`GEN[pV, HOL`Bool`DISCH[mkComb[ratRepConst[], pV], result]]
   ];
 
 End[];
