@@ -60,6 +60,11 @@ repRatAddThm::usage = "repRatAddThm — ⊢ ∀q r. REP_rat (ratAdd q r) = ratCa
 ratAddCommThm::usage = "ratAddCommThm — ⊢ ∀q r. ratAdd q r = ratAdd r q (additive commutativity).";
 ratAddZeroThm::usage = "ratAddZeroThm — ⊢ ∀q. ratAdd q (&ℚ (&ℤ 0)) = q (right additive identity, the rational 0 = 0/1).";
 
+intNatAbsNegThm::usage = "intNatAbsNegThm — ⊢ ∀z. intNatAbs (intNeg z) = intNatAbs z. (proper home Int.wl)";
+ratNegConst::usage  = "ratNegConst[] — ratNeg : rat → rat, negation. ratNeg q = ABS_rat (intNeg (FST(REP q)), SND(REP q)) — negate the numerator; stays canonical (|−a|=|a|).";
+ratNegDefThm::usage = "ratNegDefThm — ⊢ ratNeg = (λq. ABS_rat (intNeg (FST(REP q)), SND(REP q))).";
+repRatNegThm::usage = "repRatNegThm — ⊢ ∀q. REP_rat (ratNeg q) = (intNeg (FST(REP q)), SND(REP q)). Negation lands in the carve with no reduction.";
+
 intNatAbsConst::usage  = "intNatAbsConst[] — intNatAbs : int → num, |z| as a natural = FST(REP_int z) + SND(REP_int z).";
 intNatAbsDefThm::usage = "intNatAbsDefThm — ⊢ intNatAbs = (λz. FST (REP_int z) + SND (REP_int z)).";
 intNatAbsZeroThm::usage = "intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0.";
@@ -994,6 +999,73 @@ ratAddZeroThm =
     canonRepQ = HOL`Bool`MP[HOL`Bool`SPEC[repRat[qV], ratCanonIdThm], ratRepRepThm]; (* ratCanon(REP q) = REP q *)
     repEq = TRANS[repAdd, TRANS[canonPairEq, TRANS[canonSurjEq, canonRepQ]]];
     HOL`Bool`GEN[qV, ratEqFromRepEq[repEq, ratAddTm[qV, zRat], qV]]
+  ];
+
+(* ============================================================ *)
+(* ratNeg — negation of reduced fractions (numerator sign flip) *)
+(* ============================================================ *)
+
+intNegTm[zT_] := mkComb[HOL`Stdlib`Int`intNegConst[], zT];
+
+(* ⊢ ∀z. intNatAbs (intNeg z) = intNatAbs z *)
+intNatAbsNegThm =
+  Module[{zV, repZ, fstRepZ, sndRepZ, naNegUnf, fstNeg, sndNeg, sumNeg,
+          addCommEq, naZ},
+    zV = mkVar["z", intTy];
+    repZ = repInt[zV]; fstRepZ = mkComb[fstNN[], repZ]; sndRepZ = mkComb[sndNN[], repZ];
+    naNegUnf = unfoldIntNatAbs[intNegTm[zV]];   (* intNatAbs(intNeg z) = FST(REP(intNeg z))+SND(REP(intNeg z)) *)
+    fstNeg = TRANS[HOL`Equal`APTERM[fstNN[], HOL`Stdlib`Int`repIntNegThm], fstNumAt[sndRepZ, fstRepZ]];
+    sndNeg = TRANS[HOL`Equal`APTERM[sndNN[], HOL`Stdlib`Int`repIntNegThm], sndNumAt[sndRepZ, fstRepZ]];
+    sumNeg = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], fstNeg], sndNeg];  (* = SND(REP z)+FST(REP z) *)
+    addCommEq = HOL`Bool`SPEC[fstRepZ, HOL`Bool`SPEC[sndRepZ, HOL`Stdlib`Num`addCommThm]]; (* = FST(REP z)+SND(REP z) *)
+    naZ = HOL`Equal`SYM[unfoldIntNatAbs[zV]];   (* FST(REP z)+SND(REP z) = intNatAbs z *)
+    HOL`Bool`GEN[zV, TRANS[naNegUnf, TRANS[sumNeg, TRANS[addCommEq, naZ]]]]
+  ];
+
+ratNegTy = tyFun[ratTy, ratTy];
+
+ratNegDefThm = newDefinition[mkEq[
+  mkVar["ratNeg", ratNegTy],
+  Module[{qV}, qV = mkVar["q", ratTy];
+    mkAbs[qV, mkComb[absRatConst[],
+      ratPairCons[intNegTm[mkComb[fstIN[], repRat[qV]]], mkComb[sndIN[], repRat[qV]]]]]]
+]];
+
+ratNegConst[] := mkConst["ratNeg", ratNegTy];
+ratNegTm[qT_] := mkComb[ratNegConst[], qT];
+
+unfoldRatNeg[qT_] :=
+  Module[{ap}, ap = HOL`Equal`APTHM[ratNegDefThm, qT];
+    TRANS[ap, BETACONV[concl[ap][[2]]]]];
+
+(* ⊢ ∀q. REP_rat (ratNeg q) = (intNeg (FST(REP q)), SND(REP q)) *)
+repRatNegThm =
+  Module[{qV, repQ, a, b, pairTm, ratRepREPq, notSndREPq, gcdREPq,
+          fstPairEq, sndPairEq, notSndPair0, naFstEq, gcdArgsEq, conj2,
+          ratRepPair, repAbsInst, repEqPair, unfNeg, apRep, body},
+    qV = mkVar["q", ratTy]; repQ = repRat[qV];
+    a = mkComb[fstIN[], repQ]; b = mkComb[sndIN[], repQ];
+    pairTm = ratPairCons[intNegTm[a], b];
+    ratRepREPq = EQMP[unfoldRatRep[repQ], ratRepRepThm];
+    notSndREPq = HOL`Bool`CONJUNCT1[ratRepREPq];
+    gcdREPq = HOL`Bool`CONJUNCT2[ratRepREPq];
+    fstPairEq = fstINatAt[intNegTm[a], b];                (* FST pair = intNeg a *)
+    sndPairEq = sndINatAt[intNegTm[a], b];                (* SND pair = b *)
+    notSndPair0 = HOL`Drule`SUBS[{HOL`Equal`SYM[sndPairEq]}, notSndREPq];
+    naFstEq = TRANS[HOL`Equal`APTERM[intNatAbsConst[], fstPairEq],
+      HOL`Bool`SPEC[a, intNatAbsNegThm]];                 (* intNatAbs(FST pair) = intNatAbs a *)
+    gcdArgsEq = HOL`Kernel`MKCOMB[
+      HOL`Equal`APTERM[HOL`Stdlib`Num`gcdConst[], naFstEq], sndPairEq];
+    conj2 = TRANS[gcdArgsEq, gcdREPq];                    (* gcd(..)(SND pair) = SUC0 *)
+    ratRepPair = EQMP[HOL`Equal`SYM[unfoldRatRep[pairTm]],
+      HOL`Bool`CONJ[notSndPair0, conj2]];                 (* RAT_REP pair *)
+    repAbsInst = HOL`Kernel`INST[
+      {concl[repAbsRatThm][[1, 2, 2]] -> pairTm}, repAbsRatThm];
+    repEqPair = EQMP[repAbsInst, ratRepPair];             (* REP(ABS pair) = pair *)
+    unfNeg = unfoldRatNeg[qV];
+    apRep = HOL`Equal`APTERM[repRatConst[], unfNeg];
+    body = TRANS[apRep, repEqPair];                       (* REP(ratNeg q) = pair *)
+    HOL`Bool`GEN[qV, body]
   ];
 
 End[];

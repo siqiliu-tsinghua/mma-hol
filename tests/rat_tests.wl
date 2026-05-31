@@ -201,3 +201,19 @@ HOLTest`runTests["stdlib/Rat: ratAddZeroThm — ⊢ ∀q. ratAdd q (&ℚ (&ℤ 0
       HOLTest`quantNestPat["∀", 1,
         comb[comb[const["=", _], comb[comb[const["ratAdd", _], _], _]], _]]],
     "shape: ∀q. ratAdd q (&ℚ&ℤ0) = q"]];
+
+HOLTest`runTests["stdlib/Rat: intNatAbsNegThm — ⊢ ∀z. intNatAbs (intNeg z) = intNatAbs z",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsNegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsNegThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratNeg : rat → rat",
+  HOLTest`assertEq[HOL`Kernel`constType["ratNeg"],
+    tyFun[mkType["rat", {}], mkType["rat", {}]], "ratNeg : rat → rat"]];
+
+HOLTest`runTests["stdlib/Rat: repRatNegThm — ⊢ ∀q. REP_rat (ratNeg q) = (intNeg (FST(REP q)), SND(REP q))",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`repRatNegThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`repRatNegThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["=", _], comb[const["REP_rat", _], comb[const["ratNeg", _], _]]], _]]],
+    "shape: ∀q. REP_rat (ratNeg q) = (..)"]];
