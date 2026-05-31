@@ -157,3 +157,30 @@ HOLTest`runTests["stdlib/Rat: ratCanonIdThm — ⊢ ∀p. RAT_REP p ⇒ ratCanon
         comb[comb[const["⇒", _], comb[const["RAT_REP", _], _]],
           comb[comb[const["=", _], comb[const["ratCanon", _], _]], _]]]],
     "shape: ∀p. RAT_REP p ⇒ ratCanon p = p"]];
+
+(* ===== stage d: ratAdd (addition of reduced fractions) ===== *)
+
+HOLTest`runTests["stdlib/Rat: ratRepRepThm — ⊢ RAT_REP (REP_rat q)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratRepRepThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratRepRepThm],
+      comb[const["RAT_REP", _], comb[const["REP_rat", _], _]]],
+    "concl is RAT_REP (REP_rat q)"]];
+
+HOLTest`runTests["stdlib/Rat: multNonzeroThm — ⊢ ∀m n. ¬(m=0) ⇒ ¬(n=0) ⇒ ¬(m*n=0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`multNonzeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`multNonzeroThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratAdd : rat → rat → rat",
+  HOLTest`assertEq[HOL`Kernel`constType["ratAdd"],
+    tyFun[mkType["rat", {}], tyFun[mkType["rat", {}], mkType["rat", {}]]],
+    "ratAdd : rat → rat → rat"]];
+
+HOLTest`runTests["stdlib/Rat: repRatAddThm — ⊢ ∀q r. REP_rat (ratAdd q r) = ratCanon (..)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`repRatAddThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`repRatAddThm],
+      HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _], comb[const["REP_rat", _], comb[comb[const["ratAdd", _], _], _]]],
+          comb[const["ratCanon", _], _]]]],
+    "shape: ∀q r. REP_rat (ratAdd q r) = ratCanon (..)"]];
