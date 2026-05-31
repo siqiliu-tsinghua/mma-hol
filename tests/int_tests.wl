@@ -486,3 +486,27 @@ HOLTest`runTests["stdlib/Int: intInductionThm shape (∀P. base ∧ step ⇒ ∀
             comb[bvar[1, _], bvar[0, _]], _]]], _]]],
       "shape: ∀P. (P(&ℤ0) ∧ step) ⇒ ∀z. P z"]
   ]];
+
+HOLTest`runTests["stdlib/Int: mul-neg + multiplicative cancellation (integral domain)",
+  Module[{zV, wV, vV, mulTm, negTm, ofNum, specNeg, specCancel},
+    zV = mkVar["z", HOL`Stdlib`Int`intTy]; wV = mkVar["w", HOL`Stdlib`Int`intTy];
+    vV = mkVar["v", HOL`Stdlib`Int`intTy];
+    mulTm[a_, b_] := mkComb[mkComb[HOL`Stdlib`Int`intMulConst[], a], b];
+    negTm[a_] := mkComb[HOL`Stdlib`Int`intNegConst[], a];
+    ofNum[t_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], t];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulNegThm], {}, "mulNeg no hyps"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulCancelThm], {}, "cancel no hyps"];
+    specNeg = HOL`Bool`SPEC[vV, HOL`Bool`SPEC[zV, HOL`Stdlib`Int`intMulNegThm]];
+    HOLTest`assertEq[concl[specNeg], mkEq[mulTm[zV, negTm[vV]], negTm[mulTm[zV, vV]]],
+      "⊢ intMul z (intNeg v) = intNeg (intMul z v)"];
+    (* cancellation shape: ¬(z=&ℤ0) ⇒ (z*w=z*v) ⇒ (w=v) *)
+    specCancel = HOL`Bool`SPEC[vV, HOL`Bool`SPEC[wV,
+      HOL`Bool`SPEC[zV, HOL`Stdlib`Int`intMulCancelThm]]];
+    HOLTest`assertEq[concl[specCancel],
+      mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+          mkComb[mkConst["\[Not]", tyFun[boolTy, boolTy]],
+            mkEq[zV, ofNum[HOL`Stdlib`Num`zeroConst[]]]]],
+        mkComb[mkComb[mkConst["\[DoubleRightArrow]", tyFun[boolTy, tyFun[boolTy, boolTy]]],
+            mkEq[mulTm[zV, wV], mulTm[zV, vV]]], mkEq[wV, vV]]],
+      "⊢ ¬(z=&ℤ0) ⇒ intMul z w = intMul z v ⇒ w = v"]
+  ]];

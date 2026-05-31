@@ -102,6 +102,8 @@ intSuccOfNumThm::usage = "intSuccOfNumThm — ⊢ ∀n. intSucc (&ℤ n) = &ℤ 
 intNegZeroThm::usage = "intNegZeroThm — ⊢ intNeg (&ℤ 0) = &ℤ 0.";
 intCasesThm::usage = "intCasesThm — ⊢ ∀z. (∃n. z = &ℤ n) ∨ (∃n. z = intNeg (&ℤ n)). Sign decomposition.";
 intInductionThm::usage = "intInductionThm — ⊢ ∀P. P (&ℤ 0) ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intPred z)) ⇒ ∀z. P z. Bidirectional integer induction.";
+intMulNegThm::usage = "intMulNegThm — ⊢ ∀z v. intMul z (intNeg v) = intNeg (intMul z v).";
+intMulCancelThm::usage = "intMulCancelThm — ⊢ ∀z w v. ¬ (z = &ℤ 0) ⇒ intMul z w = intMul z v ⇒ w = v. Multiplicative cancellation (ℤ is an integral domain).";
 
 Begin["`Private`"];
 
@@ -2343,6 +2345,70 @@ intInductionThm =
     pZ = HOL`Bool`DISJCASES[casesZ, branch1, branch2];
     allZ = HOL`Bool`GEN[zV, pZ];
     HOL`Bool`GEN[PV, HOL`Bool`DISCH[conjTm, allZ]]
+  ];
+
+(* ============================================================ *)
+(* Multiplicative cancellation — ℤ is an integral domain.       *)
+(*   intMulNegThm:    intMul z (intNeg v) = intNeg (intMul z v)  *)
+(*   intMulCancelThm: ¬(z=&ℤ0) ⇒ z*w = z*v ⇒ w = v.            *)
+(* mul-neg is pure group: intMul z v + intMul z (intNeg v) =     *)
+(*   intMul z (v + (−v)) = intMul z 0 = 0, so by negUnique the   *)
+(*   second factor is intNeg(intMul z v). Cancellation: z*w=z*v ⇒ *)
+(*   z*(w + (−v)) = 0 (distrib + mul-neg + inverse) ⇒ (intMulEq-  *)
+(*   Zero, z≠0) w + (−v) = 0 ⇒ −v = −w (negUnique) ⇒ w = v        *)
+(*   (intNeg involution).                                        *)
+(* ============================================================ *)
+
+(* ⊢ ∀z v. intMul z (intNeg v) = intNeg (intMul z v) *)
+intMulNegThm =
+  Module[{zV, vV, distrib, invV, sumZero, negUniqInst},
+    zV = mkVar["z", intTy]; vV = mkVar["v", intTy];
+    distrib = HOL`Bool`SPEC[intNegTm[vV], HOL`Bool`SPEC[vV,
+      HOL`Bool`SPEC[zV, intMulDistribThm]]];
+    invV = HOL`Bool`SPEC[vV, intAddNegThm];   (* intAdd v (intNeg v) = &ℤ0 *)
+    sumZero = TRANS[HOL`Equal`SYM[distrib],
+      TRANS[HOL`Equal`APTERM[mkComb[intMulConst[], zV], invV],
+        HOL`Bool`SPEC[zV, intMulZeroThm]]];
+    (* intAdd (intMul z v)(intMul z (intNeg v)) = &ℤ0 *)
+    negUniqInst = HOL`Bool`SPEC[intMulTm[zV, intNegTm[vV]],
+      HOL`Bool`SPEC[intMulTm[zV, vV], negUniqueThm]];
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[vV, HOL`Bool`MP[negUniqInst, sumZero]]]
+  ];
+
+(* ⊢ ∀z w v. ¬(z = &ℤ 0) ⇒ intMul z w = intMul z v ⇒ w = v *)
+intMulCancelThm =
+  Module[{zV, wV, vV, intZeroT, zNot0, hMul, distrib, mulNeg, rw1, invMzv,
+          prodZero, emz, subWV, subZero, negUniqInst, negVeqNegW, applyNeg,
+          nnV, nnW, vEqW},
+    zV = mkVar["z", intTy]; wV = mkVar["w", intTy]; vV = mkVar["v", intTy];
+    intZeroT = intOfNumTm[zeroN[]];
+    zNot0 = ASSUME[mkComb[notOp[], mkEq[zV, intZeroT]]];
+    hMul = ASSUME[mkEq[intMulTm[zV, wV], intMulTm[zV, vV]]];
+    distrib = HOL`Bool`SPEC[intNegTm[vV], HOL`Bool`SPEC[wV,
+      HOL`Bool`SPEC[zV, intMulDistribThm]]];
+    mulNeg = HOL`Bool`SPEC[vV, HOL`Bool`SPEC[zV, intMulNegThm]];
+    rw1 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intAddConst[], hMul], mulNeg];
+    invMzv = HOL`Bool`SPEC[intMulTm[zV, vV], intAddNegThm];
+    prodZero = TRANS[distrib, TRANS[rw1, invMzv]];
+    (* intMul z (intAdd w (intNeg v)) = &ℤ0 *)
+    emz = HOL`Bool`MP[HOL`Bool`SPEC[intAddTm[wV, intNegTm[vV]],
+      HOL`Bool`SPEC[zV, intMulEqZeroThm]], prodZero];
+    (* z=&ℤ0 ∨ intAdd w (intNeg v)=&ℤ0 *)
+    subWV = mkEq[intAddTm[wV, intNegTm[vV]], intZeroT];
+    subZero = HOL`Bool`DISJCASES[emz,
+      HOL`Bool`CONTR[subWV,
+        HOL`Bool`MP[HOL`Bool`NOTELIM[zNot0], ASSUME[mkEq[zV, intZeroT]]]],
+      ASSUME[subWV]];   (* intAdd w (intNeg v)=&ℤ0 *)
+    negUniqInst = HOL`Bool`SPEC[intNegTm[vV], HOL`Bool`SPEC[wV, negUniqueThm]];
+    negVeqNegW = HOL`Bool`MP[negUniqInst, subZero];   (* intNeg v = intNeg w *)
+    applyNeg = HOL`Equal`APTERM[intNegConst[], negVeqNegW];
+    nnV = HOL`Bool`SPEC[vV, intNegNegThm];   (* intNeg(intNeg v) = v *)
+    nnW = HOL`Bool`SPEC[wV, intNegNegThm];   (* intNeg(intNeg w) = w *)
+    vEqW = TRANS[HOL`Equal`SYM[nnV], TRANS[applyNeg, nnW]];   (* v = w *)
+    HOL`Bool`GEN[zV, HOL`Bool`GEN[wV, HOL`Bool`GEN[vV,
+      HOL`Bool`DISCH[mkComb[notOp[], mkEq[zV, intZeroT]],
+        HOL`Bool`DISCH[mkEq[intMulTm[zV, wV], intMulTm[zV, vV]],
+          HOL`Equal`SYM[vEqW]]]]]]
   ];
 
 End[];
