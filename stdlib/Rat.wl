@@ -40,6 +40,12 @@ dividesMultBothLeftThm::usage = "dividesMultBothLeftThm — ⊢ ∀g h x. divide
 gcdNonzeroFromRightThm::usage = "gcdNonzeroFromRightThm — ⊢ ∀a b. ¬ (b = 0) ⇒ ¬ (gcd a b = 0).";
 coprimeReducedThm::usage = "coprimeReducedThm — ⊢ ∀a b. ¬ (gcd a b = 0) ⇒ gcd (exDiv a (gcd a b)) (exDiv b (gcd a b)) = SUC 0. Dividing both arguments by their gcd makes them coprime.";
 
+dividesAntisymThm::usage = "dividesAntisymThm — ⊢ ∀a b. divides a b ⇒ divides b a ⇒ a = b. (proper home Num.wl)";
+gcdZeroRightThm::usage   = "gcdZeroRightThm — ⊢ ∀a. gcd a 0 = a. (proper home Num.wl)";
+gcdRecThm::usage         = "gcdRecThm — ⊢ ∀a b. ¬ (b = 0) ⇒ gcd a b = gcd b (a MOD b). Euclidean recurrence. (proper home Num.wl)";
+bezoutNatThm::usage      = "bezoutNatThm — ⊢ ∀a b. ∃x y. a * x = b * y + gcd a b ∨ b * y = a * x + gcd a b. ℕ Bezout (disjunctive, subtraction-free). (proper home Num.wl)";
+coprimeDividesProductThm::usage = "coprimeDividesProductThm — ⊢ ∀a b c. gcd a b = SUC 0 ⇒ divides a (b * c) ⇒ divides a c. ℕ Gauss / Euclid coprime-product lemma. (proper home Num.wl)";
+
 intDivNatConst::usage  = "intDivNatConst[] — intDivNat : int → num → int, exact division of an integer by a natural, componentwise on the canonical rep: intDivNat z g = ABS_int (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g).";
 intDivNatDefThm::usage = "intDivNatDefThm — ⊢ intDivNat = (λz g. ABS_int (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g)).";
 repIntDivNatThm::usage = "repIntDivNatThm — ⊢ ∀z g. ¬ (g = 0) ⇒ REP_int (intDivNat z g) = (exDiv (FST (REP_int z)) g, exDiv (SND (REP_int z)) g).";
@@ -123,6 +129,16 @@ ratPairCons[a_, b_] :=
 
 intOfNum[n_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], n];
 repInt[z_]   := mkComb[HOL`Stdlib`Int`repIntConst[], z];
+
+(* ℕ term constructors for the Bezout chain *)
+ltTmR[a_, b_]  := mkComb[mkComb[HOL`Stdlib`Num`ltConst[], a], b];
+divTmR[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`divConst[], a], b];
+modTmR[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`modConst[], a], b];
+orCR[]         := mkConst["∨", tyFun[boolT, tyFun[boolT, boolT]]];
+orTmR[a_, b_]  := mkComb[mkComb[orCR[], a], b];
+existsCR[ty_]  := mkConst["∃", tyFun[tyFun[ty, boolT], boolT]];
+existsTmR[v_, body_] := mkComb[existsCR[typeOf[v]], mkAbs[v, body]];
+dividesHead[d_] := mkComb[HOL`Stdlib`Num`dividesConst[], d];
 
 (* local copy of FTA/Num's Private unfoldDivides:                     *)
 (* ⊢ divides a b = (∃c. b = a * c) *)
@@ -398,6 +414,58 @@ coprimeReducedThm =
     chosen = HOL`Bool`CHOOSE[kV, exK, hEqOne];          (* ¬(gcd a b=0) ⊢ h = SUC 0 *)
     HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
       HOL`Bool`DISCH[notTm[mkEq[gTm, zeroN[]]], chosen]]]
+  ];
+
+(* ============================================================ *)
+(* Bezout chain (proper home Num.wl — migrate later)            *)
+(*   dividesAntisym → gcdZeroRight → gcdRec → bezoutNat → Gauss  *)
+(* ============================================================ *)
+
+(* ⊢ ∀a b. divides a b ⇒ divides b a ⇒ a = b *)
+dividesAntisymThm =
+  Module[{aV, bV, hAB, hBA, em, caseB0, caseBnz, result},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    hAB = ASSUME[dividesTm[aV, bV]];
+    hBA = ASSUME[dividesTm[bV, aV]];
+    em = HOL`Bool`EXCLUDEDMIDDLE[mkEq[bV, zeroN[]]];
+    caseB0 = Module[{hB0, div0a, aEq0},
+      hB0 = ASSUME[mkEq[bV, zeroN[]]];
+      div0a = HOL`Drule`SUBS[{hB0}, hBA];                 (* divides 0 a *)
+      aEq0 = HOL`Bool`MP[HOL`Bool`SPEC[aV, dividesZeroImpZeroThm], div0a];  (* a = 0 *)
+      TRANS[aEq0, HOL`Equal`SYM[hB0]]];                   (* a = b *)
+    caseBnz = Module[{hBnz, aLeqB, notA0, bLeqA},
+      hBnz = ASSUME[notTm[mkEq[bV, zeroN[]]]];
+      aLeqB = HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesLeqThm]], hBnz], hAB]; (* a ≤ b *)
+      notA0 = Module[{hA0, div0b, bEq0, falseTh},
+        hA0 = ASSUME[mkEq[aV, zeroN[]]];
+        div0b = HOL`Drule`SUBS[{hA0}, hAB];               (* divides 0 b *)
+        bEq0 = HOL`Bool`MP[HOL`Bool`SPEC[bV, dividesZeroImpZeroThm], div0b];  (* b = 0 *)
+        falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[hBnz], bEq0];
+        HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[aV, zeroN[]], falseTh]]];      (* ¬(a = 0) *)
+      bLeqA = HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Bool`SPEC[aV, HOL`Bool`SPEC[bV, HOL`Stdlib`Num`dividesLeqThm]], notA0], hBA]; (* b ≤ a *)
+      HOL`Bool`MP[HOL`Bool`MP[
+        HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`leqAntisymThm]], aLeqB], bLeqA]]; (* a = b *)
+    result = HOL`Bool`DISJCASES[em, caseB0, caseBnz];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[dividesTm[aV, bV], HOL`Bool`DISCH[dividesTm[bV, aV], result]]]]
+  ];
+
+(* ⊢ ∀a. gcd a 0 = a *)
+gcdZeroRightThm =
+  Module[{aV, gTm, gDivA, aDivA, aDiv0, aDivG, eq},
+    aV = mkVar["a", numTy];
+    gTm = gcdTm[aV, zeroN[]];
+    gDivA = HOL`Bool`SPEC[zeroN[], HOL`Bool`SPEC[aV, HOL`Stdlib`Num`gcdDividesLeftThm]];  (* divides (gcd a 0) a *)
+    aDivA = HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesReflThm];   (* divides a a *)
+    aDiv0 = HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesZeroThm];   (* divides a 0 *)
+    aDivG = HOL`Bool`MP[
+      HOL`Bool`SPEC[aV, HOL`Bool`SPEC[zeroN[], HOL`Bool`SPEC[aV, HOL`Stdlib`Num`gcdUniversalThm]]],
+      HOL`Bool`CONJ[aDivA, aDiv0]];                            (* divides a (gcd a 0) *)
+    eq = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[aV, HOL`Bool`SPEC[gTm, dividesAntisymThm]], gDivA], aDivG];  (* gcd a 0 = a *)
+    HOL`Bool`GEN[aV, eq]
   ];
 
 (* ============================================================ *)

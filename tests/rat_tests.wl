@@ -30,6 +30,16 @@ HOLTest`runTests["stdlib/Rat: gcdOneRightThm — ⊢ ∀a. gcd a (SUC 0) = SUC 0
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdOneRightThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdOneRightThm], "is a theorem"]];
 
+(* ===== Bezout chain ===== *)
+
+HOLTest`runTests["stdlib/Rat: dividesAntisymThm — ⊢ ∀a b. divides a b ⇒ divides b a ⇒ a = b",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`dividesAntisymThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`dividesAntisymThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: gcdZeroRightThm — ⊢ ∀a. gcd a 0 = a",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdZeroRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdZeroRightThm], "is a theorem"]];
+
 (* ===== intNatAbs ===== *)
 
 HOLTest`runTests["stdlib/Rat: intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0",
