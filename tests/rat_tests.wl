@@ -193,3 +193,11 @@ HOLTest`runTests["stdlib/Rat: ratAddCommThm — ⊢ ∀q r. ratAdd q r = ratAdd 
         comb[comb[const["=", _], comb[comb[const["ratAdd", _], _], _]],
           comb[comb[const["ratAdd", _], _], _]]]],
     "shape: ∀q r. ratAdd q r = ratAdd r q"]];
+
+HOLTest`runTests["stdlib/Rat: ratAddZeroThm — ⊢ ∀q. ratAdd q (&ℚ (&ℤ 0)) = q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratAddZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratAddZeroThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["=", _], comb[comb[const["ratAdd", _], _], _]], _]]],
+    "shape: ∀q. ratAdd q (&ℚ&ℤ0) = q"]];
