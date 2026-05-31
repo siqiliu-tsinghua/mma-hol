@@ -13,9 +13,9 @@
 1. **可信核极小**：kernel 只有 10 条左右原始推理规则 + 几条公理 + 3~4 条定义机制。目标 500 行 Mathematica 代码以内。
 2. **kernel 之外全部是不可信代码**：所有派生规则、tactic、自动化、parser、pretty printer 都可以任意写错，最坏情况是证不出定理，不会证出错误的定理。
 3. **封装由语言机制承担**：`thm` 类型的不可伪造性由 `Module` 的 gensym 机制保证，而不是靠社会契约或约定。
-4. **notebook 友好**：证明状态可视化、项与类型可排版、tactic 可一步步展开观察。
-5. **脚本可检查**：kernel、派生规则、tactic 层不依赖 notebook；写好的证明脚本必须能通过 `wolframscript` 无交互跑通，成功退出码 0、失败非零。notebook 的可视化（MakeBoxes、goal 栈渲染）是可选前端，不得进入可信核。
-6. **面向本科分析课程的形式化库**：长期目标是把本科数学分析的主干内容机械化到可实用的程度——一元分析推进到黎曼积分的 Lebesgue 可积性判据；多元部分覆盖重积分换元法与欧氏空间带边子流形上的一般 Stokes 公式；Fourier 分析覆盖三类收敛定理（点态 / 一致 / 均方），以 **Poisson 求和公式**与 **Radon 变换反演**（CT 重建的数学原理）作为压轴应用。全程保持在**黎曼积分 + 零测集**框架内，不引入完整勒贝格测度。路线详见 §7 M7–M10。
+4. **notebook 可运行（非富前端；2026-05 降级）**：notebook 里 `Get` / `Needs` 顶层包即可证明并以文本输出结果，与 `wolframscript` 等价。原计划的证明状态可视化 / 项与类型排版（M6b）已砍——只保留 demo `.nb` 跑标志性定理。
+5. **脚本可检查**：kernel、派生规则、tactic 层不依赖 notebook；写好的证明脚本必须能通过 `wolframscript` 无交互跑通，成功退出码 0、失败非零。notebook 的可视化（MakeBoxes、goal 栈渲染）原本就是可选前端、不得进入可信核——现已整体砍掉（§7 M6b）。
+6. **面向本科分析课程的形式化库**：长期目标是把本科数学分析的主干内容机械化到可实用的程度——一元分析推进到黎曼积分的 Lebesgue 可积性判据；多元部分覆盖重积分换元法与欧氏空间带边子流形上的一般 Stokes 公式；Fourier 分析覆盖三类收敛定理（点态 / 一致 / 均方），以 **Poisson 求和公式**与 **Radon 变换反演**（CT 重建的数学原理）作为压轴应用。全程保持在**黎曼积分 + 零测集**框架内，不引入完整勒贝格测度。路线详见 §7 M7–M10。**当前发布范围（2026-05 收紧）**：以**第一期（M8 一元实分析，止于 Lebesgue 可积判据）**完成作为阶段性成果发布到 GitHub；多元 / Stokes（M9）与 Fourier / Radon（M10）降级为**未来阶段**，有余力再续。
 
 参考系：HOL Light（John Harrison，OCaml）。它的 kernel 是已知最小、最清晰的 LCF 风格实现之一，Flyspeck 项目（Kepler 猜想形式化）就建立在它之上。
 
@@ -374,7 +374,7 @@ EndPackage[];
 - [x] 基础 tactic（camelCase——避免 `_` 被解析为 `Pattern`）：`conjTac`, `disj1Tac`/`disj2Tac`, `genTac`, `existsTac`, `dischTac`, `assumeTac`, `acceptTac`, `popAssum`, `rewriteTac`
 - [x] Tactic 组合子（无下划线，可保留 ALL-CAPS）：`THEN`, `THENL`, `ORELSE`, `REPEAT`, `TRY`, `allTac`/`noTac`
 - [x] `prove[term, tactic]` 高级接口
-- [ ] notebook 里的 goal 可视化（每一步当前目标与假设）—— 与 M6b 合并
+- [~] notebook 里的 goal 可视化（每一步当前目标与假设）—— **已随 M6b 砍掉**；开发时用 `makeGoalstack[]` / `tacResult` 文本打印目标栈即可
 
 **验收**：用 tactic 风格证明一批经典命题逻辑等价式。
 
@@ -392,10 +392,8 @@ EndPackage[];
 - [x] 回归测试：每个内建算符 / 嵌套优先级 / binder 撞名场景（46 测试在 `tests/printer_tests.wl`）
 - 已知简化：`=` 在 `bool` 类型上未特化为 `⇔`（HOL Light 把 iff 当作独立、更松的算符）；本期一律按 `=` 在 prec 28 渲染，可读但 `(p = q) ⇒ r` 之类的round-trip保真度要等 M6c parser + iff 特化时再补
 
-**M6b — Notebook MakeBoxes（可延后）**
-- [ ] `MakeBoxes[thmTag[h, c], _]` 规则：notebook 里 thm 自动渲染为 `⊢ …`
-- [ ] term 到 `Box` 的渲染（用 M6a 的 printTree 适配 `RowBox` / `SubscriptBox` 等数学排版）
-- [ ] Goalstack 当前状态的 notebook 可视化（承接 M5 遗留项）
+**M6b — Notebook MakeBoxes（已砍 / CUT 2026-05）** —— 三项前端排版 / UI 全部取消（零能力损失，仅装修）：MakeBoxes thm 自动排版、term→Box 二维数学排版、Goalstack 可视化面板。理由：系统是纯 WL 包，notebook 里照常 `Get` / `Needs` 运行；Strict 下裸 thm 输出本就靠 `formatThm` 取字符串，自动排版收益不抵成本。
+- [ ] **保留：demo `.nb`**（见 §8 `demos/`）—— 内容 = `Needs` 顶层包 → 证明并检查一个标志性定理（文本输出即可，具体定理待定），不依赖任何 MakeBoxes。
 
 **M6c — Parser** ✅
 - [x] Tokenizer：标识符、数字、算符、括号、冒号、点号、类型变量记号（ASCII alias `/\ \/ ==> ~ ! ? \ -> |-` → Unicode 在 `opCanon` 内一次映射）
@@ -482,7 +480,7 @@ EndPackage[];
 ---
 
 ### M8：一元实分析 — 止于黎曼可积的 Lebesgue 判据
-**第一期目标**。从此处开始不再给周估计，以里程碑结算（理由见本节末尾）。
+**第一期目标 —— 本项目当前的阶段性发布目标（做完即宣告 Phase 1 完成并发布 GitHub；2026-05 范围收紧，M9 / M10 暂缓）**。从此处开始不再给周估计，以里程碑结算（理由见本节末尾）。
 
 - [ ] **实数拓扑**：绝对值、开 / 闭 / 紧（Heine–Borel）、连通、可数稠密、完备性的等价刻画
 - [ ] **序列**：极限 `-->`、`limsup` / `liminf`、子序列、Bolzano–Weierstrass、Cauchy 准则
@@ -503,7 +501,7 @@ EndPackage[];
 ---
 
 ### M9：多元分析 — 止于一般 Stokes 公式
-**第二期目标**。基于黎曼积分 + Jordan 容度，不引入完整勒贝格测度。
+**第二期目标（暂缓 —— 未来阶段，Phase 1 发布后有余力再推进）**。基于黎曼积分 + Jordan 容度，不引入完整勒贝格测度。
 
 - [ ] **欧氏空间 `R^n`**：初期按 `num -> real` 的定长 tuple 实现；若后续需要类型级维度（HOL Light 的 `real^N`）再迁移
 - [ ] **线性代数**：线性映射、矩阵、行列式、迹、正交群、特征值（够用即止）
@@ -528,7 +526,7 @@ EndPackage[];
 ---
 
 ### M10：函数项级数、含参积分与 Fourier 分析 — 仍在黎曼积分框架内
-**第三期目标**。分前后两半：Part A 建立从 M8 通向 Fourier 的中间层——函数项级数与含参积分；Part B 才进入 Fourier。只依赖 M8 的黎曼积分 + 零测集 + a.e.，不引入 `L^p` 空间的完整勒贝格构造。
+**第三期目标（暂缓 —— 未来阶段，随 M9 之后）**。分前后两半：Part A 建立从 M8 通向 Fourier 的中间层——函数项级数与含参积分；Part B 才进入 Fourier。只依赖 M8 的黎曼积分 + 零测集 + a.e.，不引入 `L^p` 空间的完整勒贝格构造。
 
 #### Part A：函数项级数与含参积分
 

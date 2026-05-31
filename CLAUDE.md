@@ -1,6 +1,6 @@
 # mma-hol — operational notes
 
-Kernel-minimal higher-order logic theorem prover in Wolfram Language, LCF-style, modeled on HOL Light. Long-term target: mechanize undergraduate analysis through general Stokes and Fourier analysis, all within the Riemann-integral + Lebesgue-null-set framework (no full Lebesgue measure).
+Kernel-minimal higher-order logic theorem prover in Wolfram Language, LCF-style, modeled on HOL Light. **Phase-1 release target (scope tightened 2026-05): first-semester single-variable real analysis — M8, through the Lebesgue-null-set criterion for Riemann integrability; declare stage-complete, then publish to GitHub.** Multivariable → general Stokes (M9) and Fourier → Poisson summation / Radon inversion (M10) are deferred to future phases. All within the Riemann-integral + Lebesgue-null-set framework (no full Lebesgue measure).
 
 **Design document: `PLAN.md`** — authoritative for all architectural questions. This file is the session-startup summary only; per-milestone proof detail lives in git commit messages and code comments.
 
@@ -43,17 +43,17 @@ Hard rules:
 Kernel.wl  Basics.wl  Bool.wl  Equal.wl  Drule.wl  Tactics.wl  Parser.wl  Printer.wl
 auto/        — MESON / SIMP / SET / ARITH / REAL_ARITH
 stdlib/      — Pair, Sum, Option, Set, Num, Int, Rat, Real, List, Finite, (Complex)
-analysis1/   — M8: one-variable analysis → Lebesgue integrability criterion
-analysis2/   — M9: multivariable, Jordan, forms, general Stokes
-analysis3/   — M10: function series, parametric integrals, Fourier
+analysis1/   — M8: one-variable analysis → Lebesgue integrability criterion  [Phase-1 release target]
+analysis2/   — M9: multivariable, Jordan, forms, general Stokes  [deferred]
+analysis3/   — M10: function series, parametric integrals, Fourier  [deferred]
 tests/  demos/
 ```
 
 ## Milestones (PLAN §7 has the detail)
 
-M1 Types · M2 Terms · M3 Kernel (10 rules + bootstrap) · M4 Derived rules · M5 Tactics · M6 Parser/Printer · M7 stdlib + 5 automation tactics (`MESON`/`SIMP`/`SET`/`ARITH`/`REAL_ARITH`) · M8 one-var analysis · M9 multivariable → Stokes · M10 function series + parametric integrals → Fourier.
+M1 Types · M2 Terms · M3 Kernel (10 rules + bootstrap) · M4 Derived rules · M5 Tactics · M6 Parser/Printer · M7 stdlib + 5 automation tactics (`MESON`/`SIMP`/`SET`/`ARITH`/`REAL_ARITH`) · **M8 one-var analysis [Phase-1 release target]** · M9 multivariable → Stokes [deferred] · M10 function series + parametric integrals → Fourier [deferred].
 
-Capstones: M3 `⊢ T`; M8 Lebesgue criterion for Riemann integrability; M9 general Stokes; M10 Poisson summation + Radon transform.
+Capstones: M3 `⊢ T`; **M8 Lebesgue criterion for Riemann integrability (Phase-1 release capstone)**; M9 general Stokes [deferred]; M10 Poisson summation + Radon transform [deferred].
 
 ## Git
 
@@ -62,7 +62,7 @@ Capstones: M3 `⊢ T`; M8 Lebesgue criterion for Riemann integrability; M9 gener
 
 ## Current state
 
-M1–M6 done (kernel, derived rules, tactics, parser+printer; M6b notebook MakeBoxes deferrable).
+M1–M6 done (kernel, derived rules, tactics, parser+printer; **M6b notebook front-end CUT 2026-05** — MakeBoxes thm-typeset / term→Box 2D / goal-panel all dropped; demo `.nb` retained as `Needs` toplevel + prove-a-signature-theorem with text output).
 
 **M7 automation** — `MESON` (auto/Meson.wl) and `SIMP`/`asmSimp` (auto/Simp.wl) substantially complete; `SET` (auto/Set.wl) done. `ARITH` (auto/Arith.wl) **linear ℕ working (∀/∃/=, atoms)** — ∃-SAT prover (S9-11); ∀/open goals close via a Fourier–Motzkin oracle + kernel verifier with non-unit integer multipliers, implicit ℕ-nonnegativity, atom abstraction of non-arithmetic subterms (nonlinear `m·n`, `LENGTH l`), and `=`-atoms (conclusions via antisymmetry, =-hyps split). Remaining ARITH work is narrow (see below). Pending: MESON α-5-c Brand modulation + NOT_FORALL/NOT_EXISTS NNF schemas (deferred till a goal forces them); `REAL_ARITH` (M7-ε) not started.
 
