@@ -57,6 +57,7 @@ multNonzeroThm::usage = "multNonzeroThm — ⊢ ∀m n. ¬ (m = 0) ⇒ ¬ (n = 0
 ratAddConst::usage  = "ratAddConst[] — ratAdd : rat → rat → rat. (a,b)+(c,d) = ratCanon (a·d + c·b, b·d) over the int×num reps.";
 ratAddDefThm::usage = "ratAddDefThm — ⊢ ratAdd = (λq r. ABS_rat (ratCanon (intAdd (intMul (FST(REP q)) (&ℤ(SND(REP r)))) (intMul (FST(REP r)) (&ℤ(SND(REP q)))), SND(REP q) * SND(REP r)))).";
 repRatAddThm::usage = "repRatAddThm — ⊢ ∀q r. REP_rat (ratAdd q r) = ratCanon (intAdd (intMul (FST(REP q)) (&ℤ(SND(REP r)))) (intMul (FST(REP r)) (&ℤ(SND(REP q)))), SND(REP q) * SND(REP r)). REP of a sum is the reduced sum-pair (lands via ratCanonLandsThm).";
+ratAddCommThm::usage = "ratAddCommThm — ⊢ ∀q r. ratAdd q r = ratAdd r q (additive commutativity).";
 
 intNatAbsConst::usage  = "intNatAbsConst[] — intNatAbs : int → num, |z| as a natural = FST(REP_int z) + SND(REP_int z).";
 intNatAbsDefThm::usage = "intNatAbsDefThm — ⊢ intNatAbs = (λz. FST (REP_int z) + SND (REP_int z)).";
@@ -920,6 +921,36 @@ repRatAddThm =
     apRep = HOL`Equal`APTERM[repRatConst[], unfAdd];    (* REP(ratAdd q r) = REP(ABS(ratCanon pair)) *)
     body = TRANS[apRep, repEqCanon];                    (* REP(ratAdd q r) = ratCanon pair *)
     HOL`Bool`GEN[qV, HOL`Bool`GEN[rV, body]]
+  ];
+
+(* From ⊢ REP_rat lhs = REP_rat rhs derive ⊢ lhs = rhs (REP_rat injective). *)
+ratEqFromRepEq[repEq_, lhsT_, rhsT_] :=
+  Module[{aVar, absL, absR, apAbs},
+    aVar = concl[absRepRatThm][[2]];
+    absL = HOL`Kernel`INST[{aVar -> lhsT}, absRepRatThm];   (* ABS(REP lhs) = lhs *)
+    absR = HOL`Kernel`INST[{aVar -> rhsT}, absRepRatThm];   (* ABS(REP rhs) = rhs *)
+    apAbs = HOL`Equal`APTERM[absRatConst[], repEq];         (* ABS(REP lhs) = ABS(REP rhs) *)
+    TRANS[HOL`Equal`SYM[absL], TRANS[apAbs, absR]]
+  ];
+
+(* ⊢ ∀q r. ratAdd q r = ratAdd r q *)
+ratAddCommThm =
+  Module[{qV, rV, repQ, repR, a, b, c, d, adTm, cbTm, repQR, repRQ,
+          numComm, denComm, pairEq, canonEq, repEq},
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    repQ = repRat[qV]; repR = repRat[rV];
+    a = mkComb[fstIN[], repQ]; b = mkComb[sndIN[], repQ];
+    c = mkComb[fstIN[], repR]; d = mkComb[sndIN[], repR];
+    adTm = intMulTm[a, intOfNum[d]]; cbTm = intMulTm[c, intOfNum[b]];
+    repQR = HOL`Bool`SPEC[rV, HOL`Bool`SPEC[qV, repRatAddThm]];  (* REP(ratAdd q r) = ratCanon(intAdd ad cb, b*d) *)
+    repRQ = HOL`Bool`SPEC[qV, HOL`Bool`SPEC[rV, repRatAddThm]];  (* REP(ratAdd r q) = ratCanon(intAdd cb ad, d*b) *)
+    numComm = HOL`Bool`SPEC[cbTm, HOL`Bool`SPEC[adTm, HOL`Stdlib`Int`intAddCommThm]];  (* intAdd ad cb = intAdd cb ad *)
+    denComm = HOL`Bool`SPEC[d, HOL`Bool`SPEC[b, HOL`Stdlib`Num`timesCommThm]];          (* b*d = d*b *)
+    pairEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratPairConsC[], numComm], denComm];
+    canonEq = HOL`Equal`APTERM[ratCanonConst[], pairEq];
+    repEq = TRANS[repQR, TRANS[canonEq, HOL`Equal`SYM[repRQ]]];  (* REP(ratAdd q r) = REP(ratAdd r q) *)
+    HOL`Bool`GEN[qV, HOL`Bool`GEN[rV,
+      ratEqFromRepEq[repEq, ratAddTm[qV, rV], ratAddTm[rV, qV]]]]
   ];
 
 End[];
