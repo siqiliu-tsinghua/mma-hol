@@ -2,7 +2,7 @@
 
 (* Run the full test suite in Stable encapsulation mode.            *)
 (* Same as tests/run_all.wls but sets $HOLEncapsulationMode early.  *)
-(* Should pass the same 1062/0 as Strict if the refactor is sound.   *)
+(* Should pass the same totals as tests/run_all.wls (Strict).        *)
 
 $HOLEncapsulationMode = "Stable";
 
@@ -15,10 +15,11 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
     Function[rel, Get[FileNameJoin[Prepend[rel, repoRoot]]]],
     {
       {"ErrorUtil.wl"},
-      {"tests", "harness.wl"},
       {"Types.wl"},
       {"Terms.wl"},
-      {"Kernel.wl"}
+      {"Kernel.wl"},
+      (* harness quantNestPat resolves HOL`Terms` heads at read-time; Terms must load first *)
+      {"tests", "harness.wl"}
     }
   ];
 
@@ -58,6 +59,11 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "stdlib", "Set.wl"}]];
   Get[FileNameJoin[{repoRoot, "auto", "Set.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Num.wl"}]];
+  Get[FileNameJoin[{repoRoot, "auto", "Arith.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "List.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Finite.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "FTA.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Int.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
 

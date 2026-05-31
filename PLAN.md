@@ -740,7 +740,7 @@ M7-3 推进到 stdlib/Num.wl 时，每次 wolframscript 冷启动需要重新加
 - **`tests/build_snapshot.wls`**：Stable 模式冷启动一次 → `DumpSave["bootstrap.mx", contexts]`。~135s 一次性成本。
 - **`tests/run_fast.wls [pattern...]`**：restore 快照 + 重设 `$ContextPath` + 跑匹配的测试文件。**针对单模块（如 `num`）跑 ~3s**；跳过 `kernel_tests.wl`（其 pre-bootstrap state 在快照后不可重放）。
 - **`tests/lint_private.wls`**：扫描所有 `.wl` / `.wls`，禁止 `Kernel.wl` 之外引用 `HOL`Kernel`Private`*`。
-- **CI 矩阵**：两条独立流水线——`tests/run_all.wls`（Strict）和 `tests/run_all_stable.wls`（Stable）。两边都必须 1062+ tests 通过。一旦 Stable 行为偏离 Strict，视为回归。
+- **CI 矩阵**：两条独立流水线——`tests/run_all.wls`（Strict）和 `tests/run_all_stable.wls`（Stable）。两边都必须通过全量（当前 1817）且通过数一致。一旦 Stable 行为偏离 Strict，视为回归。
 
 **性能效果**：M7-3-f / -g 阶段一次内层调整 3s 反馈，相比冷启动 135–390s 快 50–100×。M8+ 项目规模翻倍以后，这套基础设施会更值。
 

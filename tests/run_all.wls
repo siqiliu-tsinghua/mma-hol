@@ -9,10 +9,11 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
     Function[rel, Get[FileNameJoin[Prepend[rel, repoRoot]]]],
     {
       {"ErrorUtil.wl"},
-      {"tests", "harness.wl"},
       {"Types.wl"},
       {"Terms.wl"},
-      {"Kernel.wl"}
+      {"Kernel.wl"},
+      (* harness quantNestPat resolves HOL`Terms` heads at read-time; Terms must load first *)
+      {"tests", "harness.wl"}
     }
   ];
 
