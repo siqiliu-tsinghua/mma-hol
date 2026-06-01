@@ -129,6 +129,18 @@ ratInvDefThm::usage = "ratInvDefThm — ⊢ ratInv = (λq. ABS_rat (ratCanon (in
 repRatInvThm::usage = "repRatInvThm — ⊢ ∀q. ¬ (q = &ℚ (&ℤ 0)) ⇒ REP_rat (ratInv q) = ratCanon (intMul (FST(REP q)) (&ℤ (SND(REP q))), intNatAbs (FST(REP q)) * intNatAbs (FST(REP q))).";
 ratMulInvThm::usage = "ratMulInvThm — ⊢ ∀q. ¬ (q = &ℚ (&ℤ 0)) ⇒ ratMul q (ratInv q) = &ℚ (&ℤ (SUC 0)). Right multiplicative inverse — ℚ is a FIELD.";
 
+intLeMulNonnegCancelThm::usage = "intLeMulNonnegCancelThm — ⊢ ∀u x y. intLe (&ℤ 0) u ⇒ ¬ (u = &ℤ 0) ⇒ intLe (intMul u x) (intMul u y) ⇒ intLe x y. Cancellation of a positive (nonneg + nonzero) left factor in an int inequality. (proper home Int.wl)";
+
+ratLeConst::usage  = "ratLeConst[] — ratLe : rat → rat → bool, order. ratLe q r ⟺ intLe (intMul (FST(REP q)) (&ℤ (SND(REP r)))) (intMul (FST(REP r)) (&ℤ (SND(REP q)))) — cross-multiplication with positive denominators.";
+ratLeDefThm::usage = "ratLeDefThm — ⊢ ratLe = (λq r. intLe (intMul (FST(REP q)) (&ℤ (SND(REP r)))) (intMul (FST(REP r)) (&ℤ (SND(REP q))))).";
+ratLeReflThm::usage = "ratLeReflThm — ⊢ ∀q. ratLe q q.";
+ratLeAntisymThm::usage = "ratLeAntisymThm — ⊢ ∀q r. ratLe q r ⇒ ratLe r q ⇒ q = r.";
+ratLeTransThm::usage = "ratLeTransThm — ⊢ ∀q r v. ratLe q r ⇒ ratLe r v ⇒ ratLe q v.";
+ratLeTotalThm::usage = "ratLeTotalThm — ⊢ ∀q r. ratLe q r ∨ ratLe r q.";
+ratLtConst::usage  = "ratLtConst[] — ratLt : rat → rat → bool, strict order. ratLt q r ⟺ intLt (intMul (FST(REP q)) (&ℤ (SND(REP r)))) (intMul (FST(REP r)) (&ℤ (SND(REP q)))).";
+ratLtDefThm::usage = "ratLtDefThm — ⊢ ratLt = (λq r. intLt (intMul (FST(REP q)) (&ℤ (SND(REP r)))) (intMul (FST(REP r)) (&ℤ (SND(REP q))))).";
+ratLtNotLeThm::usage = "ratLtNotLeThm — ⊢ ∀q r. ratLt q r = ¬ (ratLe r q).";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -3278,6 +3290,221 @@ ratMulInvThm =
     repEq = TRANS[repMul, TRANS[congR, TRANS[canonStep, TRANS[canonSelf, HOL`Equal`SYM[repOne]]]]];
     HOL`Bool`GEN[qV, HOL`Bool`DISCH[notTm[mkEq[qV, ratOfIntTm[z0Tm]]],
       ratEqFromRepEq[repEq, ratMulTm[qV, invQ], oneRat]]]
+  ];
+
+(* ============================================================ *)
+(* Stage f — order. ratLe / ratLt by cross-multiplication with   *)
+(* positive denominators, reducing to Int's intLe / intLt on the *)
+(* cross-products. The cross-products are intMul (opaque to      *)
+(* ARITH), so the order axioms run on Int order + intMul ring    *)
+(* lemmas, not on ℕ ARITH (unlike Int's own order layer).        *)
+(* ============================================================ *)
+
+intLeCC[] := HOL`Stdlib`Int`intLeConst[];
+intLtCC[] := HOL`Stdlib`Int`intLtConst[];
+intLeTmR[zT_, wT_] := mkComb[mkComb[intLeCC[], zT], wT];
+intLtTmR[zT_, wT_] := mkComb[mkComb[intLtCC[], zT], wT];
+intZeroR := intOfNum[zeroN[]];
+
+imComm[zT_, wT_]      := HOL`Bool`SPEC[wT, HOL`Bool`SPEC[zT, HOL`Stdlib`Int`intMulCommThm]];
+imAssoc[zT_, wT_, vT_] := HOL`Bool`SPEC[vT, HOL`Bool`SPEC[wT, HOL`Bool`SPEC[zT,
+  HOL`Stdlib`Int`intMulAssocThm]]];
+
+(* ⊢ ∀u x y. intLe (&ℤ 0) u ⇒ ¬(u = &ℤ 0)                       *)
+(*           ⇒ intLe (intMul u x) (intMul u y) ⇒ intLe x y       *)
+(* Cancellation of a positive left factor. By totality: if the   *)
+(* goal's reverse holds, mul-nonneg + antisym give u·x = u·y,    *)
+(* and intMulCancel (u ≠ 0) collapses it to x = y. (Int.wl home.) *)
+intLeMulNonnegCancelThm =
+  Module[{uV, xV, yV, ux, uy, z0, nonneg, notU0, hyp, total, caseA, caseB,
+          monoBA, eqUxUy, xEqY, reflXX, leXYb, result, intLeC},
+    uV = mkVar["u", intTy]; xV = mkVar["x", intTy]; yV = mkVar["y", intTy];
+    z0 = intZeroR; intLeC = intLeCC[];
+    ux = intMulTm[uV, xV]; uy = intMulTm[uV, yV];
+    nonneg = ASSUME[intLeTmR[z0, uV]];
+    notU0  = ASSUME[notTm[mkEq[uV, z0]]];
+    hyp    = ASSUME[intLeTmR[ux, uy]];
+    total  = HOL`Bool`SPEC[yV, HOL`Bool`SPEC[xV, HOL`Stdlib`Int`intLeTotalThm]];
+    caseA  = ASSUME[intLeTmR[xV, yV]];
+    caseB  = ASSUME[intLeTmR[yV, xV]];
+    monoBA = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[uV, HOL`Bool`SPEC[xV, HOL`Bool`SPEC[yV,
+        HOL`Stdlib`Int`intLeMulNonnegThm]]], nonneg], caseB];   (* intLe (u·y) (u·x) *)
+    eqUxUy = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[uy, HOL`Bool`SPEC[ux, HOL`Stdlib`Int`intLeAntisymThm]], hyp],
+      monoBA];                                                  (* u·x = u·y *)
+    xEqY = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[yV, HOL`Bool`SPEC[xV, HOL`Bool`SPEC[uV,
+        HOL`Stdlib`Int`intMulCancelThm]]], notU0], eqUxUy];     (* x = y *)
+    reflXX = HOL`Bool`SPEC[xV, HOL`Stdlib`Int`intLeReflThm];
+    leXYb  = EQMP[HOL`Equal`APTERM[mkComb[intLeC, xV], xEqY], reflXX];  (* intLe x y *)
+    result = HOL`Bool`DISJCASES[total, caseA, leXYb];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      HOL`Bool`DISCH[intLeTmR[z0, uV],
+        HOL`Bool`DISCH[notTm[mkEq[uV, z0]],
+          HOL`Bool`DISCH[intLeTmR[ux, uy], result]]]]]]
+  ];
+
+ratNumOf[qT_] := mkComb[fstIN[], repRat[qT]];                   (* FST(REP q) : int *)
+ratDenOf[qT_] := mkComb[sndIN[], repRat[qT]];                   (* SND(REP q) : num *)
+ratCrossL[qT_, rT_] := intMulTm[ratNumOf[qT], intOfNum[ratDenOf[rT]]];  (* a·&ℤd *)
+ratCrossR[qT_, rT_] := intMulTm[ratNumOf[rT], intOfNum[ratDenOf[qT]]];  (* c·&ℤb *)
+
+ratLeTy = tyFun[ratTy, tyFun[ratTy, boolT]];
+ratLeDefThm = newDefinition[mkEq[mkVar["ratLe", ratLeTy],
+  Module[{qV, rV}, qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    mkAbs[qV, mkAbs[rV, intLeTmR[ratCrossL[qV, rV], ratCrossR[qV, rV]]]]]]];
+ratLeConst[] := mkConst["ratLe", ratLeTy];
+ratLeTm[qT_, rT_] := mkComb[mkComb[ratLeConst[], qT], rT];
+
+unfoldRatLe[qT_, rT_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[ratLeDefThm, qT];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, rT];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]];
+
+(* intLe (&ℤ 0) (&ℤ n) — &ℤ of a natural is nonnegative. *)
+intOfNumNonneg[nTm_] :=
+  EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[nTm, HOL`Bool`SPEC[zeroN[],
+    HOL`Stdlib`Int`intOfNumLeThm]]], HOL`Bool`SPEC[nTm, HOL`Stdlib`Num`leqZeroThm]];
+
+(* ¬(&ℤ n = &ℤ 0) from ¬(n = 0), via intOfNumInj contrapositive. *)
+intOfNumNeqZero[notN0_, nTm_] :=
+  Module[{inj, eqHyp, nEq0, contra},
+    inj = HOL`Bool`SPEC[zeroN[], HOL`Bool`SPEC[nTm, HOL`Stdlib`Int`intOfNumInjThm]];
+    eqHyp = ASSUME[mkEq[intOfNum[nTm], intZeroR]];
+    nEq0 = HOL`Bool`MP[inj, eqHyp];
+    contra = HOL`Bool`MP[HOL`Bool`NOTELIM[notN0], nEq0];
+    HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[intOfNum[nTm], intZeroR], contra]]
+  ];
+
+(* ¬(SND(REP q) = 0) — denominators are positive. *)
+ratDenNeq0[qT_] :=
+  HOL`Bool`CONJUNCT1[EQMP[unfoldRatRep[repRat[qT]],
+    HOL`Kernel`INST[{mkVar["q", ratTy] -> qT}, ratRepRepThm]]];
+
+(* ⊢ ∀q. ratLe q q *)
+ratLeReflThm =
+  Module[{qV, x, refl},
+    qV = mkVar["q", ratTy];
+    x = ratCrossL[qV, qV];                                      (* a·&ℤb = ratCrossR[q,q] *)
+    refl = HOL`Bool`SPEC[x, HOL`Stdlib`Int`intLeReflThm];
+    HOL`Bool`GEN[qV, EQMP[HOL`Equal`SYM[unfoldRatLe[qV, qV]], refl]]
+  ];
+
+(* ⊢ ∀q r. ratLe q r ⇒ ratLe r q ⇒ q = r *)
+ratLeAntisymThm =
+  Module[{qV, rV, ad, cb, h1, h2, le1, le2, crossEq, crossIff, qEqR},
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    ad = ratCrossL[qV, rV]; cb = ratCrossR[qV, rV];
+    h1 = ASSUME[ratLeTm[qV, rV]]; h2 = ASSUME[ratLeTm[rV, qV]];
+    le1 = EQMP[unfoldRatLe[qV, rV], h1];                        (* intLe ad cb *)
+    le2 = EQMP[unfoldRatLe[rV, qV], h2];                        (* intLe cb ad *)
+    crossEq = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[cb, HOL`Bool`SPEC[ad, HOL`Stdlib`Int`intLeAntisymThm]], le1],
+      le2];                                                     (* ad = cb *)
+    crossIff = HOL`Bool`SPEC[rV, HOL`Bool`SPEC[qV, ratEqCrossThm]];
+    qEqR = EQMP[HOL`Equal`SYM[crossIff], crossEq];
+    HOL`Bool`GEN[qV, HOL`Bool`GEN[rV,
+      HOL`Bool`DISCH[ratLeTm[qV, rV], HOL`Bool`DISCH[ratLeTm[rV, qV], qEqR]]]]
+  ];
+
+(* ⊢ ∀q r v. ratLe q r ⇒ ratLe r v ⇒ ratLe q v *)
+(* a/b ≤ c/d and c/d ≤ e/f: multiply the first by &ℤf, the second *)
+(* by &ℤb (both nonneg), chain through the shared &ℤf·CB = &ℤb·CF, *)
+(* reassociate to a common right factor &ℤd, then cancel &ℤd (>0). *)
+ratLeTransThm =
+  Module[{qV, rV, vV, a, b, c, d, e, f, zb, zd, zf, ad, cb, cf, ed, af, eb,
+          h1, h2, le1, le2, notD0, le0b, le0f, le0d, notZd, intLeC, intMulC,
+          m1, m2, e1, e2, e3, eqMid, congLe1, m1p, mid, l1, l2, eqL, r1, r2,
+          eqR, congMid, midCanc, commAF, commEB, congComm, cancForm, leAFEB},
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy]; vV = mkVar["v", ratTy];
+    a = ratNumOf[qV]; b = ratDenOf[qV];
+    c = ratNumOf[rV]; d = ratDenOf[rV];
+    e = ratNumOf[vV]; f = ratDenOf[vV];
+    zb = intOfNum[b]; zd = intOfNum[d]; zf = intOfNum[f];
+    ad = intMulTm[a, zd]; cb = intMulTm[c, zb]; cf = intMulTm[c, zf];
+    ed = intMulTm[e, zd]; af = intMulTm[a, zf]; eb = intMulTm[e, zb];
+    intLeC = intLeCC[]; intMulC = intMulCC[];
+    h1 = ASSUME[ratLeTm[qV, rV]]; h2 = ASSUME[ratLeTm[rV, vV]];
+    le1 = EQMP[unfoldRatLe[qV, rV], h1];                        (* intLe ad cb *)
+    le2 = EQMP[unfoldRatLe[rV, vV], h2];                        (* intLe cf ed *)
+    notD0 = ratDenNeq0[rV];                                     (* ¬(d = 0) *)
+    le0b = intOfNumNonneg[b]; le0f = intOfNumNonneg[f]; le0d = intOfNumNonneg[d];
+    notZd = intOfNumNeqZero[notD0, d];                          (* ¬(&ℤd = &ℤ0) *)
+    m1 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[zf,
+      HOL`Bool`SPEC[cb, HOL`Bool`SPEC[ad, HOL`Stdlib`Int`intLeMulNonnegThm]]],
+      le0f], le1];                                              (* intLe (zf·ad) (zf·cb) *)
+    m2 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[zb,
+      HOL`Bool`SPEC[ed, HOL`Bool`SPEC[cf, HOL`Stdlib`Int`intLeMulNonnegThm]]],
+      le0b], le2];                                              (* intLe (zb·cf) (zb·ed) *)
+    e1 = HOL`Equal`SYM[imAssoc[zf, c, zb]];                     (* zf·(c·zb) = (zf·c)·zb *)
+    e2 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, imComm[zf, c]], REFL[zb]];
+                                                                (* (zf·c)·zb = (c·zf)·zb *)
+    e3 = imComm[intMulTm[c, zf], zb];                           (* (c·zf)·zb = zb·(c·zf) *)
+    eqMid = TRANS[e1, TRANS[e2, e3]];                           (* zf·cb = zb·cf *)
+    congLe1 = HOL`Equal`APTERM[mkComb[intLeC, intMulTm[zf, ad]], eqMid];
+    m1p = EQMP[congLe1, m1];                                    (* intLe (zf·ad) (zb·cf) *)
+    mid = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[intMulTm[zb, ed], HOL`Bool`SPEC[intMulTm[zb, cf],
+        HOL`Bool`SPEC[intMulTm[zf, ad], HOL`Stdlib`Int`intLeTransThm]]], m1p], m2];
+                                                                (* intLe (zf·ad) (zb·ed) *)
+    l1 = HOL`Equal`SYM[imAssoc[zf, a, zd]];                     (* zf·(a·zd) = (zf·a)·zd *)
+    l2 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, imComm[zf, a]], REFL[zd]];
+    eqL = TRANS[l1, l2];                                        (* zf·ad = af·zd *)
+    r1 = HOL`Equal`SYM[imAssoc[zb, e, zd]];
+    r2 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, imComm[zb, e]], REFL[zd]];
+    eqR = TRANS[r1, r2];                                        (* zb·ed = eb·zd *)
+    congMid = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, eqL], eqR];
+    midCanc = EQMP[congMid, mid];                               (* intLe (af·zd) (eb·zd) *)
+    commAF = imComm[af, zd]; commEB = imComm[eb, zd];
+    congComm = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, commAF], commEB];
+    cancForm = EQMP[congComm, midCanc];                         (* intLe (zd·af) (zd·eb) *)
+    leAFEB = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[eb, HOL`Bool`SPEC[af, HOL`Bool`SPEC[zd,
+        intLeMulNonnegCancelThm]]], le0d], notZd], cancForm];   (* intLe af eb *)
+    HOL`Bool`GEN[qV, HOL`Bool`GEN[rV, HOL`Bool`GEN[vV,
+      HOL`Bool`DISCH[ratLeTm[qV, rV], HOL`Bool`DISCH[ratLeTm[rV, vV],
+        EQMP[HOL`Equal`SYM[unfoldRatLe[qV, vV]], leAFEB]]]]]]
+  ];
+
+(* ⊢ ∀q r. ratLe q r ∨ ratLe r q *)
+ratLeTotalThm =
+  Module[{qV, rV, total, eqL, eqR, disjEq},
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    total = HOL`Bool`SPEC[ratCrossR[qV, rV], HOL`Bool`SPEC[ratCrossL[qV, rV],
+      HOL`Stdlib`Int`intLeTotalThm]];
+    eqL = HOL`Equal`SYM[unfoldRatLe[qV, rV]];
+    eqR = HOL`Equal`SYM[unfoldRatLe[rV, qV]];
+    disjEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[orCR[], eqL], eqR];
+    HOL`Bool`GEN[qV, HOL`Bool`GEN[rV, EQMP[disjEq, total]]]
+  ];
+
+ratLtTy = tyFun[ratTy, tyFun[ratTy, boolT]];
+ratLtDefThm = newDefinition[mkEq[mkVar["ratLt", ratLtTy],
+  Module[{qV, rV}, qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    mkAbs[qV, mkAbs[rV, intLtTmR[ratCrossL[qV, rV], ratCrossR[qV, rV]]]]]]];
+ratLtConst[] := mkConst["ratLt", ratLtTy];
+ratLtTm[qT_, rT_] := mkComb[mkComb[ratLtConst[], qT], rT];
+
+unfoldRatLt[qT_, rT_] :=
+  Module[{ap1, ap2},
+    ap1 = HOL`Equal`APTHM[ratLtDefThm, qT];
+    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
+    ap2 = HOL`Equal`APTHM[ap1, rT];
+    TRANS[ap2, BETACONV[concl[ap2][[2]]]]];
+
+(* ⊢ ∀q r. ratLt q r = ¬(ratLe r q) *)
+ratLtNotLeThm =
+  Module[{qV, rV, step1, nleEqLt, unfoldLtQR},
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    step1 = HOL`Equal`APTERM[notC[], unfoldRatLe[rV, qV]];      (* ¬(ratLe r q) = ¬(intLe cb ad) *)
+    nleEqLt = HOL`Bool`SPEC[ratCrossR[qV, rV], HOL`Bool`SPEC[ratCrossL[qV, rV],
+      HOL`Stdlib`Int`intLtNotLeThm]];                          (* intLt ad cb = ¬(intLe cb ad) *)
+    unfoldLtQR = unfoldRatLt[qV, rV];                          (* ratLt q r = intLt ad cb *)
+    HOL`Bool`GEN[qV, HOL`Bool`GEN[rV,
+      TRANS[unfoldLtQR, HOL`Equal`SYM[TRANS[step1, HOL`Equal`SYM[nleEqLt]]]]]]
   ];
 
 End[];

@@ -446,3 +446,49 @@ HOLTest`runTests["stdlib/Rat: ratMulInvThm — ⊢ ∀q. ¬(q=&ℚ&ℤ0) ⇒ rat
         comb[comb[const["⇒", _], _],
           comb[comb[const["=", _], comb[comb[const["ratMul", _], _], comb[const["ratInv", _], _]]], _]]]],
     "shape: ∀q. ¬(q=&ℚ&ℤ0) ⇒ ratMul q (ratInv q) = &ℚ&ℤ1"]];
+
+(* ===== stage f: order (ratLe / ratLt) ===== *)
+
+HOLTest`runTests["stdlib/Rat: intLeMulNonnegCancelThm — ⊢ ∀u x y. intLe(&ℤ0)u ⇒ ¬(u=&ℤ0) ⇒ intLe(u·x)(u·y) ⇒ intLe x y",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intLeMulNonnegCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intLeMulNonnegCancelThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLe : rat → rat → bool",
+  HOLTest`assertEq[HOL`Kernel`constType["ratLe"],
+    tyFun[mkType["rat", {}], tyFun[mkType["rat", {}], mkType["bool", {}]]],
+    "ratLe : rat → rat → bool"]];
+
+HOLTest`runTests["stdlib/Rat: ratLeReflThm — ⊢ ∀q. ratLe q q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeReflThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLeReflThm], "is a theorem"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratLeReflThm],
+      HOLTest`quantNestPat["∀", 1, comb[comb[const["ratLe", _], _], _]]],
+    "shape: ∀q. ratLe q q"]];
+
+HOLTest`runTests["stdlib/Rat: ratLeAntisymThm — ⊢ ∀q r. ratLe q r ⇒ ratLe r q ⇒ q = r",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeAntisymThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLeAntisymThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLeTransThm — ⊢ ∀q r v. ratLe q r ⇒ ratLe r v ⇒ ratLe q v",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeTransThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLeTransThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLeTotalThm — ⊢ ∀q r. ratLe q r ∨ ratLe r q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeTotalThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLeTotalThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLt : rat → rat → bool",
+  HOLTest`assertEq[HOL`Kernel`constType["ratLt"],
+    tyFun[mkType["rat", {}], tyFun[mkType["rat", {}], mkType["bool", {}]]],
+    "ratLt : rat → rat → bool"]];
+
+HOLTest`runTests["stdlib/Rat: ratLtNotLeThm — ⊢ ∀q r. ratLt q r = ¬(ratLe r q)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLtNotLeThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLtNotLeThm], "is a theorem"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratLtNotLeThm],
+      HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _], comb[comb[const["ratLt", _], _], _]],
+          comb[const["¬", _], comb[comb[const["ratLe", _], _], _]]]]],
+    "shape: ∀q r. ratLt q r = ¬(ratLe r q)"]];
