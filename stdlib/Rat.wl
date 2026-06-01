@@ -131,6 +131,7 @@ intOfNum[n_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], n];
 repInt[z_]   := mkComb[HOL`Stdlib`Int`repIntConst[], z];
 
 (* ℕ term constructors for the Bezout chain *)
+plusC[]        := HOL`Stdlib`Num`plusConst[];
 ltTmR[a_, b_]  := mkComb[mkComb[HOL`Stdlib`Num`ltConst[], a], b];
 divTmR[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`divConst[], a], b];
 modTmR[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`modConst[], a], b];
@@ -779,8 +780,7 @@ intNatAbsZeroThm =
 (* componentwise on the canonical rep.                          *)
 (* ============================================================ *)
 
-absIntC[] := HOL`Stdlib`Int`absIntConst[];
-plusC[]   := HOL`Stdlib`Num`plusConst[];
+absIntC[] := HOL`Stdlib`Int`absIntConst[];  (* plusC[] now defined in the Bezout-helper block above *)
 numPairConsC[] := mkConst[",", tyFun[numTy, tyFun[numTy, numPairTy]]];
 numPairCons[a_, b_] := mkComb[mkComb[numPairConsC[], a], b];
 
