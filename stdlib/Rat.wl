@@ -513,6 +513,230 @@ gcdRecThm =
       HOL`Bool`DISCH[notTm[mkEq[bV, zeroN[]]], eq]]]
   ];
 
+(* ⊢ ∀a b. ∃x y. a*x = b*y + gcd a b ∨ b*y = a*x + gcd a b *)
+(* Subtraction-free ℕ Bezout. Strong induction on b (the modulus).      *)
+(*   b = 0: gcd a 0 = a, witness x = SUC 0, y = 0 (first disjunct).      *)
+(*   b ≠ 0: r = a MOD b < b; gcd a b = gcd b r (gcdRec). IH at (b on r)  *)
+(*     gives ∃x0 y0. b*x0 = r*y0 + g ∨ r*y0 = b*x0 + g, g = gcd b r.     *)
+(*     With a = b*q + r (additive, q = a DIV b): multiply by y0 →        *)
+(*       a*y0 = b*(q*y0) + r*y0.  Both cases share witnesses             *)
+(*       X = y0, Y = q*y0 + x0; only the disjunct side differs:          *)
+(*       case A (b*x0=r*y0+g):  a*y0 + g = b*Y  (second disjunct)         *)
+(*       case B (r*y0=b*x0+g):  a*y0 = b*Y + g  (first disjunct)          *)
+(*     g rewritten to gcd a b via gcdRec. No monus anywhere.             *)
+bezoutNatThm =
+  Module[{aV, bV, kV, xV, yV, aInner, disjAt, bezBody, pLam, specInd,
+          specBeta, stepAnte, mainConcl},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; kV = mkVar["k", numTy];
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy]; aInner = mkVar["a", numTy];
+
+    disjAt[aT_, nT_, xT_, yT_] := orTmR[
+      mkEq[timesTm[aT, xT], plusTm[timesTm[nT, yT], gcdTm[aT, nT]]],
+      mkEq[timesTm[nT, yT], plusTm[timesTm[aT, xT], gcdTm[aT, nT]]]];
+    bezBody[aT_, nT_] := existsTmR[xV, existsTmR[yV, disjAt[aT, nT, xV, yV]]];
+
+    pLam = mkAbs[bV, forallTm[aInner, bezBody[aInner, bV]]];
+    specInd = HOL`Bool`ISPEC[pLam, HOL`Stdlib`Num`strongInductionThm];
+    specBeta = HOL`Drule`CONVRULE[
+      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]], specInd];
+
+    stepAnte = Module[{nLoc, gN, exInnerTm, goalTm, ihHypTm, ihHyp,
+                       em, case0, caseNZ, pnAtA, pnBody},
+      nLoc = mkVar["b", numTy];
+      gN = gcdTm[aInner, nLoc];
+      exInnerTm[xT_] := existsTmR[yV, disjAt[aInner, nLoc, xT, yV]];
+      goalTm = bezBody[aInner, nLoc];
+      ihHypTm = forallTm[kV, implTm[ltTmR[kV, nLoc],
+        forallTm[aInner, bezBody[aInner, kV]]]];
+      ihHyp = ASSUME[ihHypTm];
+
+      case0 = Module[{hN0, lhsStep1, a0eq, lhsStep2, addLeftZeroEq, lhsEq,
+                      n0Eq, gcdAnEq, rhsStep1, rhsChain, firstDisjEq, disj, exY},
+        hN0 = ASSUME[mkEq[nLoc, zeroN[]]];                      (* b = 0 *)
+        lhsStep1 = HOL`Bool`SPEC[zeroN[], HOL`Bool`SPEC[aInner, HOL`Stdlib`Num`timesSucEqThm]];
+        a0eq = HOL`Bool`SPEC[aInner, HOL`Stdlib`Num`timesZeroEqThm];
+        lhsStep2 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], a0eq], REFL[aInner]];
+        addLeftZeroEq = HOL`Bool`SPEC[aInner, HOL`Stdlib`Num`addLeftZeroThm];
+        lhsEq = TRANS[lhsStep1, TRANS[lhsStep2, addLeftZeroEq]];  (* a*(SUC 0) = a *)
+        n0Eq = HOL`Bool`SPEC[nLoc, HOL`Stdlib`Num`timesZeroEqThm];  (* b*0 = 0 *)
+        gcdAnEq = TRANS[
+          HOL`Equal`APTERM[mkComb[HOL`Stdlib`Num`gcdConst[], aInner], hN0],
+          HOL`Bool`SPEC[aInner, gcdZeroRightThm]];             (* gcd a b = a *)
+        rhsStep1 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], n0Eq], gcdAnEq];
+        rhsChain = TRANS[rhsStep1, addLeftZeroEq];             (* b*0 + gcd a b = a *)
+        firstDisjEq = TRANS[lhsEq, HOL`Equal`SYM[rhsChain]];   (* a*(SUC 0) = b*0 + gcd a b *)
+        disj = HOL`Bool`DISJ1[firstDisjEq,
+          mkEq[timesTm[nLoc, zeroN[]], plusTm[timesTm[aInner, oneN[]], gN]]];
+        exY = HOL`Bool`EXISTS[exInnerTm[oneN[]], zeroN[], disj];
+        HOL`Bool`EXISTS[goalTm, oneN[], exY]];
+
+      caseNZ = Module[{hNnz, divPair, aEqDiv, rLtN, gRec, ihAtR, ihInst,
+                       qN, rN, gR, bqTmN, x0V, y0V, bTimesQy0, rTimesY0,
+                       bTimesX0, aTimesY0, ywit, bTimesYwit, step1, step2,
+                       step2b, ay0Eq, distribLeftInst, distribN, caseA, caseB,
+                       ihInnerYtm, gFromBody, chooseY, firstDisjTermA,
+                       secondDisjTermA},
+        hNnz = ASSUME[notTm[mkEq[nLoc, zeroN[]]]];
+        divPair = HOL`Bool`MP[
+          HOL`Bool`SPEC[nLoc, HOL`Bool`SPEC[aInner, HOL`Stdlib`Num`divisionPairThm]], hNnz];
+        aEqDiv = HOL`Bool`CONJUNCT1[divPair];                  (* a = b*q + r *)
+        rLtN = HOL`Bool`CONJUNCT2[divPair];                    (* (a MOD b) < b *)
+        qN = divTmR[aInner, nLoc]; rN = modTmR[aInner, nLoc];
+        gR = gcdTm[nLoc, rN]; bqTmN = timesTm[nLoc, qN];
+        gRec = HOL`Bool`MP[
+          HOL`Bool`SPEC[nLoc, HOL`Bool`SPEC[aInner, gcdRecThm]], hNnz];  (* gcd a b = gcd b r *)
+        ihAtR = HOL`Bool`MP[HOL`Bool`SPEC[rN, ihHyp], rLtN];   (* ∀a. bezBody[a, r] *)
+        ihInst = HOL`Bool`SPEC[nLoc, ihAtR];                   (* bezBody[b, r] *)
+        x0V = mkVar["x0", numTy]; y0V = mkVar["y0", numTy];
+        bTimesQy0 = timesTm[nLoc, timesTm[qN, y0V]];           (* b*(q*y0) *)
+        rTimesY0  = timesTm[rN, y0V];                          (* r*y0 *)
+        bTimesX0  = timesTm[nLoc, x0V];                        (* b*x0 *)
+        aTimesY0  = timesTm[aInner, y0V];                      (* a*y0 *)
+        ywit      = plusTm[timesTm[qN, y0V], x0V];             (* q*y0 + x0 *)
+        bTimesYwit = timesTm[nLoc, ywit];                      (* b*(q*y0 + x0) *)
+        firstDisjTermA  = mkEq[aTimesY0, plusTm[bTimesYwit, gN]];  (* a*y0 = b*Y + gcd a b *)
+        secondDisjTermA = mkEq[bTimesYwit, plusTm[aTimesY0, gN]];  (* b*Y = a*y0 + gcd a b *)
+        step1 = HOL`Equal`APTHM[HOL`Equal`APTERM[HOL`Stdlib`Num`timesConst[], aEqDiv], y0V];
+                                                               (* a*y0 = (b*q + r)*y0 *)
+        step2 = HOL`Bool`SPEC[y0V, HOL`Bool`SPEC[rN,
+          HOL`Bool`SPEC[bqTmN, HOL`Stdlib`Num`timesDistribRightThm]]];
+                                                               (* (b*q + r)*y0 = (b*q)*y0 + r*y0 *)
+        step2b = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[],
+            HOL`Bool`SPEC[y0V, HOL`Bool`SPEC[qN, HOL`Bool`SPEC[nLoc, HOL`Stdlib`Num`timesAssocThm]]]],
+          REFL[rTimesY0]];                                     (* (b*q)*y0 + r*y0 = b*(q*y0) + r*y0 *)
+        ay0Eq = TRANS[step1, TRANS[step2, step2b]];            (* a*y0 = b*(q*y0) + r*y0 *)
+        distribLeftInst = HOL`Bool`SPEC[x0V, HOL`Bool`SPEC[timesTm[qN, y0V],
+          HOL`Bool`SPEC[nLoc, HOL`Stdlib`Num`timesDistribLeftThm]]];
+        distribN = HOL`Equal`SYM[distribLeftInst];             (* b*(q*y0) + b*x0 = b*(q*y0+x0) *)
+
+        caseA = Module[{hyp, e1, e2, e3, caseAeq, secondDisjProof, cdisj, exY},
+          hyp = ASSUME[mkEq[bTimesX0, plusTm[rTimesY0, gR]]];  (* b*x0 = r*y0 + g *)
+          e1 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], ay0Eq], REFL[gR]];
+          e2 = HOL`Bool`SPEC[gR, HOL`Bool`SPEC[rTimesY0,
+            HOL`Bool`SPEC[bTimesQy0, HOL`Stdlib`Num`addAssocThm]]];
+          e3 = HOL`Kernel`MKCOMB[
+            HOL`Equal`APTERM[plusC[], REFL[bTimesQy0]], HOL`Equal`SYM[hyp]];
+          caseAeq = TRANS[e1, TRANS[e2, TRANS[e3, distribN]]];  (* (a*y0)+g = b*(q*y0+x0) *)
+          secondDisjProof = TRANS[HOL`Equal`SYM[caseAeq],
+            HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[aTimesY0]], HOL`Equal`SYM[gRec]]];
+          cdisj = HOL`Bool`DISJ2[secondDisjProof, firstDisjTermA];
+          exY = HOL`Bool`EXISTS[exInnerTm[y0V], ywit, cdisj];
+          HOL`Bool`EXISTS[goalTm, y0V, exY]];
+
+        caseB = Module[{hyp, f2, f3, caseBeqG, firstDisjProof, cdisj, exY},
+          hyp = ASSUME[mkEq[rTimesY0, plusTm[bTimesX0, gR]]];  (* r*y0 = b*x0 + g *)
+          f2 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[bTimesQy0]], hyp];
+          f3 = HOL`Equal`SYM[HOL`Bool`SPEC[gR, HOL`Bool`SPEC[bTimesX0,
+            HOL`Bool`SPEC[bTimesQy0, HOL`Stdlib`Num`addAssocThm]]]];
+          caseBeqG = TRANS[ay0Eq, TRANS[f2, TRANS[f3,
+            HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], distribN], REFL[gR]]]]];
+                                                               (* a*y0 = b*(q*y0+x0) + g *)
+          firstDisjProof = TRANS[caseBeqG,
+            HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[bTimesYwit]], HOL`Equal`SYM[gRec]]];
+          cdisj = HOL`Bool`DISJ1[firstDisjProof, secondDisjTermA];
+          exY = HOL`Bool`EXISTS[exInnerTm[y0V], ywit, cdisj];
+          HOL`Bool`EXISTS[goalTm, y0V, exY]];
+
+        ihInnerYtm = existsTmR[yV, disjAt[nLoc, rN, x0V, yV]];
+        gFromBody = HOL`Bool`DISJCASES[
+          ASSUME[disjAt[nLoc, rN, x0V, y0V]], caseA, caseB];
+        chooseY = HOL`Bool`CHOOSE[y0V, ASSUME[ihInnerYtm], gFromBody];
+        HOL`Bool`CHOOSE[x0V, ihInst, chooseY]];
+
+      em = HOL`Bool`EXCLUDEDMIDDLE[mkEq[nLoc, zeroN[]]];
+      pnAtA = HOL`Bool`DISJCASES[em, case0, caseNZ];           (* bezBody[a,b], hyp {ihHypTm} *)
+      pnBody = HOL`Bool`GEN[aInner, pnAtA];                    (* ∀a. bezBody[a,b] *)
+      HOL`Bool`GEN[nLoc, HOL`Bool`DISCH[ihHypTm, pnBody]]
+    ];
+
+    mainConcl = HOL`Bool`MP[specBeta, stepAnte];               (* ∀b. ∀a. bezBody[a,b] *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`SPEC[aV, HOL`Bool`SPEC[bV, mainConcl]]]]
+  ];
+
+(* ⊢ ∀a b c. gcd a b = SUC 0 ⇒ divides a (b*c) ⇒ divides a c   (ℕ Gauss) *)
+(* From Bezout at (a,b): ∃x0 y0. a*x0 = b*y0 + 1 ∨ b*y0 = a*x0 + 1 (g=1). *)
+(* Multiply the chosen identity by c and use a | a*(x0*c) and a | (b*c)*y0 *)
+(* (= a | (b*y0)*c) to peel c off with dividesAddRight.                    *)
+coprimeDividesProductThm =
+  Module[{aV, bV, cV, xV, yV, x0V, y0V, oneN1, gab, bc, ax0, by0, x0c, axc,
+          by0c, disjAtXY, gcdEq1, aDivBc, bez, aDivA, aDivAxc, aDivBcy0,
+          bycEq1, bycEq2, bycEq3, bycEq, aDivBy0c, disj1Tm, disj2Tm,
+          disjBodyTm, case1, case2, innerProof, exYtm, chooseY, chooseX},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; cV = mkVar["c", numTy];
+    xV = mkVar["x", numTy]; yV = mkVar["y", numTy];
+    x0V = mkVar["x0", numTy]; y0V = mkVar["y0", numTy];
+    oneN1 = oneN[]; gab = gcdTm[aV, bV]; bc = timesTm[bV, cV];
+    ax0 = timesTm[aV, x0V]; by0 = timesTm[bV, y0V];
+    x0c = timesTm[x0V, cV]; axc = timesTm[aV, x0c]; by0c = timesTm[by0, cV];
+    disjAtXY[xT_, yT_] := orTmR[
+      mkEq[timesTm[aV, xT], plusTm[timesTm[bV, yT], gab]],
+      mkEq[timesTm[bV, yT], plusTm[timesTm[aV, xT], gab]]];
+    gcdEq1 = ASSUME[mkEq[gab, oneN1]];                  (* gcd a b = SUC 0 *)
+    aDivBc = ASSUME[dividesTm[aV, bc]];                 (* divides a (b*c) *)
+    bez = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, bezoutNatThm]];
+
+    aDivA = HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesReflThm];        (* divides a a *)
+    aDivAxc = HOL`Bool`MP[HOL`Bool`SPEC[x0c, HOL`Bool`SPEC[aV,
+      HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesMultRightThm]]], aDivA];  (* a | a*(x0*c) *)
+    aDivBcy0 = HOL`Bool`MP[HOL`Bool`SPEC[y0V, HOL`Bool`SPEC[bc,
+      HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesMultRightThm]]], aDivBc]; (* a | (b*c)*y0 *)
+    bycEq1 = HOL`Bool`SPEC[cV, HOL`Bool`SPEC[y0V, HOL`Bool`SPEC[bV, HOL`Stdlib`Num`timesAssocThm]]];
+                                                        (* (b*y0)*c = b*(y0*c) *)
+    bycEq2 = HOL`Equal`APTERM[mkComb[HOL`Stdlib`Num`timesConst[], bV],
+      HOL`Bool`SPEC[cV, HOL`Bool`SPEC[y0V, HOL`Stdlib`Num`timesCommThm]]];  (* b*(y0*c) = b*(c*y0) *)
+    bycEq3 = HOL`Equal`SYM[HOL`Bool`SPEC[y0V, HOL`Bool`SPEC[cV, HOL`Bool`SPEC[bV, HOL`Stdlib`Num`timesAssocThm]]]];
+                                                        (* b*(c*y0) = (b*c)*y0 *)
+    bycEq = TRANS[bycEq1, TRANS[bycEq2, bycEq3]];       (* (b*y0)*c = (b*c)*y0 *)
+    aDivBy0c = EQMP[HOL`Equal`APTERM[dividesHead[aV], HOL`Equal`SYM[bycEq]], aDivBcy0]; (* a | (b*y0)*c *)
+
+    disj1Tm = mkEq[ax0, plusTm[by0, gab]];
+    disj2Tm = mkEq[by0, plusTm[ax0, gab]];
+    disjBodyTm = orTmR[disj1Tm, disj2Tm];
+
+    case1 = Module[{d1, caseEq1, l1, l2, l3, l4, axcEq, aDivBycC},
+      d1 = ASSUME[disj1Tm];                             (* a*x0 = b*y0 + gab *)
+      caseEq1 = TRANS[d1,
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[by0]], gcdEq1]];  (* a*x0 = b*y0 + SUC 0 *)
+      l1 = HOL`Equal`SYM[HOL`Bool`SPEC[cV, HOL`Bool`SPEC[x0V, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`timesAssocThm]]]];
+                                                        (* a*(x0*c) = (a*x0)*c *)
+      l2 = HOL`Equal`APTHM[HOL`Equal`APTERM[HOL`Stdlib`Num`timesConst[], caseEq1], cV];
+                                                        (* (a*x0)*c = (b*y0+SUC0)*c *)
+      l3 = HOL`Bool`SPEC[cV, HOL`Bool`SPEC[oneN1, HOL`Bool`SPEC[by0, HOL`Stdlib`Num`timesDistribRightThm]]];
+                                                        (* (b*y0+SUC0)*c = (b*y0)*c + (SUC0)*c *)
+      l4 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[by0c]],
+        HOL`Bool`SPEC[cV, HOL`Stdlib`Num`oneTimesEqThm]];  (* (b*y0)*c + (SUC0)*c = (b*y0)*c + c *)
+      axcEq = TRANS[l1, TRANS[l2, TRANS[l3, l4]]];      (* a*(x0*c) = (b*y0)*c + c *)
+      aDivBycC = EQMP[HOL`Equal`APTERM[dividesHead[aV], axcEq], aDivAxc];  (* a | ((b*y0)*c + c) *)
+      HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[cV, HOL`Bool`SPEC[by0c,
+        HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesAddRightThm]]], aDivBy0c], aDivBycC]];  (* a | c *)
+
+    case2 = Module[{d2, caseEq2, m1, m2, m3, byccEq, aDivAxcC},
+      d2 = ASSUME[disj2Tm];                             (* b*y0 = a*x0 + gab *)
+      caseEq2 = TRANS[d2,
+        HOL`Kernel`MKCOMB[HOL`Equal`APTERM[plusC[], REFL[ax0]], gcdEq1]];  (* b*y0 = a*x0 + SUC 0 *)
+      m1 = HOL`Equal`APTHM[HOL`Equal`APTERM[HOL`Stdlib`Num`timesConst[], caseEq2], cV];
+                                                        (* (b*y0)*c = (a*x0+SUC0)*c *)
+      m2 = HOL`Bool`SPEC[cV, HOL`Bool`SPEC[oneN1, HOL`Bool`SPEC[ax0, HOL`Stdlib`Num`timesDistribRightThm]]];
+                                                        (* (a*x0+SUC0)*c = (a*x0)*c + (SUC0)*c *)
+      m3 = HOL`Kernel`MKCOMB[
+        HOL`Equal`APTERM[plusC[],
+          HOL`Bool`SPEC[cV, HOL`Bool`SPEC[x0V, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`timesAssocThm]]]],
+        HOL`Bool`SPEC[cV, HOL`Stdlib`Num`oneTimesEqThm]];  (* (a*x0)*c + (SUC0)*c = a*(x0*c) + c *)
+      byccEq = TRANS[m1, TRANS[m2, m3]];                (* (b*y0)*c = a*(x0*c) + c *)
+      aDivAxcC = EQMP[HOL`Equal`APTERM[dividesHead[aV], byccEq], aDivBy0c];  (* a | (a*(x0*c) + c) *)
+      HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[cV, HOL`Bool`SPEC[axc,
+        HOL`Bool`SPEC[aV, HOL`Stdlib`Num`dividesAddRightThm]]], aDivAxc], aDivAxcC]];  (* a | c *)
+
+    innerProof = HOL`Bool`DISJCASES[ASSUME[disjBodyTm], case1, case2];  (* a | c *)
+    exYtm = existsTmR[yV, disjAtXY[x0V, yV]];
+    chooseY = HOL`Bool`CHOOSE[y0V, ASSUME[exYtm], innerProof];
+    chooseX = HOL`Bool`CHOOSE[x0V, bez, chooseY];      (* a | c, hyps {gcd a b=1, a|(b*c)} *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Bool`DISCH[mkEq[gab, oneN1],
+        HOL`Bool`DISCH[dividesTm[aV, bc], chooseX]]]]]
+  ];
+
 (* ============================================================ *)
 (* intNatAbs : int → num                                        *)
 (* ============================================================ *)
