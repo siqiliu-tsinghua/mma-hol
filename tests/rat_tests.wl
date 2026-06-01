@@ -44,6 +44,14 @@ HOLTest`runTests["stdlib/Rat: gcdRecThm — ⊢ ∀a b. ¬(b=0) ⇒ gcd a b = gc
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdRecThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdRecThm], "is a theorem"]];
 
+HOLTest`runTests["stdlib/Rat: bezoutNatThm — ⊢ ∀a b. ∃x y. a*x = b*y + gcd a b ∨ b*y = a*x + gcd a b",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`bezoutNatThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`bezoutNatThm],
+      HOLTest`quantNestPat["∀", 2,
+        HOLTest`quantNestPat["∃", 2, comb[comb[const["∨", _], _], _]]]],
+    "shape: ∀a b. ∃x y. _ ∨ _"]];
+
 (* ===== intNatAbs ===== *)
 
 HOLTest`runTests["stdlib/Rat: intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0",
