@@ -294,3 +294,42 @@ HOLTest`runTests["stdlib/Rat: ratAddNegThm — ⊢ ∀q. ratAdd q (ratNeg q) = &
       HOLTest`quantNestPat["∀", 1,
         comb[comb[const["=", _], comb[comb[const["ratAdd", _], _], comb[const["ratNeg", _], _]]], _]]],
     "shape: ∀q. ratAdd q (ratNeg q) = &ℚ&ℤ0"]];
+
+(* ===== ratCanon-respects layer (→ ratAddAssoc) ===== *)
+
+HOLTest`runTests["stdlib/Rat: intMulDivNatCancelThm — ⊢ ∀z g. ¬(g=0) ⇒ divides g (intNatAbs z) ⇒ intMul (intDivNat z g) (&ℤ g) = z",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intMulDivNatCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intMulDivNatCancelThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratCanonEquivThm — ⊢ ∀p. ¬(SND p=0) ⇒ ratCanon p cross-equiv p",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonEquivThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratCanonEquivThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratCanonInjThm — ⊢ ∀p p'. RAT_REP p ⇒ RAT_REP p' ⇒ cross ⇒ p = p'",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonInjThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratCanonInjThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratCrossTransThm — ⊢ ∀a b c d e f. ¬(d=0) ⇒ cross ⇒ cross ⇒ cross (transitivity)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCrossTransThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratCrossTransThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratCanonRespectsThm — ⊢ ∀p p'. ¬(SND p=0) ⇒ ¬(SND p'=0) ⇒ cross ⇒ ratCanon p = ratCanon p'",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonRespectsThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratCanonRespectsThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratAddCongLeftThm — left-operand cross-equiv congruence for ratCanon of the sum-pair",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratAddCongLeftThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratAddCongLeftThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratAddCongRightThm — right-operand cross-equiv congruence for ratCanon of the sum-pair",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratAddCongRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratAddCongRightThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratAddAssocThm — ⊢ ∀q r v. ratAdd (ratAdd q r) v = ratAdd q (ratAdd r v)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratAddAssocThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratAddAssocThm],
+      HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["=", _],
+          comb[comb[const["ratAdd", _], comb[comb[const["ratAdd", _], _], _]], _]], _]]],
+    "shape: ∀q r v. ratAdd (ratAdd q r) v = ratAdd q (ratAdd r v)"]];
