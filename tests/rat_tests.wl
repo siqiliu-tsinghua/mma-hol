@@ -249,3 +249,48 @@ HOLTest`runTests["stdlib/Rat: repRatNegThm — ⊢ ∀q. REP_rat (ratNeg q) = (i
       HOLTest`quantNestPat["∀", 1,
         comb[comb[const["=", _], comb[const["REP_rat", _], comb[const["ratNeg", _], _]]], _]]],
     "shape: ∀q. REP_rat (ratNeg q) = (..)"]];
+
+(* ===== lowest-terms uniqueness (cross-multiplication) ===== *)
+
+HOLTest`runTests["stdlib/Rat: gcdCommThm — ⊢ ∀a b. gcd a b = gcd b a",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdCommThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdCommThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: intNatAbsMulOfNumThm — ⊢ ∀z n. intNatAbs (intMul z (&ℤ n)) = intNatAbs z * n",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsMulOfNumThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsMulOfNumThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratEqCrossThm — ⊢ ∀q r. (q = r) = (cross-mult)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratEqCrossThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratEqCrossThm],
+      HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _], comb[comb[const["=", _], _], _]],
+          comb[comb[const["=", _], _], _]]]],
+    "shape: ∀q r. (q = r) = (_ = _)"]];
+
+(* ===== additive-inverse support lemmas ===== *)
+
+HOLTest`runTests["stdlib/Rat: gcdZeroLeftThm — ⊢ ∀m. gcd 0 m = m",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdZeroLeftThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdZeroLeftThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: exDivSelfThm — ⊢ ∀m. ¬(m = 0) ⇒ exDiv m m = SUC 0",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivSelfThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`exDivSelfThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: intDivNatZeroThm — ⊢ ∀g. ¬(g = 0) ⇒ intDivNat (&ℤ 0) g = &ℤ 0",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intDivNatZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intDivNatZeroThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratCanonZeroNumThm — ⊢ ∀m. ¬(m = 0) ⇒ ratCanon (&ℤ 0, m) = (&ℤ 0, SUC 0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonZeroNumThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratCanonZeroNumThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratAddNegThm — ⊢ ∀q. ratAdd q (ratNeg q) = &ℚ (&ℤ 0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratAddNegThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratAddNegThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["=", _], comb[comb[const["ratAdd", _], _], comb[const["ratNeg", _], _]]], _]]],
+    "shape: ∀q. ratAdd q (ratNeg q) = &ℚ&ℤ0"]];
