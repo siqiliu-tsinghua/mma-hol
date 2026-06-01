@@ -52,6 +52,16 @@ HOLTest`runTests["stdlib/Rat: bezoutNatThm — ⊢ ∀a b. ∃x y. a*x = b*y + g
         HOLTest`quantNestPat["∃", 2, comb[comb[const["∨", _], _], _]]]],
     "shape: ∀a b. ∃x y. _ ∨ _"]];
 
+HOLTest`runTests["stdlib/Rat: coprimeDividesProductThm — ⊢ ∀a b c. gcd a b = SUC 0 ⇒ divides a (b*c) ⇒ divides a c",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`coprimeDividesProductThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`coprimeDividesProductThm],
+      HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["⇒", _], comb[comb[const["=", _], _], _]],
+          comb[comb[const["⇒", _], comb[comb[const["divides", _], _], _]],
+            comb[comb[const["divides", _], _], _]]]]],
+    "shape: ∀a b c. gcd a b = SUC 0 ⇒ divides a (b*c) ⇒ divides a c"]];
+
 (* ===== intNatAbs ===== *)
 
 HOLTest`runTests["stdlib/Rat: intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0",
