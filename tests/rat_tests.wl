@@ -333,3 +333,44 @@ HOLTest`runTests["stdlib/Rat: ratAddAssocThm — ⊢ ∀q r v. ratAdd (ratAdd q 
         comb[comb[const["=", _],
           comb[comb[const["ratAdd", _], comb[comb[const["ratAdd", _], _], _]], _]], _]]],
     "shape: ∀q r v. ratAdd (ratAdd q r) v = ratAdd q (ratAdd r v)"]];
+
+(* ===== stage e: ratMul (multiplication of reduced fractions) ===== *)
+
+HOLTest`runTests["stdlib/Rat: ratMul : rat → rat → rat",
+  HOLTest`assertEq[HOL`Kernel`constType["ratMul"],
+    tyFun[mkType["rat", {}], tyFun[mkType["rat", {}], mkType["rat", {}]]],
+    "ratMul : rat → rat → rat"]];
+
+HOLTest`runTests["stdlib/Rat: repRatMulThm — ⊢ ∀q r. REP_rat (ratMul q r) = ratCanon (..)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`repRatMulThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`repRatMulThm],
+      HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _], comb[const["REP_rat", _], comb[comb[const["ratMul", _], _], _]]],
+          comb[const["ratCanon", _], _]]]],
+    "shape: ∀q r. REP_rat (ratMul q r) = ratCanon (..)"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulCommThm — ⊢ ∀q r. ratMul q r = ratMul r q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulCommThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratMulCommThm],
+      HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["=", _], comb[comb[const["ratMul", _], _], _]],
+          comb[comb[const["ratMul", _], _], _]]]],
+    "shape: ∀q r. ratMul q r = ratMul r q"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulOneThm — ⊢ ∀q. ratMul q (&ℚ (&ℤ (SUC 0))) = q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulOneThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratMulOneThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["=", _], comb[comb[const["ratMul", _], _], _]], _]]],
+    "shape: ∀q. ratMul q (&ℚ&ℤ1) = q"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulZeroThm — ⊢ ∀q. ratMul q (&ℚ (&ℤ 0)) = &ℚ (&ℤ 0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratMulZeroThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["=", _], comb[comb[const["ratMul", _], _], _]], _]]],
+    "shape: ∀q. ratMul q (&ℚ&ℤ0) = &ℚ&ℤ0"]];
