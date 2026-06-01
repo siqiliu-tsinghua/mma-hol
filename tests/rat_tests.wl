@@ -391,3 +391,13 @@ HOLTest`runTests["stdlib/Rat: ratMulAssocThm — ⊢ ∀q r v. ratMul (ratMul q 
         comb[comb[const["=", _],
           comb[comb[const["ratMul", _], comb[comb[const["ratMul", _], _], _]], _]], _]]],
     "shape: ∀q r v. ratMul (ratMul q r) v = ratMul q (ratMul r v)"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulDistribThm — ⊢ ∀z w v. ratMul z (ratAdd w v) = ratAdd (ratMul z w) (ratMul z v)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulDistribThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratMulDistribThm],
+      HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["=", _], comb[comb[const["ratMul", _], _], comb[comb[const["ratAdd", _], _], _]]],
+          comb[comb[const["ratAdd", _], comb[comb[const["ratMul", _], _], _]],
+            comb[comb[const["ratMul", _], _], _]]]]],
+    "shape: ∀z w v. ratMul z (ratAdd w v) = ratAdd (ratMul z w) (ratMul z v)"]];
