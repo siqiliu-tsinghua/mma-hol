@@ -374,3 +374,20 @@ HOLTest`runTests["stdlib/Rat: ratMulZeroThm — ⊢ ∀q. ratMul q (&ℚ (&ℤ 0
       HOLTest`quantNestPat["∀", 1,
         comb[comb[const["=", _], comb[comb[const["ratMul", _], _], _]], _]]],
     "shape: ∀q. ratMul q (&ℚ&ℤ0) = &ℚ&ℤ0"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulCongLeftThm — left-operand cross-equiv congruence for ratCanon of the product-pair",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulCongLeftThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratMulCongLeftThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulCongRightThm — right-operand cross-equiv congruence for ratCanon of the product-pair",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulCongRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratMulCongRightThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulAssocThm — ⊢ ∀q r v. ratMul (ratMul q r) v = ratMul q (ratMul r v)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulAssocThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratMulAssocThm],
+      HOLTest`quantNestPat["∀", 3,
+        comb[comb[const["=", _],
+          comb[comb[const["ratMul", _], comb[comb[const["ratMul", _], _], _]], _]], _]]],
+    "shape: ∀q r v. ratMul (ratMul q r) v = ratMul q (ratMul r v)"]];
