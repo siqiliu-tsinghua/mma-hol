@@ -401,3 +401,48 @@ HOLTest`runTests["stdlib/Rat: ratMulDistribThm — ⊢ ∀z w v. ratMul z (ratAd
           comb[comb[const["ratAdd", _], comb[comb[const["ratMul", _], _], _]],
             comb[comb[const["ratMul", _], _], _]]]]],
     "shape: ∀z w v. ratMul z (ratAdd w v) = ratAdd (ratMul z w) (ratMul z v)"]];
+
+(* ===== stage e: ratInv supporting lemmas ===== *)
+
+HOLTest`runTests["stdlib/Rat: intNatAbsOfNumThm — ⊢ ∀n. intNatAbs (&ℤ n) = n",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsOfNumThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsOfNumThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: intSqNatAbsThm — ⊢ ∀z. intMul z z = &ℤ (intNatAbs z * intNatAbs z)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intSqNatAbsThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intSqNatAbsThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: gcdSelfThm — ⊢ ∀m. gcd m m = m",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdSelfThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdSelfThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratCanonSelfThm — ⊢ ∀m. ¬(m=0) ⇒ ratCanon (&ℤ m, m) = (&ℤ (SUC 0), SUC 0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonSelfThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratCanonSelfThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: intNatAbsNonzeroThm — ⊢ ∀z. ¬(z=&ℤ0) ⇒ ¬(intNatAbs z = 0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsNonzeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsNonzeroThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratNumNonzeroThm — ⊢ ∀q. ¬(q=&ℚ&ℤ0) ⇒ ¬(FST (REP_rat q) = &ℤ 0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratNumNonzeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratNumNonzeroThm], "is a theorem"]];
+
+(* ===== stage e: ratInv → ℚ is a FIELD ===== *)
+
+HOLTest`runTests["stdlib/Rat: ratInv : rat → rat",
+  HOLTest`assertEq[HOL`Kernel`constType["ratInv"],
+    tyFun[mkType["rat", {}], mkType["rat", {}]], "ratInv : rat → rat"]];
+
+HOLTest`runTests["stdlib/Rat: repRatInvThm — ⊢ ∀q. ¬(q=&ℚ&ℤ0) ⇒ REP_rat (ratInv q) = ratCanon (..)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`repRatInvThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`repRatInvThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulInvThm — ⊢ ∀q. ¬(q=&ℚ&ℤ0) ⇒ ratMul q (ratInv q) = &ℚ (&ℤ (SUC 0))",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulInvThm], {}, "no hyps"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratMulInvThm],
+      HOLTest`quantNestPat["∀", 1,
+        comb[comb[const["⇒", _], _],
+          comb[comb[const["=", _], comb[comb[const["ratMul", _], _], comb[const["ratInv", _], _]]], _]]]],
+    "shape: ∀q. ¬(q=&ℚ&ℤ0) ⇒ ratMul q (ratInv q) = &ℚ&ℤ1"]];
