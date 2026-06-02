@@ -510,3 +510,44 @@ HOLTest`runTests["stdlib/Rat: ratLeAddMonoThm — ⊢ ∀q r u. ratLe q r ⇒ ra
 HOLTest`runTests["stdlib/Rat: ratLeMulNonnegThm — ⊢ ∀u q r. ratLe (&ℚ&ℤ0) u ⇒ ratLe q r ⇒ ratLe (ratMul u q) (ratMul u r)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeMulNonnegThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLeMulNonnegThm], "is a theorem"]];
+
+(* ===== stage g: &ℚ ring/order homomorphism ===== *)
+
+HOLTest`runTests["stdlib/Rat: ratOfIntAddThm — ⊢ ∀a b. &ℚ (intAdd a b) = ratAdd (&ℚ a) (&ℚ b)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratOfIntAddThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratOfIntAddThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratOfIntMulThm — ⊢ ∀a b. &ℚ (intMul a b) = ratMul (&ℚ a) (&ℚ b)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratOfIntMulThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratOfIntMulThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratOfIntLeThm — ⊢ ∀a b. ratLe (&ℚ a) (&ℚ b) = intLe a b",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratOfIntLeThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratOfIntLeThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratAddSubCancelThm — ⊢ ∀q u. ratAdd (ratAdd q u) (ratNeg u) = q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratAddSubCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratAddSubCancelThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLtAddMonoThm — ⊢ ∀q r u. ratLt q r ⇒ ratLt (ratAdd q u) (ratAdd r u)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLtAddMonoThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLtAddMonoThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLtMulPosCancelThm — ⊢ ∀x y u. ratLe 0 u ⇒ ratLt (x·u)(y·u) ⇒ ratLt x y",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLtMulPosCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLtMulPosCancelThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratMulTwoThm — ⊢ ∀x. ratMul x (&ℚ&ℤ2) = ratAdd x x",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratMulTwoThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratMulTwoThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratDenseThm — ⊢ ∀q r. ratLt q r ⇒ ratLt q (½(q+r)) ∧ ratLt (½(q+r)) r",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratDenseThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratDenseThm], "is a theorem"];
+  HOLTest`assertTrue[
+    MatchQ[concl[HOL`Stdlib`Rat`ratDenseThm],
+      HOLTest`quantNestPat["∀", 2,
+        comb[comb[const["⇒", _], comb[comb[const["ratLt", _], _], _]],
+          comb[comb[const["∧", _], comb[comb[const["ratLt", _], _], _]],
+            comb[comb[const["ratLt", _], _], _]]]]],
+    "shape: ∀q r. ratLt q r ⇒ ratLt q m ∧ ratLt m r"]];
