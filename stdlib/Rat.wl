@@ -141,6 +141,11 @@ ratLtConst::usage  = "ratLtConst[] — ratLt : rat → rat → bool, strict orde
 ratLtDefThm::usage = "ratLtDefThm — ⊢ ratLt = (λq r. intLt (intMul (FST(REP q)) (&ℤ (SND(REP r)))) (intMul (FST(REP r)) (&ℤ (SND(REP q))))).";
 ratLtNotLeThm::usage = "ratLtNotLeThm — ⊢ ∀q r. ratLt q r = ¬ (ratLe r q).";
 
+pairLeCongLeftThm::usage = "pairLeCongLeftThm — ⊢ ∀n1 m1 e f n2 m2. ¬(m1=0) ⇒ ¬(f=0) ⇒ intMul n1 (&ℤ f) = intMul e (&ℤ m1) ⇒ intLe (intMul n1 (&ℤ m2)) (intMul n2 (&ℤ m1)) ⇒ intLe (intMul e (&ℤ m2)) (intMul n2 (&ℤ f)). Cross-product order respects swapping the left operand for a cross-equivalent one. (proper home Int.wl)";
+pairLeCongRightThm::usage = "pairLeCongRightThm — ⊢ ∀n1 m1 n2 m2 e f. ¬(m2=0) ⇒ ¬(f=0) ⇒ intMul n2 (&ℤ f) = intMul e (&ℤ m2) ⇒ intLe (intMul n1 (&ℤ m2)) (intMul n2 (&ℤ m1)) ⇒ intLe (intMul n1 (&ℤ f)) (intMul e (&ℤ m1)). Right-operand analog of pairLeCongLeftThm. (proper home Int.wl)";
+ratLeAddMonoThm::usage = "ratLeAddMonoThm — ⊢ ∀q r u. ratLe q r ⇒ ratLe (ratAdd q u) (ratAdd r u). Additive monotonicity of the rational order.";
+ratLeMulNonnegThm::usage = "ratLeMulNonnegThm — ⊢ ∀u q r. ratLe (&ℚ (&ℤ 0)) u ⇒ ratLe q r ⇒ ratLe (ratMul u q) (ratMul u r). Monotonicity of ratMul by a nonnegative factor.";
+
 Begin["`Private`"];
 
 numTy = mkType["num", {}];
@@ -3505,6 +3510,254 @@ ratLtNotLeThm =
     unfoldLtQR = unfoldRatLt[qV, rV];                          (* ratLt q r = intLt ad cb *)
     HOL`Bool`GEN[qV, HOL`Bool`GEN[rV,
       TRANS[unfoldLtQR, HOL`Equal`SYM[TRANS[step1, HOL`Equal`SYM[nleEqLt]]]]]]
+  ];
+
+(* ============================================================ *)
+(* Stage f — order/arithmetic compatibility.                    *)
+(* The cross-product order respects cross-equivalence of either  *)
+(* operand (pairLeCong{Left,Right}); each is a multiply-by-the-  *)
+(* new-denominator, cross-swap, cancel-the-old-denominator chain *)
+(* — the order analog of ratAddCong{Left,Right}. ratLeAddMono /  *)
+(* ratLeMulNonneg then reduce ratLe at ratAdd/ratMul (REP = a     *)
+(* ratCanon, opaque) to the unreduced cross-product (via         *)
+(* repAddEquivAt/repMulEquivAt) and discharge the int-ring core.  *)
+(* ============================================================ *)
+
+(* swap the LEFT cross-operand for a cross-equivalent one (cancel &ℤm1) *)
+pairLeCongLeftThm =
+  Module[{n1, m1, eV, fV, n2, m2, intLeC, intMulC, zf, zm1, zm2, le0f, mulL,
+          lhsEq, rhsEq, congMul, scaled, commL, commR, congC, cf, le0m1,
+          notZm1, result},
+    n1 = mkVar["n1", intTy]; eV = mkVar["e", intTy]; n2 = mkVar["c", intTy];
+    m1 = mkVar["m1", numTy]; fV = mkVar["f", numTy]; m2 = mkVar["g", numTy];
+    intLeC = intLeCC[]; intMulC = intMulCC[];
+    zf = intOfNum[fV]; zm1 = intOfNum[m1]; zm2 = intOfNum[m2];
+    le0f = intOfNumNonneg[fV];
+    mulL = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[zf,
+      HOL`Bool`SPEC[intMulTm[n2, zm1], HOL`Bool`SPEC[intMulTm[n1, zm2],
+        HOL`Stdlib`Int`intLeMulNonnegThm]]], le0f],
+      ASSUME[intLeTmR[intMulTm[n1, zm2], intMulTm[n2, zm1]]]];
+        (* intLe (&ℤf·(n1·&ℤm2)) (&ℤf·(n2·&ℤm1)) *)
+    lhsEq = TRANS[HOL`Equal`SYM[imAssoc[zf, n1, zm2]],
+      TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, imComm[zf, n1]], REFL[zm2]],
+        TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC,
+          ASSUME[mkEq[intMulTm[n1, zf], intMulTm[eV, zm1]]]], REFL[zm2]],
+          crossSwapAt[eV, m1, m2]]]];   (* &ℤf·(n1·&ℤm2) = (e·&ℤm2)·&ℤm1 *)
+    rhsEq = TRANS[HOL`Equal`SYM[imAssoc[zf, n2, zm1]],
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, imComm[zf, n2]], REFL[zm1]]];
+        (* &ℤf·(n2·&ℤm1) = (n2·&ℤf)·&ℤm1 *)
+    congMul = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, lhsEq], rhsEq];
+    scaled = EQMP[congMul, mulL];   (* intLe ((e·&ℤm2)·&ℤm1) ((n2·&ℤf)·&ℤm1) *)
+    commL = imComm[intMulTm[eV, zm2], zm1]; commR = imComm[intMulTm[n2, zf], zm1];
+    congC = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, commL], commR];
+    cf = EQMP[congC, scaled];        (* intLe (&ℤm1·(e·&ℤm2)) (&ℤm1·(n2·&ℤf)) *)
+    le0m1 = intOfNumNonneg[m1]; notZm1 = intOfNumNeqZero[ASSUME[notTm[mkEq[m1, zeroN[]]]], m1];
+    result = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[intMulTm[n2, zf], HOL`Bool`SPEC[intMulTm[eV, zm2],
+        HOL`Bool`SPEC[zm1, intLeMulNonnegCancelThm]]], le0m1], notZm1], cf];
+        (* intLe (e·&ℤm2)(n2·&ℤf) *)
+    HOL`Bool`GEN[n1, HOL`Bool`GEN[m1, HOL`Bool`GEN[eV, HOL`Bool`GEN[fV,
+      HOL`Bool`GEN[n2, HOL`Bool`GEN[m2,
+        HOL`Bool`DISCH[notTm[mkEq[m1, zeroN[]]],
+          HOL`Bool`DISCH[notTm[mkEq[fV, zeroN[]]],
+            HOL`Bool`DISCH[mkEq[intMulTm[n1, zf], intMulTm[eV, zm1]],
+              HOL`Bool`DISCH[intLeTmR[intMulTm[n1, zm2], intMulTm[n2, zm1]],
+                result]]]]]]]]]]
+  ];
+
+(* swap the RIGHT cross-operand for a cross-equivalent one (cancel &ℤm2) *)
+pairLeCongRightThm =
+  Module[{n1, m1, n2, m2, eV, fV, intLeC, intMulC, zf, zm1, zm2, le0f, mulL,
+          lhsEq, rhsEq, congMul, scaled, commL, commR, congC, cf, le0m2,
+          notZm2, result},
+    n1 = mkVar["n1", intTy]; n2 = mkVar["c", intTy]; eV = mkVar["e", intTy];
+    m1 = mkVar["m1", numTy]; m2 = mkVar["g", numTy]; fV = mkVar["f", numTy];
+    intLeC = intLeCC[]; intMulC = intMulCC[];
+    zf = intOfNum[fV]; zm1 = intOfNum[m1]; zm2 = intOfNum[m2];
+    le0f = intOfNumNonneg[fV];
+    mulL = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[zf,
+      HOL`Bool`SPEC[intMulTm[n2, zm1], HOL`Bool`SPEC[intMulTm[n1, zm2],
+        HOL`Stdlib`Int`intLeMulNonnegThm]]], le0f],
+      ASSUME[intLeTmR[intMulTm[n1, zm2], intMulTm[n2, zm1]]]];
+    lhsEq = TRANS[HOL`Equal`SYM[imAssoc[zf, n1, zm2]],
+      HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, imComm[zf, n1]], REFL[zm2]]];
+        (* &ℤf·(n1·&ℤm2) = (n1·&ℤf)·&ℤm2 *)
+    rhsEq = TRANS[HOL`Equal`SYM[imAssoc[zf, n2, zm1]],
+      TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, imComm[zf, n2]], REFL[zm1]],
+        TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC,
+          ASSUME[mkEq[intMulTm[n2, zf], intMulTm[eV, zm2]]]], REFL[zm1]],
+          crossSwapAt[eV, m2, m1]]]];   (* &ℤf·(n2·&ℤm1) = (e·&ℤm1)·&ℤm2 *)
+    congMul = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, lhsEq], rhsEq];
+    scaled = EQMP[congMul, mulL];   (* intLe ((n1·&ℤf)·&ℤm2) ((e·&ℤm1)·&ℤm2) *)
+    commL = imComm[intMulTm[n1, zf], zm2]; commR = imComm[intMulTm[eV, zm1], zm2];
+    congC = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, commL], commR];
+    cf = EQMP[congC, scaled];        (* intLe (&ℤm2·(n1·&ℤf)) (&ℤm2·(e·&ℤm1)) *)
+    le0m2 = intOfNumNonneg[m2]; notZm2 = intOfNumNeqZero[ASSUME[notTm[mkEq[m2, zeroN[]]]], m2];
+    result = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[intMulTm[eV, zm1], HOL`Bool`SPEC[intMulTm[n1, zf],
+        HOL`Bool`SPEC[zm2, intLeMulNonnegCancelThm]]], le0m2], notZm2], cf];
+        (* intLe (n1·&ℤf)(e·&ℤm1) *)
+    HOL`Bool`GEN[n1, HOL`Bool`GEN[m1, HOL`Bool`GEN[n2, HOL`Bool`GEN[m2,
+      HOL`Bool`GEN[eV, HOL`Bool`GEN[fV,
+        HOL`Bool`DISCH[notTm[mkEq[m2, zeroN[]]],
+          HOL`Bool`DISCH[notTm[mkEq[fV, zeroN[]]],
+            HOL`Bool`DISCH[mkEq[intMulTm[n2, zf], intMulTm[eV, zm2]],
+              HOL`Bool`DISCH[intLeTmR[intMulTm[n1, zm2], intMulTm[n2, zm1]],
+                result]]]]]]]]]]
+  ];
+
+(* ⊢ ∀q r u. ratLe q r ⇒ ratLe (ratAdd q u) (ratAdd r u) *)
+(* Reduce ratLe at the two sums to the unreduced cross-product       *)
+(* intLe (N1·&ℤD2)(N2·&ℤD1) (UNRED): distribute, the g·b·d·h terms    *)
+(* are a common addend (intLeAddMono), and the core a·&ℤd ≤ c·&ℤb     *)
+(* scaled by &ℤh·&ℤh ≥ 0 (intLeMulNonneg) is the hypothesis. Then     *)
+(* swap each operand to its canon'd REP via repAddEquivAt + cong.     *)
+ratLeAddMonoThm =
+  Module[{qV, rV, uV, a, b, c, d, g, h, zb, zd, zh, intLeC, intMulC, intAddCl,
+          leQR, qu, ru, n1, d1, n2, d2, p1, q1, p2, q2, kk, coreL, coreR, gterm,
+          nonnegKK, coreLM, cL, cR, congCore, core, addG, rdistL, t1eqL, t2eqL,
+          eqN1, rdistR, t1eqR, t2eqR, eqN2, congU, unred, notB0, notH0, notD0r,
+          notD1, notQ1, e1, swap1, notD2, notQ2, e2, swap2},
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy]; uV = mkVar["u", ratTy];
+    a = ratNumOf[qV]; b = ratDenOf[qV]; c = ratNumOf[rV]; d = ratDenOf[rV];
+    g = ratNumOf[uV]; h = ratDenOf[uV];
+    zb = intOfNum[b]; zd = intOfNum[d]; zh = intOfNum[h];
+    intLeC = intLeCC[]; intMulC = intMulCC[]; intAddCl = intAddC[];
+    leQR = EQMP[unfoldRatLe[qV, rV], ASSUME[ratLeTm[qV, rV]]];   (* intLe (a·&ℤd)(c·&ℤb) *)
+    qu = ratAddTm[qV, uV]; ru = ratAddTm[rV, uV];
+    n1 = intAddTm[intMulTm[a, zh], intMulTm[g, zb]]; d1 = timesTm[b, h];
+    n2 = intAddTm[intMulTm[c, zh], intMulTm[g, zd]]; d2 = timesTm[d, h];
+    p1 = mkComb[fstIN[], repRat[qu]]; q1 = mkComb[sndIN[], repRat[qu]];
+    p2 = mkComb[fstIN[], repRat[ru]]; q2 = mkComb[sndIN[], repRat[ru]];
+    kk = intMulTm[zh, zh];
+    coreL = intMulTm[intMulTm[a, zd], kk]; coreR = intMulTm[intMulTm[c, zb], kk];
+    gterm = intMulTm[intMulTm[g, zb], intMulTm[zd, zh]];   (* (g·&ℤb)·(&ℤd·&ℤh) *)
+    nonnegKK = EQMP[HOL`Equal`APTERM[mkComb[intLeC, intZeroR], intOfNumMulAt[h, h]],
+      intOfNumNonneg[timesTm[h, h]]];   (* intLe &ℤ0 (&ℤh·&ℤh) *)
+    coreLM = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[kk,
+      HOL`Bool`SPEC[intMulTm[c, zb], HOL`Bool`SPEC[intMulTm[a, zd],
+        HOL`Stdlib`Int`intLeMulNonnegThm]]], nonnegKK], leQR];   (* intLe (KK·(a·&ℤd))(KK·(c·&ℤb)) *)
+    cL = imComm[kk, intMulTm[a, zd]]; cR = imComm[kk, intMulTm[c, zb]];
+    congCore = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, cL], cR];
+    core = EQMP[congCore, coreLM];   (* intLe (coreL)(coreR) *)
+    addG = HOL`Bool`MP[HOL`Bool`SPEC[gterm, HOL`Bool`SPEC[coreR,
+      HOL`Bool`SPEC[coreL, HOL`Stdlib`Int`intLeAddMonoThm]]], core];
+        (* intLe (coreL + G)(coreR + G) *)
+    rdistL = intRDistAt[intMulTm[a, zh], intMulTm[g, zb], intOfNum[d2]];
+    t1eqL = TRANS[HOL`Equal`APTERM[mkComb[intMulC, intMulTm[a, zh]], intOfNumMulAt[d, h]],
+      mul4SwapAt[a, zh, zd, zh]];   (* (a·&ℤh)·&ℤ(d·h) = coreL *)
+    t2eqL = HOL`Equal`APTERM[mkComb[intMulC, intMulTm[g, zb]], intOfNumMulAt[d, h]];
+        (* (g·&ℤb)·&ℤ(d·h) = G *)
+    eqN1 = TRANS[rdistL, HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intAddCl, t1eqL], t2eqL]];
+        (* n1·&ℤd2 = coreL + G *)
+    rdistR = intRDistAt[intMulTm[c, zh], intMulTm[g, zd], intOfNum[d1]];
+    t1eqR = TRANS[HOL`Equal`APTERM[mkComb[intMulC, intMulTm[c, zh]], intOfNumMulAt[b, h]],
+      mul4SwapAt[c, zh, zb, zh]];   (* (c·&ℤh)·&ℤ(b·h) = coreR *)
+    t2eqR = TRANS[HOL`Equal`APTERM[mkComb[intMulC, intMulTm[g, zd]], intOfNumMulAt[b, h]],
+      mul4SwapAt[g, zd, zb, zh]];   (* (g·&ℤd)·&ℤ(b·h) = G *)
+    eqN2 = TRANS[rdistR, HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intAddCl, t1eqR], t2eqR]];
+        (* n2·&ℤd1 = coreR + G *)
+    congU = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, eqN1], eqN2];
+    unred = EQMP[HOL`Equal`SYM[congU], addG];   (* intLe (n1·&ℤd2)(n2·&ℤd1) *)
+    notB0 = ratDenNeq0[qV]; notH0 = ratDenNeq0[uV]; notD0r = ratDenNeq0[rV];
+    notD1 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[h, HOL`Bool`SPEC[b, multNonzeroThm]],
+      notB0], notH0];   (* ¬(b·h = 0) *)
+    notQ1 = ratDenNeq0[qu];
+    e1 = repAddEquivAt[qV, uV];   (* p1·&ℤd1 = n1·&ℤq1 *)
+    swap1 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[d2, HOL`Bool`SPEC[n2, HOL`Bool`SPEC[q1, HOL`Bool`SPEC[p1,
+        HOL`Bool`SPEC[d1, HOL`Bool`SPEC[n1, pairLeCongLeftThm]]]]]],
+      notD1], notQ1], HOL`Equal`SYM[e1]], unred];   (* intLe (p1·&ℤd2)(n2·&ℤq1) *)
+    notD2 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[h, HOL`Bool`SPEC[d, multNonzeroThm]],
+      notD0r], notH0];   (* ¬(d·h = 0) *)
+    notQ2 = ratDenNeq0[ru];
+    e2 = repAddEquivAt[rV, uV];   (* p2·&ℤd2 = n2·&ℤq2 *)
+    swap2 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[q2, HOL`Bool`SPEC[p2, HOL`Bool`SPEC[d2, HOL`Bool`SPEC[n2,
+        HOL`Bool`SPEC[q1, HOL`Bool`SPEC[p1, pairLeCongRightThm]]]]]],
+      notD2], notQ2], HOL`Equal`SYM[e2]], swap1];   (* intLe (p1·&ℤq2)(p2·&ℤq1) *)
+    HOL`Bool`GEN[qV, HOL`Bool`GEN[rV, HOL`Bool`GEN[uV,
+      HOL`Bool`DISCH[ratLeTm[qV, rV],
+        EQMP[HOL`Equal`SYM[unfoldRatLe[qu, ru]], swap2]]]]]
+  ];
+
+(* ⊢ ∀u q r. ratLe (&ℚ (&ℤ 0)) u ⇒ ratLe q r ⇒ ratLe (ratMul u q) (ratMul u r) *)
+(* ratLe 0 u gives g = FST(REP u) ≥ 0, hence g·&ℤh ≥ 0. The unreduced *)
+(* product cross-products (g·a)·&ℤ(h·d) / (g·c)·&ℤ(h·b) factor as     *)
+(* (g·&ℤh)·(a·&ℤd) / (g·&ℤh)·(c·&ℤb) (mul4Swap), so UNRED is the       *)
+(* hypothesis a·&ℤd ≤ c·&ℤb scaled by g·&ℤh ≥ 0; then swap to REP.     *)
+ratLeMulNonnegThm =
+  Module[{uV, qV, rV, a, b, c, d, g, h, zb, zd, zh, intLeC, intMulC, zr, repZr,
+          fstZr, sndZr, le0uRaw, lz, z0h, lhsZeq, rz, g1, rhsGeq, congLe0,
+          gNonneg, ghm, gz0, congGh, ghNonneg, leQR, uq, ur, gh, n1m, d1m, n2m,
+          d2m, p1, q1, p2, q2, coreMul, s1, s2, eqM1, t1, t2, eqM2, congM,
+          unred, notH0, notB0, notD0r, notD1m, notQ1, e1, swap1, notD2m, notQ2,
+          e2, swap2},
+    uV = mkVar["u", ratTy]; qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    a = ratNumOf[qV]; b = ratDenOf[qV]; c = ratNumOf[rV]; d = ratDenOf[rV];
+    g = ratNumOf[uV]; h = ratDenOf[uV];
+    zb = intOfNum[b]; zd = intOfNum[d]; zh = intOfNum[h];
+    intLeC = intLeCC[]; intMulC = intMulCC[];
+    zr = ratOfIntTm[intZeroR];   (* &ℚ(&ℤ0) *)
+    repZr = HOL`Kernel`INST[{mkVar["q", intTy] -> intZeroR}, repRatOfIntThm];
+        (* REP(&ℚ&ℤ0) = (&ℤ0, SUC0) *)
+    fstZr = TRANS[HOL`Equal`APTERM[fstIN[], repZr], fstINatAt[intZeroR, oneN[]]];
+    sndZr = TRANS[HOL`Equal`APTERM[sndIN[], repZr], sndINatAt[intZeroR, oneN[]]];
+    le0uRaw = EQMP[unfoldRatLe[zr, uV], ASSUME[ratLeTm[zr, uV]]];
+        (* intLe (FST(REP zr)·&ℤh) (g·&ℤ(SND(REP zr))) *)
+    lz = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intMulC, fstZr], REFL[zh]];
+    z0h = TRANS[imComm[intZeroR, zh], HOL`Bool`SPEC[zh, HOL`Stdlib`Int`intMulZeroThm]];
+    lhsZeq = TRANS[lz, z0h];   (* FST(REP zr)·&ℤh = &ℤ0 *)
+    rz = HOL`Equal`APTERM[mkComb[intMulC, g],
+      HOL`Equal`APTERM[HOL`Stdlib`Int`intOfNumConst[], sndZr]];
+    g1 = HOL`Bool`SPEC[g, HOL`Stdlib`Int`intMulOneThm];
+    rhsGeq = TRANS[rz, g1];   (* g·&ℤ(SND(REP zr)) = g *)
+    congLe0 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, lhsZeq], rhsGeq];
+    gNonneg = EQMP[congLe0, le0uRaw];   (* intLe &ℤ0 g *)
+    ghm = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[g, HOL`Bool`SPEC[zh,
+      HOL`Bool`SPEC[intZeroR, HOL`Stdlib`Int`intLeMulNonnegThm]]], gNonneg],
+      intOfNumNonneg[h]];   (* intLe (g·&ℤ0)(g·&ℤh) *)
+    gz0 = HOL`Bool`SPEC[g, HOL`Stdlib`Int`intMulZeroThm];
+    congGh = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, gz0], REFL[intMulTm[g, zh]]];
+    ghNonneg = EQMP[congGh, ghm];   (* intLe &ℤ0 (g·&ℤh) *)
+    leQR = EQMP[unfoldRatLe[qV, rV], ASSUME[ratLeTm[qV, rV]]];   (* intLe (a·&ℤd)(c·&ℤb) *)
+    uq = ratMulTm[uV, qV]; ur = ratMulTm[uV, rV];
+    gh = intMulTm[g, zh];
+    n1m = intMulTm[g, a]; d1m = timesTm[h, b]; n2m = intMulTm[g, c]; d2m = timesTm[h, d];
+    p1 = mkComb[fstIN[], repRat[uq]]; q1 = mkComb[sndIN[], repRat[uq]];
+    p2 = mkComb[fstIN[], repRat[ur]]; q2 = mkComb[sndIN[], repRat[ur]];
+    coreMul = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[gh,
+      HOL`Bool`SPEC[intMulTm[c, zb], HOL`Bool`SPEC[intMulTm[a, zd],
+        HOL`Stdlib`Int`intLeMulNonnegThm]]], ghNonneg], leQR];
+        (* intLe (gh·(a·&ℤd))(gh·(c·&ℤb)) *)
+    s1 = HOL`Equal`APTERM[mkComb[intMulC, n1m], intOfNumMulAt[h, d]];
+    s2 = mul4SwapAt[g, a, zh, zd];
+    eqM1 = TRANS[s1, s2];   (* (g·a)·&ℤ(h·d) = gh·(a·&ℤd) *)
+    t1 = HOL`Equal`APTERM[mkComb[intMulC, n2m], intOfNumMulAt[h, b]];
+    t2 = mul4SwapAt[g, c, zh, zb];
+    eqM2 = TRANS[t1, t2];   (* (g·c)·&ℤ(h·b) = gh·(c·&ℤb) *)
+    congM = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[intLeC, eqM1], eqM2];
+    unred = EQMP[HOL`Equal`SYM[congM], coreMul];   (* intLe ((g·a)·&ℤ(h·d))((g·c)·&ℤ(h·b)) *)
+    notH0 = ratDenNeq0[uV]; notB0 = ratDenNeq0[qV]; notD0r = ratDenNeq0[rV];
+    notD1m = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[b, HOL`Bool`SPEC[h, multNonzeroThm]],
+      notH0], notB0];   (* ¬(h·b = 0) *)
+    notQ1 = ratDenNeq0[uq];
+    e1 = repMulEquivAt[uV, qV];   (* p1·&ℤd1m = n1m·&ℤq1 *)
+    swap1 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[d2m, HOL`Bool`SPEC[n2m, HOL`Bool`SPEC[q1, HOL`Bool`SPEC[p1,
+        HOL`Bool`SPEC[d1m, HOL`Bool`SPEC[n1m, pairLeCongLeftThm]]]]]],
+      notD1m], notQ1], HOL`Equal`SYM[e1]], unred];   (* intLe (p1·&ℤd2m)(n2m·&ℤq1) *)
+    notD2m = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[d, HOL`Bool`SPEC[h, multNonzeroThm]],
+      notH0], notD0r];   (* ¬(h·d = 0) *)
+    notQ2 = ratDenNeq0[ur];
+    e2 = repMulEquivAt[uV, rV];   (* p2·&ℤd2m = n2m·&ℤq2 *)
+    swap2 = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[q2, HOL`Bool`SPEC[p2, HOL`Bool`SPEC[d2m, HOL`Bool`SPEC[n2m,
+        HOL`Bool`SPEC[q1, HOL`Bool`SPEC[p1, pairLeCongRightThm]]]]]],
+      notD2m], notQ2], HOL`Equal`SYM[e2]], swap1];   (* intLe (p1·&ℤq2)(p2·&ℤq1) *)
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[qV, HOL`Bool`GEN[rV,
+      HOL`Bool`DISCH[ratLeTm[zr, uV], HOL`Bool`DISCH[ratLeTm[qV, rV],
+        EQMP[HOL`Equal`SYM[unfoldRatLe[uq, ur]], swap2]]]]]]
   ];
 
 End[];

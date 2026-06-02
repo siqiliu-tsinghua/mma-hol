@@ -492,3 +492,21 @@ HOLTest`runTests["stdlib/Rat: ratLtNotLeThm — ⊢ ∀q r. ratLt q r = ¬(ratLe
         comb[comb[const["=", _], comb[comb[const["ratLt", _], _], _]],
           comb[const["¬", _], comb[comb[const["ratLe", _], _], _]]]]],
     "shape: ∀q r. ratLt q r = ¬(ratLe r q)"]];
+
+(* ===== stage f: compatibility ===== *)
+
+HOLTest`runTests["stdlib/Rat: pairLeCongLeftThm — cross-product order respects left cross-equiv",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`pairLeCongLeftThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`pairLeCongLeftThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: pairLeCongRightThm — cross-product order respects right cross-equiv",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`pairLeCongRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`pairLeCongRightThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLeAddMonoThm — ⊢ ∀q r u. ratLe q r ⇒ ratLe (ratAdd q u) (ratAdd r u)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeAddMonoThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLeAddMonoThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Rat: ratLeMulNonnegThm — ⊢ ∀u q r. ratLe (&ℚ&ℤ0) u ⇒ ratLe q r ⇒ ratLe (ratMul u q) (ratMul u r)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeMulNonnegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratLeMulNonnegThm], "is a theorem"]];
