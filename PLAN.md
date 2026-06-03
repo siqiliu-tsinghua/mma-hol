@@ -411,12 +411,12 @@ EndPackage[];
 **验收**：`prove["∀ x y. x + y = y + x", ...]`（假设 `+` 已在某个加载的理论里定义）能跑通；M6a 的输出可以喂回 M6c 解析回同一个 term。
 
 ### M7：基础数据与数系 ✦ 18–25 周
-数学库的底座，按学期工程量预算。原 5 周估计在我们决定走"传统 ℕ→ℤ→ℚ→ℝ + Zorich 风格 ℝ 上回切 ℕ/ℤ/ℚ + 任意整数底无穷小数 + 5 自动化决策过程"之后已不现实，整体扩张到一个学期级别的工程量。
+数学库的底座，按学期工程量预算。原 5 周估计在我们决定走"传统 ℕ→ℤ→ℚ→ℝ + ~~Zorich 风格回切~~（已砍 2026-06）+ 任意整数底无穷小数 + 5 自动化决策过程"之后已不现实，整体扩张到一个学期级别的工程量。
 
 **走向**：
 - **教学路线**：杂糅——HOL 类型在底，集合论记号（`∈ ⊆ ∪ ∩ {x|P x}` 等）在表面；只在乘积类型 / 商类型 / 函数空间这三处让"类型 vs 集合"短暂浮现并明讲
 - **数构造顺序**：ℕ → ℤ → ℚ → ℝ (**Dedekind 分割**)；序列在 ℝ 之后（Cauchy 序列要序列概念，序列又要 ℝ，所以 Cauchy 路线被教学顺序排除）
-- **范畴性 / Eudoxus 同构**：留给 M8 与 Cauchy 列构造并列做，证 `ℝ_Dedekind ≅ ℝ_Cauchy ≅ ℝ_Eudoxus` 三角形闭环。M7 主线只构造 Dedekind ℝ
+- **范畴性（具体形式，支线）**：只证 `ℝ_Dedekind ≅ ℝ_Cauchy`（两个具体构造等价就够；Eudoxus 第三构造暂不做，待定）。嵌入相容性 `φ∘ι_D = ι_C` 走廉价归纳。**Zorich 内蕴-ℕ 回切已砍（2026-06）**。M7 主线只构造 Dedekind ℝ；此等价支线排在 M7-8（Cauchy 准则）之后，且不在 M8 关键路径上
 - **拓扑学**：**不在 M7 末尾打包引入**。开 / 闭 / 紧 / 连通按教学规律分散到 M8，作为解决数列 / 函数 / 极限问题的工具逐个出现（与 Rudin / Zorich 一致）
 - **决策过程实现**：从头写，充分利用 WL 语言特性。oracle + verifier 模式（用 `Resolve` / `Reduce` / `LinearProgramming` 当搜索 oracle 找证据，再让 tactic 通过 10 条原始规则验证），改写表用 `Dispatch` 编译，term bank 用 Association 索引——全部不进信任边界
 - **Parser 扩展**：M7 一开始就在 parser 加 set-builder `{x | P x}` 语法（语义即 `λx. P x`，复用现有 binder 机器）。带表达式的 `{f x | P x}`（HOL Light 的 `GSPEC` 形式）等真用到时再补
@@ -466,11 +466,12 @@ EndPackage[];
 
 **Phase 3 — 实数 + 序列收敛** ~7–9 周
 
-- [ ] **M7-7 / `stdlib/Real.wl`** 主体（3–4 周）—— Dedekind 分割 `{ L : ℚ → bool | 非空 ∧ 向下封闭 ∧ 无最大元 ∧ 上有界 }`；`new_basic_type_definition` 切出 `real`；加法（集合并）、乘法（分正负讨论）、序（包含）；**完备性（sup 性质）作为构造直给的定理**；`&_ℝ : rat → real` 嵌入；Archimedean property；ℚ 在 ℝ 中稠密；nth roots 存在性；`√2 ∉ ℚ`
-- [ ] **M7-7-Zorich** —— Zorich 视角的回切：定义 `is_nat` / `is_int` / `is_rat : real → bool` 谓词，证明它们与构造类型 ℕ/ℤ/ℚ 经由 `&_ℕ`/`&_ℤ`/`&_ℚ` 一一对应；展示这些刻画等价于"含 0 / 对 +1 封闭 / 最小"等归纳定义
-- [ ] **M7-ε / `auto/RealArith.wl`**（2–3 周，全 M7 最难一块）—— ℝ 上线性算术决策（Cohen-Hörmander 路线 / Positivstellensatz 子集），oracle 用 WL `Resolve[..., Reals]` / `LinearProgramming`。capstone：`∀ a b : ℝ. a < b ⇒ a < (a + b) / 2` 一行
-- [ ] **M7-8 / `stdlib/Seq.wl`**（2 周）—— 序列 `ℕ → ℝ`；ε-N 极限；单调收敛（从 sup 直推）；子列；Bolzano-Weierstrass；Cauchy 列；**Cauchy 完备性作为定理**（不再是公理 / 构造直给）
-- [ ] **M7-9 / `stdlib/Decimal.wl`**（1–2 周）—— **任意整数底 `b ≥ 2`** 的无穷展开存在性 + 唯一性（带尾 `(b-1)` / 尾 `0` 二义 caveat）；与级数 `∑ dᵢ b^{-i-1}` 收敛的等价（用 M7-8 的极限机器）
+- [ ] **M7-7 / `stdlib/Real/` 主体**（**文件夹**，按 §8.1 新原则；3–4 周）—— Dedekind 分割：**单下集** `L : ℚ→bool`，谓词四条 **非空 ∧ 真（上有界）∧ 向下封闭（严格 <）∧ 无最大元（开）**；"无最大元"是 canonicalizer ⟹ 每实数唯一对应一个 L ⟹ **kernel `=` 即实数相等、无 setoid**（延续 Int/Rat 规范代表主线）。`new_basic_type_definition` 切 `real`；加法（cut 加）、**乘法（Rudin 附录 sign-case：正 cut 上先定义、按符号延拓）**、序（包含）；`&ℝ : rat→real` 嵌入（复合得 ℕ/ℤ ↪ ℝ）；**完备性（sup）构造直给**；Archimedean；ℚ 稠密；nth roots 存在；`√2∈ℝ`、`√2∉ℚ`。文件：`Cut.wl` / `Field.wl` / `Complete.wl` / `Roots.wl`
+- ~~**M7-7-Zorich**（Zorich 回切：is_nat/is_int/is_rat 谓词 + 归纳集刻画）~~ **砍掉 2026-06**：自底向上构造下 ℕ/ℤ/ℚ 已是类型、`&ℝ` 嵌入像即"ℝ 里的 ℕ/ℤ/ℚ"；归纳集刻画只在抽象范畴性里划算（已排除），且学生初学体会不到价值。两个具体构造等价所需的"嵌入在同构下相容"(`φ∘ι_D = ι_C`) 走一条 ~5 行抽象归纳即可，不碰构造内部、不需谓词。详见 §8.1 与 memory。
+- [ ] **M7-ε / `auto/RealArith.wl`**（2–3 周，全 M7 最难一块；**在 Seq 前做**——早晚要建，不如早做）—— ℝ 线性算术决策（oracle WL `Resolve[..., Reals]` / `LinearProgramming` + kernel verifier，类比 ARITH）。capstone：`∀ a b : ℝ. a < b ⇒ a < (a + b) / 2`
+- [ ] **M7-8 / `Real/Seq.wl`**（2 周；放 `Real/` 内——螺旋式上升、不追 mathlib 泛化，以后 ℝⁿ / 函数空间各有自己的 seq）—— 序列 `ℕ → ℝ`；ε-N 极限；单调收敛（从 sup）；子列；Bolzano-Weierstrass；Cauchy 列 + **Cauchy 完备性（定理）**
+- [ ] **M7-7-cat / `Real/Cauchy.wl`** 〔支线，**非 M8 关键路径**，排在 Seq 之后〕—— 构造 ℝ_Cauchy（有理 Cauchy 列 mod 零列，**全塔第一次真·商 / setoid**——建可复用的"商掉等价"机器：等价类 / 良定义性 / 商上运算 lift）；证 `ℝ_Dedekind ≅ ℝ_Cauchy`（序域同构）；嵌入相容 `φ∘ι_D = ι_C`（~5 行归纳，不碰构造内部）。**Eudoxus（HOL Light 一步到位 ℝ，致敬）待定**：复用同一商机器则便宜、否则贵，届时按工作量定
+- [ ] **M7-9 / `Real/Decimal.wl`** 〔支线，教学，**非关键路径**，排在级数机器之后〕—— 数位抽取（floor/Archimedean）；任意底 `b ≥ 2` 展开存在 + 唯一（尾 `(b-1)` / 尾 `0` 二义 caveat）；**有理 ⟺ 最终循环（鸽笼）+ 等比级数（逆向）——零数论，不碰 Fermat/Euler**；**`0.999… = 1`**（等比级数，教学驱动）；（可选）Cantor 对角线 `|ℕ| < |ℝ|`
 
 **M7 capstone**（三件并列）：
 - **大 capstone**：`⊢ ∀ S : real → bool. S ≠ ∅ ∧ (∃ b. ∀ x ∈ S. x ≤ b) ⇒ ∃ s. is_sup S s`
@@ -603,7 +604,14 @@ HOL/
 │   ├── Num.wl              (* 自然数 *)
 │   ├── Int.wl
 │   ├── Rat.wl
-│   ├── Real.wl             (* Cauchy 或 Dedekind 构造 *)
+│   ├── Real/               (* M7-7+：文件夹（§8.1）。Dedekind 构造主体 + Seq + Cauchy 等价支线 + Decimal 支线 *)
+│   │   ├── Cut.wl          (* 单下集切割 + 序（规范，无 setoid） *)
+│   │   ├── Field.wl        (* 加 / 乘（Rudin sign-case）/ &ℝ 嵌入 *)
+│   │   ├── Complete.wl     (* sup 完备性 / Archimedean / ℚ 稠密 *)
+│   │   ├── Roots.wl        (* nth roots / √2 *)
+│   │   ├── Seq.wl          (* 序列 ℕ→ℝ、极限、B-W、Cauchy 完备性 *)
+│   │   ├── Cauchy.wl       (* 支线：ℝ_Cauchy 商构造 + Dedekind≅Cauchy *)
+│   │   └── Decimal.wl      (* 支线：无穷小数 / 0.999…=1 / 鸽笼，零数论 *)
 │   ├── List.wl
 │   ├── Finite.wl           (* 有限集、∑ / ∏ 记号 *)
 │   └── Complex.wl          (* 可选 *)
@@ -691,6 +699,30 @@ prove[
 ]
 (* 输出：⊢ ∀x y. x ∧ y ⇒ y ∧ x *)
 ```
+
+---
+
+### 8.1 大文件拆分与可重构性原则（2026-06 立；自 M8 / ℝ 起实行，既有里程碑不回溯）
+
+**背景教训.** 把一个里程碑的数千行代码堆进单一 `.wl` 文件，开发期顺手，但边界判断一旦需要修正（而边界**必然**随新出现的下游消费者而变），重构代价逼近重写——2026-06 把 Rat 携带的 ℕ/int 引理 + Num 的整除性理论重新归位，耗费数个计费时段、超过当初构造 Rat 本身的开销。根因**不是**"当年边界没规划好"（无法未卜先知），而是**架构没有廉价的迁移单元**。结论：架构必须把**可迁移 / 可重构**当作一等属性，目标是让**边界改起来便宜**，而非赌"接口一次设计到位"。
+
+**原则（自 ℝ 起）：**
+
+1. **里程碑 = 文件夹，而非单文件。** 例 `stdlib/Real/`，而非 `stdlib/Real.wl`。
+
+2. **按内部依赖树切，不线性切。** 每个小文件 = 一个相对独立的"定义 / 引理闭包"，有明确的 **exports（接口）** 与 **imports（依赖）**；切分点选在依赖树的自然关节（一组会被一起消费、一起搬动的定理），不机械地一引理一文件。
+
+3. **词汇集中化（比拆文件更关键的配套铁律）。** term-builder / unfold / 小工具这类私有词汇**集中定义、共享**，严禁每文件重定义——否则拆文件只是把"词汇孤岛"从 1 个变成 N 个，跨文件搬运照样要逐处桥接（这正是上次最大的时间黑洞）。两层做法：
+   - **里程碑内**：文件夹下各小文件**共享同一个 package context**（都 `BeginPackage["HOL`Stdlib`Real`"]` → `Begin["`Private`"]`），于是 private 符号天然跨文件共享（`HOL`Stdlib`Real`Private`*`），里程碑内部重组无词汇成本。
+   - **跨里程碑**：公共 term-builder 收进一个 stdlib 级共享词汇模块，所有 stdlib 文件 import；杜绝 `timesTm` vs `timesN` vs `timesConst` 这类同义异名。
+
+4. **接口只为已知依赖设计，不为未来消费者过度设计。** 押注"可变性"而非"预见性"：边界变了能廉价挪 > 接口完美到不用改（后者正是已被否定的未卜先知）。
+
+5. **granularity 有甜点，勿过碎。** WL 每文件一套 `BeginPackage` / import / 三处 runner 的 load list 都要维护；拆太碎会放大这部分开销。
+
+6. **（未来工程，与拆分正交）分层快照。** WL 是解释型，拆文件**不自动**带来增量编译红利——冷启动仍重证整个世界。要真正吃到增量红利需做分层 `bootstrap.mx`（如快照到某层，改下游只重证该层之后）。在做出来之前，昂贵的冷启动 Strict 验证应**只在阶段收尾跑一次**，阶段内用快照重建当廉价门槛。
+
+7. **不回溯拆分既有里程碑。** Num / Int / Rat / FTA 维持单文件现状；本原则自 M8 / ℝ 起实行。
 
 ---
 
