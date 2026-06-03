@@ -33,7 +33,7 @@ Module[{repoRoot, snapshotFile, args, patterns, allTestFiles,
   sourceFiles = Flatten[{
     FileNames["*.wl", repoRoot],
     FileNames["*.wl", FileNameJoin[{repoRoot, "auto"}]],
-    FileNames["*.wl", FileNameJoin[{repoRoot, "stdlib"}]]
+    FileNames["*.wl", FileNameJoin[{repoRoot, "stdlib"}], Infinity]
   }];
   snapMtime = FileDate[snapshotFile, "Modification"];
   staleSrcs = Select[sourceFiles,

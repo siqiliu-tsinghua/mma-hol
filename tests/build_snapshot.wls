@@ -42,7 +42,8 @@ Module[{repoRoot, snapshotFile, allHolSyms, holContexts,
     {"stdlib", "Finite.wl"},
     {"stdlib", "FTA.wl"},
     {"stdlib", "Int.wl"},
-    {"stdlib", "Rat.wl"}
+    {"stdlib", "Rat.wl"},
+    {"stdlib", "Real", "Cut.wl"}
   };
 
   Print["[snapshot] mode: Stable; loading ", Length[libs], " libraries..."];
