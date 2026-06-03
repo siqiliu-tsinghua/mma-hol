@@ -1,21 +1,37 @@
 #!/usr/bin/env wolframscript
 
-(* Cold-boot the full library stack in Stable encapsulation mode,    *)
-(* then DumpSave the entire HOL` context tree to bootstrap.mx for    *)
-(* fast restore. Re-run this script whenever any library file or the *)
-(* kernel ABI changes; tests/run_fast.wls checks mtimes and prints a *)
-(* hint when the snapshot is stale.                                  *)
+(* Cold-boot the library stack in Stable encapsulation mode, then DumpSave  *)
+(* the entire HOL` context tree to bootstrap.mx for fast restore. This is    *)
+(* the FULL (re)build / re-baseline tool; the inner dev loop should use      *)
+(* tests/dev.wls (restore + load only the frontier file) and tests/         *)
+(* extend_snapshot.wls (fold a graduated file into the snapshot in seconds), *)
+(* so a full cold rebuild is only needed when an UPSTREAM file changes or to *)
+(* produce a clean authoritative base.                                       *)
+(*                                                                          *)
+(* Usage:                                                                   *)
+(*   wolframscript -file tests/build_snapshot.wls                           *)
+(*     full cold rebuild of bootstrap.mx (all libraries).                    *)
+(*   wolframscript -file tests/build_snapshot.wls <uptoPattern>             *)
+(*     PARTIAL rebuild: load only through the first library whose filename   *)
+(*     contains <uptoPattern> (e.g. `Rat` → through stdlib/Rat.wl). Still    *)
+(*     writes bootstrap.mx — use to re-baseline at a layer (the in-flight    *)
+(*     file is then loaded on top via tests/dev.wls). Loudly flagged.        *)
 
 $HOLEncapsulationMode = "Stable";
 
-Module[{repoRoot, snapshotFile, allHolSyms, holContexts,
-        startTime, libs, sizeKB},
+Module[{repoRoot, snapshotFile, holContexts, startTime, libs, loadList,
+        args, uptoPattern, pos, sizeKB},
   repoRoot = ParentDirectory[DirectoryName[$InputFileName]];
   snapshotFile = FileNameJoin[{repoRoot, "bootstrap.mx"}];
   $Path = Prepend[$Path, repoRoot];
 
-  startTime = AbsoluteTime[];
+  args = If[ListQ[$ScriptCommandLine] && Length[$ScriptCommandLine] > 1,
+    Drop[$ScriptCommandLine, 1], {}];
+  uptoPattern = If[args === {}, None, First[args]];
 
+  (* Ordered library load list (dependency order). The single source of     *)
+  (* truth for COLD builds; tests/dev.wls and tests/extend_snapshot.wls      *)
+  (* operate on the resulting snapshot incrementally and need no list.       *)
   libs = {
     {"ErrorUtil.wl"},
     {"Types.wl"},
@@ -46,26 +62,41 @@ Module[{repoRoot, snapshotFile, allHolSyms, holContexts,
     {"stdlib", "Real", "Cut.wl"}
   };
 
-  Print["[snapshot] mode: Stable; loading ", Length[libs], " libraries..."];
+  loadList = If[uptoPattern === None, libs,
+    (pos = SelectFirst[Range[Length[libs]],
+       StringContainsQ[Last[libs[[#]]], uptoPattern] &, $Failed];
+     If[pos === $Failed,
+       Print["[snapshot] no library filename contains '", uptoPattern, "'"];
+       Exit[2]];
+     Take[libs, pos])];
+
+  startTime = AbsoluteTime[];
+  Print["[snapshot] mode: Stable; loading ", Length[loadList], " of ",
+    Length[libs], " libraries",
+    If[uptoPattern === None, " (full)...",
+      " (through " <> uptoPattern <> ")..."]];
+
   Scan[
     Function[rel,
-      Get[FileNameJoin[Prepend[rel, repoRoot]]]
-    ],
-    libs
-  ];
+      Module[{t0 = AbsoluteTime[]},
+        Get[FileNameJoin[Prepend[rel, repoRoot]]];
+        Print["  [", Round[AbsoluteTime[] - t0, 0.1], "s] ", FileNameJoin[rel]]
+      ]],
+    loadList];
 
   Print["[snapshot] libraries loaded in ",
     Round[AbsoluteTime[] - startTime, 0.1], " s"];
 
-  (* Enumerate every HOL` context. Pass them as context-pattern        *)
-  (* strings to DumpSave (lists of bare symbol names do NOT preserve   *)
-  (* DownValues — context patterns do).                                 *)
-  holContexts = Select[Contexts[], StringMatchQ[#, "HOL`*"] &];
+  If[uptoPattern =!= None,
+    Print["[snapshot] *** PARTIAL snapshot (through ", uptoPattern,
+      ") — NOT the full world. Rebuild with no args before a full run_fast/CI. ***"]];
 
+  (* Enumerate every HOL` context. Pass them as context-pattern strings to   *)
+  (* DumpSave (lists of bare symbol names do NOT preserve DownValues).        *)
+  holContexts = Select[Contexts[], StringMatchQ[#, "HOL`*"] &];
   Print["[snapshot] dumping ", Length[holContexts], " HOL contexts..."];
 
-  (* `DumpSave` has HoldRest — wrap with Evaluate or it sees the     *)
-  (* literal symbol `holContexts` and saves nothing useful.           *)
+  (* DumpSave has HoldRest — Evaluate or it saves the literal symbol.         *)
   DumpSave[snapshotFile, Evaluate[holContexts]];
 
   sizeKB = Round[FileByteCount[snapshotFile] / 1024];

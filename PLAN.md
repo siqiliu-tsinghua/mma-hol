@@ -720,7 +720,7 @@ prove[
 
 5. **granularity 有甜点，勿过碎。** WL 每文件一套 `BeginPackage` / import / 三处 runner 的 load list 都要维护；拆太碎会放大这部分开销。
 
-6. **（未来工程，与拆分正交）分层快照。** WL 是解释型，拆文件**不自动**带来增量编译红利——冷启动仍重证整个世界。要真正吃到增量红利需做分层 `bootstrap.mx`（如快照到某层，改下游只重证该层之后）。在做出来之前，昂贵的冷启动 Strict 验证应**只在阶段收尾跑一次**，阶段内用快照重建当廉价门槛。
+6. **（已实现 2026-06-04，与拆分正交）增量 / 前沿快照。** WL 是解释型，拆文件**不自动**带来增量编译红利——冷启动仍重证整个世界。落地的是「前沿基线」工作流（比全分层链更简，granularity 甜点）：`bootstrap.mx` = **当前冻结基线** = `build_snapshot.wls` load list 里的文件。开发新文件时把它**留在 list 外**，用 **`tests/dev.wls <frontier.wl> [pat…]`** 迭代——restore 基线 + 只在其上 `Get` 前沿文件 + 跑测试（~0.1s vs ~7min 冷重建；除点名的前沿文件外仍对所有源做过期检查）。文件毕业后加进三个 runner 的 list，再用 **`tests/extend_snapshot.wls <file.wl>`** 把它增量折进 `bootstrap.mx`（~0.2s，不冷重建）。全量 **`tests/build_snapshot.wls`**（可选 `<uptoPattern>` 部分构建 + 逐文件计时）只在**上游改动**或要干净权威基线时跑。dev/extend 同 run_fast 是 Stable 模式（抓逻辑错，抓不住 Strict gensym/加载顺序）⟹ **每阶段权威门槛仍是冷 Strict `run_all`**，并周期性用全量 `build_snapshot` 重定基线（增量快照可能与冷建差几 KB）。实测：前 7 个文件(到 Bool)冷加载仅 0.2s，408s 几乎全在 FTA/Num/Int/Rat 等大 stdlib 文件——印证分层切点应放数系边界。详见 memory `snapshot_frontier_dev_loop`。
 
 7. **不回溯拆分既有里程碑。** Num / Int / Rat / FTA 维持单文件现状；本原则自 M8 / ℝ 起实行。
 
