@@ -19,43 +19,43 @@ Needs["HOL`Stdlib`Rat`"];
 (* ===== ℕ helper lemmas ===== *)
 
 HOLTest`runTests["stdlib/Rat: dividesZeroImpZeroThm — ⊢ ∀n. divides 0 n ⇒ n = 0",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`dividesZeroImpZeroThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`dividesZeroImpZeroThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`dividesZeroImpZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`dividesZeroImpZeroThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: dividesOneThm — ⊢ ∀d. divides d (SUC 0) ⇒ d = SUC 0",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`dividesOneThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`dividesOneThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`dividesOneThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`dividesOneThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: gcdOneRightThm — ⊢ ∀a. gcd a (SUC 0) = SUC 0",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdOneRightThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdOneRightThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdOneRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`gcdOneRightThm], "is a theorem"]];
 
 (* ===== Bezout chain ===== *)
 
 HOLTest`runTests["stdlib/Rat: dividesAntisymThm — ⊢ ∀a b. divides a b ⇒ divides b a ⇒ a = b",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`dividesAntisymThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`dividesAntisymThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`dividesAntisymThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`dividesAntisymThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: gcdZeroRightThm — ⊢ ∀a. gcd a 0 = a",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdZeroRightThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdZeroRightThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdZeroRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`gcdZeroRightThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: gcdRecThm — ⊢ ∀a b. ¬(b=0) ⇒ gcd a b = gcd b (a MOD b)",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdRecThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdRecThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdRecThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`gcdRecThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: bezoutNatThm — ⊢ ∀a b. ∃x y. a*x = b*y + gcd a b ∨ b*y = a*x + gcd a b",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`bezoutNatThm], {}, "no hyps"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`bezoutNatThm], {}, "no hyps"];
   HOLTest`assertTrue[
-    MatchQ[concl[HOL`Stdlib`Rat`bezoutNatThm],
+    MatchQ[concl[HOL`Stdlib`FTA`bezoutNatThm],
       HOLTest`quantNestPat["∀", 2,
         HOLTest`quantNestPat["∃", 2, comb[comb[const["∨", _], _], _]]]],
     "shape: ∀a b. ∃x y. _ ∨ _"]];
 
 HOLTest`runTests["stdlib/Rat: coprimeDividesProductThm — ⊢ ∀a b c. gcd a b = SUC 0 ⇒ divides a (b*c) ⇒ divides a c",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`coprimeDividesProductThm], {}, "no hyps"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`coprimeDividesProductThm], {}, "no hyps"];
   HOLTest`assertTrue[
-    MatchQ[concl[HOL`Stdlib`Rat`coprimeDividesProductThm],
+    MatchQ[concl[HOL`Stdlib`FTA`coprimeDividesProductThm],
       HOLTest`quantNestPat["∀", 3,
         comb[comb[const["⇒", _], comb[comb[const["=", _], _], _]],
           comb[comb[const["⇒", _], comb[comb[const["divides", _], _], _]],
@@ -67,8 +67,8 @@ HOLTest`runTests["stdlib/Rat: coprimeDividesProductThm — ⊢ ∀a b c. gcd a b
 HOLTest`runTests["stdlib/Rat: intNatAbsZeroThm — ⊢ intNatAbs (&ℤ 0) = 0",
   Module[{c, zeroN},
     zeroN = HOL`Stdlib`Num`zeroConst[];
-    HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsZeroThm], {}, "no hyps"];
-    c = concl[HOL`Stdlib`Rat`intNatAbsZeroThm];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Int`intNatAbsZeroThm], {}, "no hyps"];
+    c = concl[HOL`Stdlib`Int`intNatAbsZeroThm];
     HOLTest`assertTrue[HOL`Terms`aconv[c[[2]], zeroN], "RHS is 0"]]];
 
 (* ===== RAT_REP + carve ===== *)
@@ -114,36 +114,36 @@ HOLTest`runTests["stdlib/Rat: ratOfIntInjThm — ⊢ ∀a b. &ℚ a = &ℚ b ⇒
 
 (* ===== stage c: exDiv (exact quotient via Hilbert ε) ===== *)
 
-HOLTest`runTests["stdlib/Rat: exDivThm — ⊢ ∀g n. divides g n ⇒ n = g * exDiv n g",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivThm], {}, "no hyps"];
+HOLTest`runTests["stdlib/Num: exDivThm — ⊢ ∀g n. divides g n ⇒ n = g * exDiv n g (migrated from Rat)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`exDivThm], {}, "no hyps"];
   HOLTest`assertTrue[
-    MatchQ[concl[HOL`Stdlib`Rat`exDivThm],
+    MatchQ[concl[HOL`Stdlib`Num`exDivThm],
       HOLTest`quantNestPat["∀", 2,
         comb[comb[const["⇒", _], comb[comb[const["divides", _], _], _]],
           comb[comb[const["=", _], _], _]]]],
     "shape: ∀g n. divides g n ⇒ n = g * exDiv n g"]];
 
-HOLTest`runTests["stdlib/Rat: exDivOneThm — ⊢ ∀n. exDiv n (SUC 0) = n",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivOneThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`exDivOneThm], "is a theorem"]];
+HOLTest`runTests["stdlib/Num: exDivOneThm — ⊢ ∀n. exDiv n (SUC 0) = n (migrated from Rat)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`exDivOneThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Num`exDivOneThm], "is a theorem"]];
 
-HOLTest`runTests["stdlib/Rat: exDivZeroThm — ⊢ ∀g. ¬(g = 0) ⇒ exDiv 0 g = 0",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivZeroThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`exDivZeroThm], "is a theorem"]];
+HOLTest`runTests["stdlib/Num: exDivZeroThm — ⊢ ∀g. ¬(g = 0) ⇒ exDiv 0 g = 0 (migrated from Rat)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`exDivZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Num`exDivZeroThm], "is a theorem"]];
 
 (* ===== stage c: gcd-reduction number theory ===== *)
 
 HOLTest`runTests["stdlib/Rat: dividesMultBothLeftThm — ⊢ ∀g h x. divides h x ⇒ divides (g*h) (g*x)",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`dividesMultBothLeftThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`dividesMultBothLeftThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`dividesMultBothLeftThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`dividesMultBothLeftThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: gcdNonzeroFromRightThm — ⊢ ∀a b. ¬(b=0) ⇒ ¬(gcd a b = 0)",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdNonzeroFromRightThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdNonzeroFromRightThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdNonzeroFromRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`gcdNonzeroFromRightThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: coprimeReducedThm — ⊢ ∀a b. ¬(gcd a b=0) ⇒ gcd (exDiv a (gcd a b)) (exDiv b (gcd a b)) = SUC 0",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`coprimeReducedThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`coprimeReducedThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`coprimeReducedThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`coprimeReducedThm], "is a theorem"]];
 
 (* ===== stage c: intDivNat (exact division of an int by a nat) ===== *)
 
@@ -153,16 +153,16 @@ HOLTest`runTests["stdlib/Rat: intDivNat : int → num → int",
     "intDivNat : int → num → int"]];
 
 HOLTest`runTests["stdlib/Rat: repIntDivNatThm — ⊢ ∀z g. ¬(g=0) ⇒ REP_int (intDivNat z g) = (..,..)",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`repIntDivNatThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`repIntDivNatThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`repIntDivNatThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`repIntDivNatThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: intDivNatOneThm — ⊢ ∀z. intDivNat z (SUC 0) = z",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intDivNatOneThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intDivNatOneThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intDivNatOneThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intDivNatOneThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: intNatAbsIntDivNatThm — ⊢ ∀z g. ¬(g=0) ⇒ intNatAbs (intDivNat z g) = exDiv (intNatAbs z) g",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsIntDivNatThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsIntDivNatThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intNatAbsIntDivNatThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intNatAbsIntDivNatThm], "is a theorem"]];
 
 (* ===== stage c: ratCanon (gcd-reduction to lowest terms) ===== *)
 
@@ -199,9 +199,9 @@ HOLTest`runTests["stdlib/Rat: ratRepRepThm — ⊢ RAT_REP (REP_rat q)",
       comb[const["RAT_REP", _], comb[const["REP_rat", _], _]]],
     "concl is RAT_REP (REP_rat q)"]];
 
-HOLTest`runTests["stdlib/Rat: multNonzeroThm — ⊢ ∀m n. ¬(m=0) ⇒ ¬(n=0) ⇒ ¬(m*n=0)",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`multNonzeroThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`multNonzeroThm], "is a theorem"]];
+HOLTest`runTests["stdlib/Num: multNonzeroThm — ⊢ ∀m n. ¬(m=0) ⇒ ¬(n=0) ⇒ ¬(m*n=0) (migrated from Rat)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Num`multNonzeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Num`multNonzeroThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratAdd : rat → rat → rat",
   HOLTest`assertEq[HOL`Kernel`constType["ratAdd"],
@@ -235,8 +235,8 @@ HOLTest`runTests["stdlib/Rat: ratAddZeroThm — ⊢ ∀q. ratAdd q (&ℚ (&ℤ 0
     "shape: ∀q. ratAdd q (&ℚ&ℤ0) = q"]];
 
 HOLTest`runTests["stdlib/Rat: intNatAbsNegThm — ⊢ ∀z. intNatAbs (intNeg z) = intNatAbs z",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsNegThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsNegThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intNatAbsNegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intNatAbsNegThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratNeg : rat → rat",
   HOLTest`assertEq[HOL`Kernel`constType["ratNeg"],
@@ -253,12 +253,12 @@ HOLTest`runTests["stdlib/Rat: repRatNegThm — ⊢ ∀q. REP_rat (ratNeg q) = (i
 (* ===== lowest-terms uniqueness (cross-multiplication) ===== *)
 
 HOLTest`runTests["stdlib/Rat: gcdCommThm — ⊢ ∀a b. gcd a b = gcd b a",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdCommThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdCommThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdCommThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`gcdCommThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: intNatAbsMulOfNumThm — ⊢ ∀z n. intNatAbs (intMul z (&ℤ n)) = intNatAbs z * n",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsMulOfNumThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsMulOfNumThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intNatAbsMulOfNumThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intNatAbsMulOfNumThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratEqCrossThm — ⊢ ∀q r. (q = r) = (cross-mult)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratEqCrossThm], {}, "no hyps"];
@@ -272,16 +272,16 @@ HOLTest`runTests["stdlib/Rat: ratEqCrossThm — ⊢ ∀q r. (q = r) = (cross-mul
 (* ===== additive-inverse support lemmas ===== *)
 
 HOLTest`runTests["stdlib/Rat: gcdZeroLeftThm — ⊢ ∀m. gcd 0 m = m",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdZeroLeftThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdZeroLeftThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdZeroLeftThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`gcdZeroLeftThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: exDivSelfThm — ⊢ ∀m. ¬(m = 0) ⇒ exDiv m m = SUC 0",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`exDivSelfThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`exDivSelfThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`exDivSelfThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`exDivSelfThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: intDivNatZeroThm — ⊢ ∀g. ¬(g = 0) ⇒ intDivNat (&ℤ 0) g = &ℤ 0",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intDivNatZeroThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intDivNatZeroThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intDivNatZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intDivNatZeroThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratCanonZeroNumThm — ⊢ ∀m. ¬(m = 0) ⇒ ratCanon (&ℤ 0, m) = (&ℤ 0, SUC 0)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonZeroNumThm], {}, "no hyps"];
@@ -298,8 +298,8 @@ HOLTest`runTests["stdlib/Rat: ratAddNegThm — ⊢ ∀q. ratAdd q (ratNeg q) = &
 (* ===== ratCanon-respects layer (→ ratAddAssoc) ===== *)
 
 HOLTest`runTests["stdlib/Rat: intMulDivNatCancelThm — ⊢ ∀z g. ¬(g=0) ⇒ divides g (intNatAbs z) ⇒ intMul (intDivNat z g) (&ℤ g) = z",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intMulDivNatCancelThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intMulDivNatCancelThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intMulDivNatCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intMulDivNatCancelThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratCanonEquivThm — ⊢ ∀p. ¬(SND p=0) ⇒ ratCanon p cross-equiv p",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonEquivThm], {}, "no hyps"];
@@ -405,24 +405,24 @@ HOLTest`runTests["stdlib/Rat: ratMulDistribThm — ⊢ ∀z w v. ratMul z (ratAd
 (* ===== stage e: ratInv supporting lemmas ===== *)
 
 HOLTest`runTests["stdlib/Rat: intNatAbsOfNumThm — ⊢ ∀n. intNatAbs (&ℤ n) = n",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsOfNumThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsOfNumThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intNatAbsOfNumThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intNatAbsOfNumThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: intSqNatAbsThm — ⊢ ∀z. intMul z z = &ℤ (intNatAbs z * intNatAbs z)",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intSqNatAbsThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intSqNatAbsThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intSqNatAbsThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intSqNatAbsThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: gcdSelfThm — ⊢ ∀m. gcd m m = m",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`gcdSelfThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`gcdSelfThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdSelfThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`FTA`gcdSelfThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratCanonSelfThm — ⊢ ∀m. ¬(m=0) ⇒ ratCanon (&ℤ m, m) = (&ℤ (SUC 0), SUC 0)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratCanonSelfThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`ratCanonSelfThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: intNatAbsNonzeroThm — ⊢ ∀z. ¬(z=&ℤ0) ⇒ ¬(intNatAbs z = 0)",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intNatAbsNonzeroThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intNatAbsNonzeroThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intNatAbsNonzeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intNatAbsNonzeroThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratNumNonzeroThm — ⊢ ∀q. ¬(q=&ℚ&ℤ0) ⇒ ¬(FST (REP_rat q) = &ℤ 0)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratNumNonzeroThm], {}, "no hyps"];
@@ -450,8 +450,8 @@ HOLTest`runTests["stdlib/Rat: ratMulInvThm — ⊢ ∀q. ¬(q=&ℚ&ℤ0) ⇒ rat
 (* ===== stage f: order (ratLe / ratLt) ===== *)
 
 HOLTest`runTests["stdlib/Rat: intLeMulNonnegCancelThm — ⊢ ∀u x y. intLe(&ℤ0)u ⇒ ¬(u=&ℤ0) ⇒ intLe(u·x)(u·y) ⇒ intLe x y",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`intLeMulNonnegCancelThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`intLeMulNonnegCancelThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`intLeMulNonnegCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`intLeMulNonnegCancelThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratLe : rat → rat → bool",
   HOLTest`assertEq[HOL`Kernel`constType["ratLe"],
@@ -496,12 +496,12 @@ HOLTest`runTests["stdlib/Rat: ratLtNotLeThm — ⊢ ∀q r. ratLt q r = ¬(ratLe
 (* ===== stage f: compatibility ===== *)
 
 HOLTest`runTests["stdlib/Rat: pairLeCongLeftThm — cross-product order respects left cross-equiv",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`pairLeCongLeftThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`pairLeCongLeftThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`pairLeCongLeftThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`pairLeCongLeftThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: pairLeCongRightThm — cross-product order respects right cross-equiv",
-  HOLTest`assertEq[hyp[HOL`Stdlib`Rat`pairLeCongRightThm], {}, "no hyps"];
-  HOLTest`assertTrue[isThm[HOL`Stdlib`Rat`pairLeCongRightThm], "is a theorem"]];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Int`pairLeCongRightThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Int`pairLeCongRightThm], "is a theorem"]];
 
 HOLTest`runTests["stdlib/Rat: ratLeAddMonoThm — ⊢ ∀q r u. ratLe q r ⇒ ratLe (ratAdd q u) (ratAdd r u)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Rat`ratLeAddMonoThm], {}, "no hyps"];

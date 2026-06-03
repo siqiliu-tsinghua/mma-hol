@@ -367,3 +367,166 @@ HOLTest`runTests["FTA stage 3 capstone: primeFactorsUniqueThm — uniqueness mod
                 comb[comb[const["PERM", _], _], _]]]], _]], _]]],
       "shape: ∀l1 l2. … ⇒ PERM l1 l2"];
 ]];
+
+(* ===== gcd / prime / Euclid's lemma (migrated from num_tests 2026-06) ===== *)
+
+HOLTest`runTests["stdlib/FTA: gcd has type num → num → num",
+  Module[{numTy, ty},
+    numTy = mkType["num", {}];
+    ty = HOL`Kernel`constType["gcd"];
+    HOLTest`assertEq[ty, tyFun[numTy, tyFun[numTy, numTy]],
+      "gcd : num → num → num"];
+]];
+
+HOLTest`runTests["stdlib/FTA: gcdDefThm — concl is `gcd = …` with no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`FTA`gcdDefThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["=", _], const["gcd", _]], _]],
+      "concl shape ⊢ gcd = …"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/FTA: gcdExistsThm — shape ∀a b. ∃d. … with no hyps",
+  Module[{c},
+    c = concl[HOL`Stdlib`FTA`gcdExistsThm];
+    HOLTest`assertTrue[
+      MatchQ[c,
+        comb[const["∀", _],
+          abs[bvar[0, tyApp["num", {}]],
+            comb[const["∀", _],
+              abs[bvar[0, tyApp["num", {}]],
+                comb[const["∃", _], _], _]], _]]],
+      "shape: ∀a. ∀b. ∃d. …"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdExistsThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/FTA: gcdSpecThm — ⊢ ∀a b. d|a ∧ d|b ∧ universal where d = gcd a b",
+  Module[{c, numTy, boolTy, expected,
+          forallC, impC, andC, divC, gcdC,
+          aV, bV, eV, gcdAB, body},
+    numTy = mkType["num", {}];
+    boolTy = mkType["bool", {}];
+    forallC = mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    divC = mkConst["divides", tyFun[numTy, tyFun[numTy, boolTy]]];
+    gcdC = mkConst["gcd", tyFun[numTy, tyFun[numTy, numTy]]];
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; eV = mkVar["e", numTy];
+    gcdAB = mkComb[mkComb[gcdC, aV], bV];
+    body = mkComb[mkComb[andC,
+             mkComb[mkComb[divC, gcdAB], aV]],
+           mkComb[mkComb[andC,
+             mkComb[mkComb[divC, gcdAB], bV]],
+             mkComb[forallC, mkAbs[eV,
+               mkComb[mkComb[impC,
+                 mkComb[mkComb[andC,
+                   mkComb[mkComb[divC, eV], aV]],
+                   mkComb[mkComb[divC, eV], bV]]],
+                 mkComb[mkComb[divC, eV], gcdAB]]]]]];
+    expected = mkComb[forallC,
+      mkAbs[aV, mkComb[forallC, mkAbs[bV, body]]]];
+    c = concl[HOL`Stdlib`FTA`gcdSpecThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "concl matches ∀a b. (gcd a b)|a ∧ (gcd a b)|b ∧ ∀e. (e|a ∧ e|b) ⇒ e|(gcd a b)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdSpecThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/FTA: gcdDividesLeftThm — ⊢ ∀a b. divides (gcd a b) a, no hyps",
+  Module[{c, numTy, expected, forallC, divC, gcdC, aV, bV},
+    numTy = mkType["num", {}];
+    forallC = mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]];
+    divC = mkConst["divides", tyFun[numTy, tyFun[numTy, boolTy]]];
+    gcdC = mkConst["gcd", tyFun[numTy, tyFun[numTy, numTy]]];
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    expected = mkComb[forallC,
+      mkAbs[aV, mkComb[forallC,
+        mkAbs[bV, mkComb[mkComb[divC, mkComb[mkComb[gcdC, aV], bV]], aV]]]]];
+    c = concl[HOL`Stdlib`FTA`gcdDividesLeftThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "∀a b. divides (gcd a b) a"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdDividesLeftThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/FTA: gcdDividesRightThm — ⊢ ∀a b. divides (gcd a b) b, no hyps",
+  Module[{c, numTy, expected, forallC, divC, gcdC, aV, bV},
+    numTy = mkType["num", {}];
+    forallC = mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]];
+    divC = mkConst["divides", tyFun[numTy, tyFun[numTy, boolTy]]];
+    gcdC = mkConst["gcd", tyFun[numTy, tyFun[numTy, numTy]]];
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    expected = mkComb[forallC,
+      mkAbs[aV, mkComb[forallC,
+        mkAbs[bV, mkComb[mkComb[divC, mkComb[mkComb[gcdC, aV], bV]], bV]]]]];
+    c = concl[HOL`Stdlib`FTA`gcdDividesRightThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected], "∀a b. divides (gcd a b) b"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdDividesRightThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/FTA: gcdUniversalThm — ⊢ ∀a b e. d|a ∧ d|b ⇒ d|(gcd a b), no hyps",
+  Module[{c, numTy, expected, forallC, impC, andC, divC, gcdC,
+          aV, bV, eV, body},
+    numTy = mkType["num", {}];
+    forallC = mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    andC = mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    divC = mkConst["divides", tyFun[numTy, tyFun[numTy, boolTy]]];
+    gcdC = mkConst["gcd", tyFun[numTy, tyFun[numTy, numTy]]];
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; eV = mkVar["e", numTy];
+    body = mkComb[mkComb[impC,
+             mkComb[mkComb[andC,
+               mkComb[mkComb[divC, eV], aV]],
+               mkComb[mkComb[divC, eV], bV]]],
+             mkComb[mkComb[divC, eV],
+               mkComb[mkComb[gcdC, aV], bV]]];
+    expected = mkComb[forallC,
+      mkAbs[aV, mkComb[forallC,
+        mkAbs[bV, mkComb[forallC, mkAbs[eV, body]]]]]];
+    c = concl[HOL`Stdlib`FTA`gcdUniversalThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀a b e. divides e a ∧ divides e b ⇒ divides e (gcd a b)"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`FTA`gcdUniversalThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/FTA: prime has type num → bool",
+  Module[{numTy, ty},
+    numTy = mkType["num", {}];
+    ty = HOL`Kernel`constType["prime"];
+    HOLTest`assertEq[ty, tyFun[numTy, boolTy], "prime : num → bool"];
+]];
+
+HOLTest`runTests["stdlib/FTA: primeDefThm — concl is `prime = …` with no hyps",
+  Module[{c, dThm},
+    dThm = HOL`Stdlib`FTA`primeDefThm;
+    c = concl[dThm];
+    HOLTest`assertTrue[
+      MatchQ[c, comb[comb[const["=", _], const["prime", _]], _]],
+      "concl shape ⊢ prime = …"];
+    HOLTest`assertEq[hyp[dThm], {}, "no hyps"];
+]];
+
+HOLTest`runTests["stdlib/FTA: euclidLemmaThm — ⊢ ∀p a b. prime p ⇒ p|a*b ⇒ p|a ∨ p|b, no hyps",
+  Module[{c, numTy, expected, forallC, impC, orC, primeC, divC, timesC,
+          pV, aV, bV, body},
+    numTy = mkType["num", {}];
+    forallC = mkConst["∀", tyFun[tyFun[numTy, boolTy], boolTy]];
+    impC = mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    orC = mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
+    primeC = mkConst["prime", tyFun[numTy, boolTy]];
+    divC = mkConst["divides", tyFun[numTy, tyFun[numTy, boolTy]]];
+    timesC = mkConst["*", tyFun[numTy, tyFun[numTy, numTy]]];
+    pV = mkVar["p", numTy]; aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    body = mkComb[mkComb[impC, mkComb[primeC, pV]],
+             mkComb[mkComb[impC,
+               mkComb[mkComb[divC, pV], mkComb[mkComb[timesC, aV], bV]]],
+               mkComb[mkComb[orC,
+                 mkComb[mkComb[divC, pV], aV]],
+                 mkComb[mkComb[divC, pV], bV]]]];
+    expected = mkComb[forallC,
+      mkAbs[pV, mkComb[forallC,
+        mkAbs[aV, mkComb[forallC, mkAbs[bV, body]]]]]];
+    c = concl[HOL`Stdlib`FTA`euclidLemmaThm];
+    HOLTest`assertTrue[HOL`Terms`aconv[c, expected],
+      "∀p a b. prime p ⇒ divides p (a*b) ⇒ divides p a ∨ divides p b"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`FTA`euclidLemmaThm], {}, "no hyps"];
+]];

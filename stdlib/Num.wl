@@ -145,13 +145,13 @@ leqMultLeftThm::usage      = "leqMultLeftThm — ⊢ ∀k a b. a ≤ b ⇒ k * a
 crossMultLeqThm::usage     = "crossMultLeqThm — ⊢ ∀a b p q. b ≤ a ⇒ p ≤ q ⇒ a*p + b*q ≤ a*q + b*p. Rearrangement/cross inequality; the multiplicative core of ℤ order-by-nonneg monotonicity.";
 leqAddLeftCancelThm::usage = "leqAddLeftCancelThm — ⊢ ∀v a b. v + a ≤ v + b ⇒ a ≤ b. Cancel a shared left summand from ≤; the verifier strips the common variable part after summing scaled inequalities.";
 
-gcdExistsThm::usage      = "gcdExistsThm — ⊢ ∀a b. ∃d. divides d a ∧ divides d b ∧ ∀e. (divides e a ∧ divides e b) ⇒ divides e d.";
-gcdConst::usage          = "gcdConst[] — gcd : num → num → num. Greatest common divisor via Hilbert ε on the universal property; constructively exists by Euclid (gcdExistsThm).";
-gcdDefThm::usage         = "gcdDefThm — ⊢ gcd = (λa b. ε d. divides d a ∧ divides d b ∧ ∀e. (divides e a ∧ divides e b) ⇒ divides e d).";
-gcdSpecThm::usage        = "gcdSpecThm — ⊢ ∀a b. divides (gcd a b) a ∧ divides (gcd a b) b ∧ ∀e. (divides e a ∧ divides e b) ⇒ divides e (gcd a b).";
-gcdDividesLeftThm::usage = "gcdDividesLeftThm — ⊢ ∀a b. divides (gcd a b) a.";
-gcdDividesRightThm::usage= "gcdDividesRightThm — ⊢ ∀a b. divides (gcd a b) b.";
-gcdUniversalThm::usage   = "gcdUniversalThm — ⊢ ∀a b e. divides e a ∧ divides e b ⇒ divides e (gcd a b).";
+
+exDivConst::usage   = "exDivConst[] — exDiv : num → num → num, exact quotient exDiv n g = ε c. n = g * c. Well-behaved only when g divides n; chosen over DIV so divides g n ⇒ n = g*(exDiv n g) follows from selectAx with no division-uniqueness lemma.";
+exDivDefThm::usage  = "exDivDefThm — ⊢ exDiv = (λn g. ε c. n = g * c).";
+exDivThm::usage     = "exDivThm — ⊢ ∀g n. divides g n ⇒ n = g * exDiv n g. Exact division via the Hilbert-ε witness.";
+exDivOneThm::usage  = "exDivOneThm — ⊢ ∀n. exDiv n (SUC 0) = n.";
+exDivZeroThm::usage = "exDivZeroThm — ⊢ ∀g. ¬ (g = 0) ⇒ exDiv 0 g = 0.";
+multNonzeroThm::usage = "multNonzeroThm — ⊢ ∀m n. ¬ (m = 0) ⇒ ¬ (n = 0) ⇒ ¬ (m * n = 0). No zero divisors in ℕ.";
 
 oneTimesEqThm::usage     = "oneTimesEqThm — ⊢ ∀n. SUC 0 * n = n.";
 sucNotEqSelfThm::usage   = "sucNotEqSelfThm — ⊢ ∀n. ¬ (SUC n = n).";
@@ -174,10 +174,7 @@ monusSelfThm::usage      = "monusSelfThm — ⊢ ∀m. m ∸ m = 0.";
 leqAddMonusThm::usage    = "leqAddMonusThm — ⊢ ∀m n. n ≤ m ⇒ n + (m ∸ n) = m.";
 dividesLeqThm::usage     = "dividesLeqThm — ⊢ ∀d n. ¬ (n = 0) ⇒ divides d n ⇒ d ≤ n.";
 
-primeConst::usage        = "primeConst[] — prime : num → bool. prime p ⇔ SUC 0 < p ∧ ∀d. d divides p ⇒ d = SUC 0 ∨ d = p.";
-primeDefThm::usage       = "primeDefThm — ⊢ prime = (λp. SUC 0 < p ∧ ∀d. divides d p ⇒ d = SUC 0 ∨ d = p).";
 
-euclidLemmaThm::usage    = "euclidLemmaThm — ⊢ ∀p a b. prime p ⇒ divides p (a * b) ⇒ divides p a ∨ divides p b.";
 
 selectOfExists::usage =
   "selectOfExists[predLambda, existsTh] — given a closed lambda " <>
@@ -5422,382 +5419,10 @@ leqAddLeftCancelThm =
     genV = HOL`Bool`GEN[vV, genA]
   ];
 
-(* ============================================================ *)
-(* M7-3-o: gcd                                                  *)
-(*                                                              *)
-(* Approach: characterize gcd by its universal property among   *)
-(* the divisibility preorder, then define via Hilbert ε.        *)
-(* Existence (Euclid) drives strong induction on b.             *)
-(* ============================================================ *)
-
-(* gcdExistsThm                                                 *)
-(*   ⊢ ∀a b. ∃d. divides d a ∧ divides d b ∧                    *)
-(*               ∀e. (divides e a ∧ divides e b) ⇒ divides e d  *)
-(*                                                              *)
-(* Strong induction on b with predicate                          *)
-(*   P b = ∀a. ∃d. divides d a ∧ divides d b ∧ universal.        *)
-(* Case b = 0: witness d = a. divides a a (refl), divides a 0    *)
-(* (zero); universal collapses to CONJUNCT1 (e | a from e|a∧e|0). *)
-(* Case b = SUC b': bNotZero from sucNotZero, divisionPairThm    *)
-(* gives a = b*q + r ∧ r < b. SIH at r and a'=b yields ∃d.       *)
-(* divides d b ∧ divides d r ∧ ∀e. (e|b∧e|r)⇒e|d. Witness same d: *)
-(*   d|a: d|b → d|b*q (dividesMultRight) → d|(b*q + r) (add) →    *)
-(*        d|a (rewrite via a = b*q + r).                          *)
-(*   d|b: directly from SIH.                                      *)
-(*   ∀e. e|a∧e|b ⇒ e|d: e|b → e|b*q; e|a → e|(b*q+r); apply       *)
-(*        dividesAddRight ⇒ e|r; then SIH's universal at e.       *)
-(* ============================================================ *)
-
-gcdExistsThm =
-  Module[{aV, bV, dV, eV, kV, npV,
-          gcdPredAt, gcdExistsAt, innerPredAt, inductionLam,
-          sihTm, sihHyp,
-          casesAtB, caseZeroB, caseSucB,
-          merged, mpStrong, specBA, genB, genA,
-          stepBody, abDiv, abMod},
-    aV = mkVar["a", numTy];
-    bV = mkVar["b", numTy];
-    dV = mkVar["d", numTy];
-    eV = mkVar["e", numTy];
-    kV = mkVar["k", numTy];
-    npV = mkVar["b'", numTy];
-    abDiv = divTm[aV, bV];   (* a DIV b *)
-    abMod = modTm[aV, bV];   (* a MOD b *)
-
-    gcdPredAt[aTm_, bTm_, dTm_] := andTm[
-      dividesTm[dTm, aTm],
-      andTm[
-        dividesTm[dTm, bTm],
-        mkComb[forallC[numTy], mkAbs[eV, impTm[
-          andTm[dividesTm[eV, aTm], dividesTm[eV, bTm]],
-          dividesTm[eV, dTm]]]]]];
-
-    gcdExistsAt[aTm_, bTm_] := mkComb[existsC[numTy],
-      mkAbs[dV, gcdPredAt[aTm, bTm, dV]]];
-
-    innerPredAt[bTm_] := mkComb[forallC[numTy],
-      mkAbs[aV, gcdExistsAt[aV, bTm]]];
-
-    inductionLam = mkAbs[bV, innerPredAt[bV]];
-
-    sihTm = mkComb[forallC[numTy], mkAbs[kV, impTm[
-      ltTm[kV, bV], innerPredAt[kV]]]];
-    sihHyp = ASSUME[sihTm];
-    (* sih: ⊢ ∀k. k < b ⇒ ∀a. ∃d. … *)
-
-    casesAtB = HOL`Bool`SPEC[bV, numCasesThm];
-    (* ⊢ b = 0 ∨ ∃b'. b = SUC b' *)
-
-    (* --- Case A: b = 0. Witness d = a. --- *)
-    caseZeroB = Module[{bEqZeroTm, bEqZeroHyp,
-                        divAa, divA0, divDbEq, divAb,
-                        eAndHypTm, eAndHyp, divEa, dischE, universalForb0,
-                        predAtA, existsAtA},
-      bEqZeroTm = mkEq[bV, zeroConst[]];
-      bEqZeroHyp = ASSUME[bEqZeroTm];
-
-      divAa = HOL`Bool`SPEC[aV, dividesReflThm];
-      divA0 = HOL`Bool`SPEC[aV, dividesZeroThm];
-      divDbEq = HOL`Equal`APTERM[mkComb[dividesConst[], aV],
-                                  HOL`Equal`SYM[bEqZeroHyp]];
-      (* (b=0) ⊢ divides a 0 = divides a b *)
-      divAb = EQMP[divDbEq, divA0];
-      (* (b=0) ⊢ divides a b *)
-
-      eAndHypTm = andTm[dividesTm[eV, aV], dividesTm[eV, bV]];
-      eAndHyp = ASSUME[eAndHypTm];
-      divEa = HOL`Bool`CONJUNCT1[eAndHyp];
-      (* (e|a ∧ e|b) ⊢ divides e a *)
-      dischE = HOL`Bool`DISCH[eAndHypTm, divEa];
-      universalForb0 = HOL`Bool`GEN[eV, dischE];
-      (* ⊢ ∀e. (e|a ∧ e|b) ⇒ e|a *)
-
-      predAtA = HOL`Bool`CONJ[divAa, HOL`Bool`CONJ[divAb, universalForb0]];
-      (* (b=0) ⊢ gcdPredAt[a, b, a] *)
-      existsAtA = HOL`Bool`EXISTS[gcdExistsAt[aV, bV], aV, predAtA];
-      (* (b=0) ⊢ gcdExistsAt[a, b] *)
-      existsAtA
-    ];
-
-    (* --- Case B: ∃b'. b = SUC b'. Apply Euclid step via SIH. --- *)
-    caseSucB = Module[{exBpTm, exBpHyp, bEqSucTm, bEqSucHyp,
-                       bEqZeroAlt, bEqZeroAltHyp, contradEq, sucNotZeroAtBp,
-                       contradF, bNotZero,
-                       divPairAt, divEq, modLtB,
-                       sihAtR, sihAtRMpd, existsAtBR,
-                       hypTripTm, hypTripHyp, divDb, divDrAndUniv,
-                       divDr, univDbr,
-                       divDbq, divDaProdEq, divDaProd, divDa,
-                       eAndHypTm, eAndHyp, divEa, divEb,
-                       divEbq, divEaToBqrEq, divEbqr,
-                       divEr, hypEbAndEr, divEd,
-                       dischE, genE,
-                       predAtD, existsAtD,
-                       chooseDStep, chooseBpStep},
-      exBpTm = mkComb[existsC[numTy],
-        mkAbs[npV, mkEq[bV, mkComb[sucConst[], npV]]]];
-      exBpHyp = ASSUME[exBpTm];
-      bEqSucTm = mkEq[bV, mkComb[sucConst[], npV]];
-      bEqSucHyp = ASSUME[bEqSucTm];
-
-      (* bNotZero: from b = SUC b' and sucNotZero. *)
-      bEqZeroAlt = mkEq[bV, zeroConst[]];
-      bEqZeroAltHyp = ASSUME[bEqZeroAlt];
-      contradEq = TRANS[HOL`Equal`SYM[bEqSucHyp], bEqZeroAltHyp];
-      (* (b=SUC b', b=0) ⊢ SUC b' = 0 *)
-      sucNotZeroAtBp = HOL`Bool`SPEC[npV, sucNotZeroThm];
-      contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[sucNotZeroAtBp], contradEq];
-      bNotZero = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[bEqZeroAlt, contradF]];
-      (* (b=SUC b') ⊢ ¬ (b = 0) *)
-
-      divPairAt = HOL`Bool`MP[
-        HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, divisionPairThm]],
-        bNotZero];
-      (* (b=SUC b') ⊢ a = b*(a DIV b) + (a MOD b) ∧ (a MOD b) < b *)
-      divEq = HOL`Bool`CONJUNCT1[divPairAt];
-      modLtB = HOL`Bool`CONJUNCT2[divPairAt];
-
-      sihAtR = HOL`Bool`SPEC[abMod, sihHyp];
-      sihAtRMpd = HOL`Bool`MP[sihAtR, modLtB];
-      (* (sih, b=SUC b') ⊢ ∀a'. ∃d. divides d a' ∧ divides d r ∧
-                                    ∀e. (e|a' ∧ e|r) ⇒ e|d *)
-      existsAtBR = HOL`Bool`SPEC[bV, sihAtRMpd];
-      (* (sih, b=SUC b') ⊢ ∃d. divides d b ∧ divides d r ∧
-                              ∀e. (e|b ∧ e|r) ⇒ e|d *)
-
-      hypTripTm = andTm[
-        dividesTm[dV, bV],
-        andTm[
-          dividesTm[dV, abMod],
-          mkComb[forallC[numTy], mkAbs[eV, impTm[
-            andTm[dividesTm[eV, bV], dividesTm[eV, abMod]],
-            dividesTm[eV, dV]]]]]];
-      hypTripHyp = ASSUME[hypTripTm];
-      divDb = HOL`Bool`CONJUNCT1[hypTripHyp];
-      divDrAndUniv = HOL`Bool`CONJUNCT2[hypTripHyp];
-      divDr = HOL`Bool`CONJUNCT1[divDrAndUniv];
-      univDbr = HOL`Bool`CONJUNCT2[divDrAndUniv];
-
-      (* d | a *)
-      divDbq = HOL`Bool`MP[
-        HOL`Bool`SPEC[abDiv,
-          HOL`Bool`SPEC[bV,
-            HOL`Bool`SPEC[dV, dividesMultRightThm]]],
-        divDb];
-      (* (hyp) ⊢ divides d (b * (a DIV b)) *)
-      divDaProd = HOL`Bool`MP[
-        HOL`Bool`MP[
-          HOL`Bool`SPEC[abMod,
-            HOL`Bool`SPEC[timesTm[bV, abDiv],
-              HOL`Bool`SPEC[dV, dividesAddThm]]],
-          divDbq],
-        divDr];
-      (* (hyp) ⊢ divides d (b*(a DIV b) + (a MOD b)) *)
-      divDaProdEq = HOL`Equal`APTERM[mkComb[dividesConst[], dV],
-                                       HOL`Equal`SYM[divEq]];
-      (* (b=SUC b') ⊢ divides d (b*(a DIV b) + (a MOD b)) = divides d a *)
-      divDa = EQMP[divDaProdEq, divDaProd];
-      (* (hyp, b=SUC b') ⊢ divides d a *)
-
-      (* Universal for case B *)
-      eAndHypTm = andTm[dividesTm[eV, aV], dividesTm[eV, bV]];
-      eAndHyp = ASSUME[eAndHypTm];
-      divEa = HOL`Bool`CONJUNCT1[eAndHyp];
-      divEb = HOL`Bool`CONJUNCT2[eAndHyp];
-
-      divEbq = HOL`Bool`MP[
-        HOL`Bool`SPEC[abDiv,
-          HOL`Bool`SPEC[bV,
-            HOL`Bool`SPEC[eV, dividesMultRightThm]]],
-        divEb];
-      (* (e|a ∧ e|b) ⊢ divides e (b * (a DIV b)) *)
-
-      divEaToBqrEq = HOL`Equal`APTERM[mkComb[dividesConst[], eV], divEq];
-      (* (b=SUC b') ⊢ divides e a = divides e (b*(a DIV b) + (a MOD b)) *)
-      divEbqr = EQMP[divEaToBqrEq, divEa];
-      (* (e|a ∧ e|b, b=SUC b') ⊢ divides e (b*(a DIV b) + (a MOD b)) *)
-
-      divEr = HOL`Bool`MP[
-        HOL`Bool`MP[
-          HOL`Bool`SPEC[abMod,
-            HOL`Bool`SPEC[timesTm[bV, abDiv],
-              HOL`Bool`SPEC[eV, dividesAddRightThm]]],
-          divEbq],
-        divEbqr];
-      (* (e|a ∧ e|b, b=SUC b') ⊢ divides e (a MOD b) *)
-
-      hypEbAndEr = HOL`Bool`CONJ[divEb, divEr];
-      divEd = HOL`Bool`MP[HOL`Bool`SPEC[eV, univDbr], hypEbAndEr];
-      (* (hyp, e|a ∧ e|b, b=SUC b') ⊢ divides e d *)
-      dischE = HOL`Bool`DISCH[eAndHypTm, divEd];
-      genE = HOL`Bool`GEN[eV, dischE];
-      (* (hyp, b=SUC b') ⊢ ∀e. (e|a ∧ e|b) ⇒ e|d *)
-
-      predAtD = HOL`Bool`CONJ[divDa, HOL`Bool`CONJ[divDb, genE]];
-      (* (hyp, b=SUC b') ⊢ gcdPredAt[a, b, d] *)
-      existsAtD = HOL`Bool`EXISTS[gcdExistsAt[aV, bV], dV, predAtD];
-      (* (hyp, b=SUC b') ⊢ gcdExistsAt[a, b] *)
-
-      chooseDStep = HOL`Bool`CHOOSE[dV, existsAtBR, existsAtD];
-      (* (sih, b=SUC b') ⊢ gcdExistsAt[a, b] *)
-      chooseBpStep = HOL`Bool`CHOOSE[npV, exBpHyp, chooseDStep];
-      (* (sih, ∃b'. b=SUC b') ⊢ gcdExistsAt[a, b] *)
-      chooseBpStep
-    ];
-
-    merged = HOL`Bool`DISJCASES[casesAtB, caseZeroB, caseSucB];
-    (* (sih) ⊢ gcdExistsAt[a, b] *)
-
-    stepBody = HOL`Bool`GEN[bV,
-      HOL`Bool`DISCH[sihTm, HOL`Bool`GEN[aV, merged]]];
-    (* ⊢ ∀b. (∀k. k < b ⇒ innerPredAt[k]) ⇒ innerPredAt[b] *)
-
-    mpStrong = HOL`Bool`MP[
-      HOL`Drule`CONVRULE[
-        HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]],
-        HOL`Bool`SPEC[inductionLam, strongInductionThm]],
-      stepBody];
-    (* ⊢ ∀b. innerPredAt[b] = ⊢ ∀b. ∀a. gcdExistsAt[a, b] *)
-
-    (* Swap quantifier order to ∀a. ∀b. *)
-    specBA = HOL`Bool`SPEC[aV, HOL`Bool`SPEC[bV, mpStrong]];
-    genB = HOL`Bool`GEN[bV, specBA];
-    genA = HOL`Bool`GEN[aV, genB]
-  ];
 
 (* ============================================================ *)
-(* gcd : num → num → num                                        *)
-(*   gcd = λa b. ε d. divides d a ∧ divides d b ∧               *)
-(*                    ∀e. (divides e a ∧ divides e b) ⇒ e | d   *)
-(* ============================================================ *)
-
-gcdTy = tyFun[numTy, tyFun[numTy, numTy]];
-
-gcdDefBody[] :=
-  Module[{aV, bV, dV, eV, predBody, predLam},
-    aV = mkVar["a", numTy];
-    bV = mkVar["b", numTy];
-    dV = mkVar["d", numTy];
-    eV = mkVar["e", numTy];
-    predBody = andTm[
-      dividesTm[dV, aV],
-      andTm[
-        dividesTm[dV, bV],
-        mkComb[forallC[numTy], mkAbs[eV, impTm[
-          andTm[dividesTm[eV, aV], dividesTm[eV, bV]],
-          dividesTm[eV, dV]]]]]];
-    predLam = mkAbs[dV, predBody];
-    mkAbs[aV, mkAbs[bV, mkComb[selectC[numTy], predLam]]]
-  ];
-
-gcdDefThm = newDefinition[mkEq[
-  mkVar["gcd", gcdTy],
-  gcdDefBody[]
-]];
-
-gcdConst[] := mkConst["gcd", gcdTy];
-gcdTm[aTm_, bTm_] := mkComb[mkComb[gcdConst[], aTm], bTm];
-
-unfoldGcd[aTm_, bTm_] :=
-  Module[{ap1, ap2},
-    ap1 = HOL`Equal`APTHM[gcdDefThm, aTm];
-    ap1 = TRANS[ap1, BETACONV[concl[ap1][[2]]]];
-    ap2 = HOL`Equal`APTHM[ap1, bTm];
-    TRANS[ap2, BETACONV[concl[ap2][[2]]]]
-  ];
-
-(* ============================================================ *)
-(* gcdSpecThm                                                   *)
-(*   ⊢ ∀a b. divides (gcd a b) a ∧ divides (gcd a b) b ∧        *)
-(*           ∀e. (divides e a ∧ divides e b) ⇒ divides e (gcd a b) *)
-(*                                                              *)
-(* Two-step: selectOfExists on gcdExistsThm at the predicate λd. *)
-(* yields predBody[@predLam/d]; rewrite @predLam → gcd a b via   *)
-(* SYM[unfoldGcd] using DEPTHCONV[REWRCONV] (same trick as       *)
-(* divisionPairThm).                                              *)
-(* ============================================================ *)
-
-gcdSpecThm =
-  Module[{aV, bV, dV, eV,
-          gcdPredAt, existsAtAB,
-          predLam, atGcdAtAt, gcdUnfoldAB, atGcdResult,
-          genB, genA},
-    aV = mkVar["a", numTy];
-    bV = mkVar["b", numTy];
-    dV = mkVar["d", numTy];
-    eV = mkVar["e", numTy];
-
-    gcdPredAt[aTm_, bTm_, dTm_] := andTm[
-      dividesTm[dTm, aTm],
-      andTm[
-        dividesTm[dTm, bTm],
-        mkComb[forallC[numTy], mkAbs[eV, impTm[
-          andTm[dividesTm[eV, aTm], dividesTm[eV, bTm]],
-          dividesTm[eV, dTm]]]]]];
-
-    existsAtAB = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, gcdExistsThm]];
-    (* ⊢ ∃d. gcdPredAt[a, b, d] *)
-
-    predLam = mkAbs[dV, gcdPredAt[aV, bV, dV]];
-    atGcdAtAt = HOL`Stdlib`Num`selectOfExists[predLam, existsAtAB];
-    (* ⊢ gcdPredAt[a, b, @d. gcdPredAt[a, b, d]] *)
-
-    gcdUnfoldAB = unfoldGcd[aV, bV];
-    (* ⊢ gcd a b = @d. gcdPredAt[a, b, d] *)
-    atGcdResult = HOL`Drule`CONVRULE[
-      HOL`Drule`DEPTHCONV[
-        HOL`Drule`REWRCONV[HOL`Equal`SYM[gcdUnfoldAB]]],
-      atGcdAtAt];
-    (* ⊢ gcdPredAt[a, b, gcd a b] *)
-
-    genB = HOL`Bool`GEN[bV, atGcdResult];
-    genA = HOL`Bool`GEN[aV, genB]
-  ];
-
-(* ============================================================ *)
-(* Three derived properties (CONJUNCT chains on gcdSpecThm).    *)
-(* ============================================================ *)
-
-gcdDividesLeftThm =
-  Module[{aV, bV, specAB, conj1, genB, genA},
-    aV = mkVar["a", numTy];
-    bV = mkVar["b", numTy];
-    specAB = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, gcdSpecThm]];
-    conj1 = HOL`Bool`CONJUNCT1[specAB];
-    genB = HOL`Bool`GEN[bV, conj1];
-    genA = HOL`Bool`GEN[aV, genB]
-  ];
-
-gcdDividesRightThm =
-  Module[{aV, bV, specAB, conj2, conj1, genB, genA},
-    aV = mkVar["a", numTy];
-    bV = mkVar["b", numTy];
-    specAB = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, gcdSpecThm]];
-    conj2 = HOL`Bool`CONJUNCT2[specAB];
-    conj1 = HOL`Bool`CONJUNCT1[conj2];
-    genB = HOL`Bool`GEN[bV, conj1];
-    genA = HOL`Bool`GEN[aV, genB]
-  ];
-
-gcdUniversalThm =
-  Module[{aV, bV, eV, specAB, conj2a, conj2b, hypTm, hypTh,
-          specE, mpStep, dischHyp, genE, genB, genA},
-    aV = mkVar["a", numTy];
-    bV = mkVar["b", numTy];
-    eV = mkVar["e", numTy];
-    specAB = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, gcdSpecThm]];
-    conj2a = HOL`Bool`CONJUNCT2[specAB];
-    conj2b = HOL`Bool`CONJUNCT2[conj2a];
-    (* ⊢ ∀e. (divides e a ∧ divides e b) ⇒ divides e (gcd a b) *)
-    specE = HOL`Bool`SPEC[eV, conj2b];
-    (* ⊢ (divides e a ∧ divides e b) ⇒ divides e (gcd a b) *)
-    genE = HOL`Bool`GEN[eV, specE];
-    genB = HOL`Bool`GEN[bV, genE];
-    genA = HOL`Bool`GEN[aV, genB]
-  ];
-
-(* ============================================================ *)
-(* M7-3-p: prime + arithmetic helpers for Euclid's lemma         *)
+(* general ℕ / order / divides arithmetic lemmas                 *)
+(* (gcd / prime / Euclid's lemma migrated to FTA.wl 2026-06)     *)
 (* ============================================================ *)
 
 (* oneTimesEqThm : ⊢ ∀n. SUC 0 * n = n                          *)
@@ -6120,701 +5745,6 @@ dividesLeqThm =
     genD = HOL`Bool`GEN[dV, genN]
   ];
 
-(* ============================================================ *)
-(* prime : num → bool                                           *)
-(*   prime p ⇔ SUC 0 < p ∧ ∀d. divides d p ⇒ d = SUC 0 ∨ d = p   *)
-(* ============================================================ *)
-
-primeTy = tyFun[numTy, boolTy];
-
-primeDefBody[] :=
-  Module[{pV, dV, suc0Tm},
-    pV = mkVar["p", numTy];
-    dV = mkVar["d", numTy];
-    suc0Tm = mkComb[sucConst[], zeroConst[]];
-    mkAbs[pV, andTm[
-      ltTm[suc0Tm, pV],
-      mkComb[forallC[numTy], mkAbs[dV, impTm[
-        dividesTm[dV, pV],
-        orTm[
-          mkEq[dV, suc0Tm],
-          mkEq[dV, pV]]]]]]]
-  ];
-
-primeDefThm = newDefinition[mkEq[
-  mkVar["prime", primeTy],
-  primeDefBody[]
-]];
-
-primeConst[] := mkConst["prime", primeTy];
-primeTm[pTm_] := mkComb[primeConst[], pTm];
-
-unfoldPrime[pTm_] :=
-  Module[{ap},
-    ap = HOL`Equal`APTHM[primeDefThm, pTm];
-    TRANS[ap, BETACONV[concl[ap][[2]]]]
-  ];
-
-(* ============================================================ *)
-(* M7-3-q: Euclid's lemma                                       *)
-(*   ⊢ ∀p a b. prime p ⇒ divides p (a * b) ⇒                    *)
-(*             divides p a ∨ divides p b                        *)
-(*                                                              *)
-(* Strong induction on a.  Under prime p:                       *)
-(*   a = 0: trivial via dividesZero.                            *)
-(*   a > 0: leqTotal(p, a) splits into                          *)
-(*     A. p ≤ a: DIV a by p (uses pNotZero from prime).         *)
-(*        a = p*q + r ∧ r < p. numCases on r:                    *)
-(*          r = 0: a = p*q, so p|a (DISJ1).                      *)
-(*          r > 0: r < a (via leqTrans), SIH at r gives          *)
-(*                 p|r ∨ p|b; p|r contradicts via dividesLeq +   *)
-(*                 leqAntisym + ltImpliesNotEq.                  *)
-(*     B. a ≤ p: leqCaseEqLt gives a = p ∨ a < p.                 *)
-(*          a = p: p|a via dividesRefl + rewrite.                *)
-(*          a < p: DIV p by a (uses aNotZero from a = SUC a').    *)
-(*                 p = a*q + r ∧ r < a. Derive p|r*b via the      *)
-(*                 chain p|a*b → p|a*q*b → addRight → p|r*b.      *)
-(*                 SIH at r; on p|r branch numCases on r:         *)
-(*                   r = 0: a*q = p ⇒ a|p; primeUniv gives        *)
-(*                          a = 1 ∨ a = p; a = p contradicts      *)
-(*                          a<p; a = 1 ⇒ a*b = b ⇒ p|b.           *)
-(*                   r > 0: contradiction as in case A.           *)
-(* ============================================================ *)
-
-euclidLemmaThm =
-  Module[{pV, aV, bV, kV, qV, rV, apV, rpV, cV,
-          primePTm, primePHyp, primePExpanded, suc0LtP, primeUniv,
-          pNotZeroTm, pNotZero,
-          predBodyAt, predLam, sihAtATm, sihAtAHyp,
-          numCasesAtA, zeroCase, sucCase,
-          stepInner, stepFull, strongSpec, mpStrong,
-          specAB, dischPrime, genB, genA, genP},
-    pV = mkVar["p", numTy];
-    aV = mkVar["a", numTy];
-    bV = mkVar["b", numTy];
-    kV = mkVar["k", numTy];
-    qV = mkVar["q", numTy];
-    rV = mkVar["r", numTy];
-    apV = mkVar["a'", numTy];
-    rpV = mkVar["r'", numTy];
-    cV = mkVar["c", numTy];
-
-    primePTm = primeTm[pV];
-    primePHyp = ASSUME[primePTm];
-    primePExpanded = EQMP[unfoldPrime[pV], primePHyp];
-    suc0LtP = HOL`Bool`CONJUNCT1[primePExpanded];
-    primeUniv = HOL`Bool`CONJUNCT2[primePExpanded];
-
-    pNotZeroTm = mkComb[notC[], mkEq[pV, zeroConst[]]];
-    pNotZero = Module[{pEqZeroTm, pEqZeroHyp, suc0LtRewrite,
-                       notLtZeroAtSuc0, contradF, dischPEqZero},
-      pEqZeroTm = mkEq[pV, zeroConst[]];
-      pEqZeroHyp = ASSUME[pEqZeroTm];
-      suc0LtRewrite = EQMP[
-        HOL`Equal`APTERM[
-          mkComb[ltConst[], mkComb[sucConst[], zeroConst[]]],
-          pEqZeroHyp],
-        suc0LtP];
-      (* (prime p, p=0) ⊢ SUC 0 < 0 *)
-      notLtZeroAtSuc0 = HOL`Bool`SPEC[
-        mkComb[sucConst[], zeroConst[]], notLtZeroThm];
-      contradF = HOL`Bool`MP[
-        HOL`Bool`NOTELIM[notLtZeroAtSuc0], suc0LtRewrite];
-      dischPEqZero = HOL`Bool`DISCH[pEqZeroTm, contradF];
-      HOL`Bool`NOTINTRO[dischPEqZero]
-    ];
-    (* (prime p) ⊢ ¬ (p = 0) *)
-
-    predBodyAt[aTm_] := mkComb[forallC[numTy], mkAbs[bV,
-      impTm[dividesTm[pV, timesTm[aTm, bV]],
-            orTm[dividesTm[pV, aTm], dividesTm[pV, bV]]]]];
-
-    predLam = mkAbs[aV, predBodyAt[aV]];
-
-    sihAtATm = mkComb[forallC[numTy], mkAbs[kV,
-      impTm[ltTm[kV, aV], predBodyAt[kV]]]];
-    sihAtAHyp = ASSUME[sihAtATm];
-    (* (sih) ⊢ ∀k. k < a ⇒ ∀b. p|k*b ⇒ p|k ∨ p|b *)
-
-    numCasesAtA = HOL`Bool`SPEC[aV, numCasesThm];
-    (* ⊢ a = 0 ∨ ∃a'. a = SUC a' *)
-
-    (* --- zeroCase: a = 0. p|0 trivially gives p|a (after rewrite). --- *)
-    zeroCase = Module[{aEqZeroTm, aEqZeroHyp, dividesP0,
-                       divEq, pDividesA, hypPDABTm, hypPDAB,
-                       disj1Result, dischHyp, genBZero},
-      aEqZeroTm = mkEq[aV, zeroConst[]];
-      aEqZeroHyp = ASSUME[aEqZeroTm];
-      dividesP0 = HOL`Bool`SPEC[pV, dividesZeroThm];
-      divEq = HOL`Equal`APTERM[mkComb[dividesConst[], pV],
-                               HOL`Equal`SYM[aEqZeroHyp]];
-      (* (a=0) ⊢ divides p 0 = divides p a *)
-      pDividesA = EQMP[divEq, dividesP0];
-      (* (a=0) ⊢ divides p a *)
-      hypPDABTm = dividesTm[pV, timesTm[aV, bV]];
-      hypPDAB = ASSUME[hypPDABTm];
-      disj1Result = HOL`Bool`DISJ1[pDividesA, dividesTm[pV, bV]];
-      dischHyp = HOL`Bool`DISCH[hypPDABTm, disj1Result];
-      genBZero = HOL`Bool`GEN[bV, dischHyp]
-      (* (a=0) ⊢ predBodyAt[a] *)
-    ];
-
-    (* --- sucCase: ∃a'. a = SUC a'. Use Euclidean argument. --- *)
-    sucCase = Module[{exApTm, exApHyp, aEqSucApTm, aEqSucApHyp,
-                      aNotZero, hypPDABTm, hypPDAB,
-                      leqTotalAtPA, caseA, caseB, merged,
-                      dischHyp, genBSuc, chooseApSuc,
-                      abDiv, abMod, paDiv, paMod},
-      exApTm = mkComb[existsC[numTy],
-        mkAbs[apV, mkEq[aV, mkComb[sucConst[], apV]]]];
-      exApHyp = ASSUME[exApTm];
-      aEqSucApTm = mkEq[aV, mkComb[sucConst[], apV]];
-      aEqSucApHyp = ASSUME[aEqSucApTm];
-
-      aNotZero = Module[{aEqZTm, aEqZH, chainEq, sucApNotZ, contradF, dischAZ},
-        aEqZTm = mkEq[aV, zeroConst[]];
-        aEqZH = ASSUME[aEqZTm];
-        chainEq = TRANS[HOL`Equal`SYM[aEqSucApHyp], aEqZH];
-        sucApNotZ = HOL`Bool`SPEC[apV, sucNotZeroThm];
-        contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[sucApNotZ], chainEq];
-        dischAZ = HOL`Bool`DISCH[aEqZTm, contradF];
-        HOL`Bool`NOTINTRO[dischAZ]
-      ];
-      (* (a = SUC a') ⊢ ¬(a = 0) *)
-
-      hypPDABTm = dividesTm[pV, timesTm[aV, bV]];
-      hypPDAB = ASSUME[hypPDABTm];
-
-      leqTotalAtPA = HOL`Bool`SPEC[aV, HOL`Bool`SPEC[pV, leqTotalThm]];
-      (* ⊢ p ≤ a ∨ a ≤ p *)
-
-      abDiv = divTm[aV, pV];
-      abMod = modTm[aV, pV];
-      paDiv = divTm[pV, aV];
-      paMod = modTm[pV, aV];
-
-      (* === Case A: p ≤ a === *)
-      caseA = Module[{pLeqATm, pLeqAHyp, divPairAt, divEq, rLtP,
-                      rCases, rZeroBranch, rSucBranch, mergedR},
-        pLeqATm = leqTm[pV, aV];
-        pLeqAHyp = ASSUME[pLeqATm];
-
-        divPairAt = HOL`Bool`MP[
-          HOL`Bool`SPEC[pV, HOL`Bool`SPEC[aV, divisionPairThm]],
-          pNotZero];
-        (* (prime p) ⊢ a = p*(a DIV p) + (a MOD p) ∧ (a MOD p) < p *)
-        divEq = HOL`Bool`CONJUNCT1[divPairAt];
-        rLtP = HOL`Bool`CONJUNCT2[divPairAt];
-
-        rCases = HOL`Bool`SPEC[abMod, numCasesThm];
-        (* ⊢ (a MOD p) = 0 ∨ ∃r'. (a MOD p) = SUC r' *)
-
-        (* sub r = 0: a = p*(a DIV p), so p|a. *)
-        rZeroBranch = Module[{rEqZTm, rEqZHyp, divEqRZ, plusZAt,
-                              aEqPq, pDivPq, pDivA, disj1Final},
-          rEqZTm = mkEq[abMod, zeroConst[]];
-          rEqZHyp = ASSUME[rEqZTm];
-          divEqRZ = TRANS[divEq,
-            HOL`Equal`APTERM[
-              mkComb[plusConst[], timesTm[pV, abDiv]], rEqZHyp]];
-          (* (prime p, r=0) ⊢ a = p*(a DIV p) + 0 *)
-          plusZAt = HOL`Bool`SPEC[timesTm[pV, abDiv], plusZeroEqThm];
-          aEqPq = TRANS[divEqRZ, plusZAt];
-          (* (prime p, r=0) ⊢ a = p*(a DIV p) *)
-          pDivPq = HOL`Bool`MP[
-            HOL`Bool`SPEC[abDiv,
-              HOL`Bool`SPEC[pV, HOL`Bool`SPEC[pV, dividesMultRightThm]]],
-            HOL`Bool`SPEC[pV, dividesReflThm]];
-          (* ⊢ divides p (p * (a DIV p)) *)
-          pDivA = EQMP[
-            HOL`Equal`APTERM[mkComb[dividesConst[], pV],
-                             HOL`Equal`SYM[aEqPq]],
-            pDivPq];
-          (* (prime p, r=0) ⊢ divides p a *)
-          disj1Final = HOL`Bool`DISJ1[pDivA, dividesTm[pV, bV]];
-          disj1Final
-          (* (prime p, r=0) ⊢ divides p a ∨ divides p b *)
-        ];
-
-        (* sub r = SUC r': r < a; SIH at r gives p|r ∨ p|b. *)
-        rSucBranch = Module[{exRpTm, exRpHyp, rEqSucRpTm, rEqSucRpHyp,
-                             rNotZero, sucRLeqP, leqTransAt, sucRLeqA, rLtA,
-                             sihAtR, sihAtRMpd,
-                             aBeqPqrBEq, pDivPqrB,
-                             distribAt, pDivPqBplusRBeq, pDivPqBplusRB,
-                             pDivPq, pDivPqB, addRightAt, pDivRB,
-                             pDivROrB, pDivRBranch, pDivBBranch, disjFinal,
-                             choseRp},
-          exRpTm = mkComb[existsC[numTy],
-            mkAbs[rpV, mkEq[abMod, mkComb[sucConst[], rpV]]]];
-          exRpHyp = ASSUME[exRpTm];
-          rEqSucRpTm = mkEq[abMod, mkComb[sucConst[], rpV]];
-          rEqSucRpHyp = ASSUME[rEqSucRpTm];
-
-          rNotZero = Module[{rEqZTm, rEqZH, chainEq, sucRpNotZ, contradF, dischRZ},
-            rEqZTm = mkEq[abMod, zeroConst[]];
-            rEqZH = ASSUME[rEqZTm];
-            chainEq = TRANS[HOL`Equal`SYM[rEqSucRpHyp], rEqZH];
-            sucRpNotZ = HOL`Bool`SPEC[rpV, sucNotZeroThm];
-            contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[sucRpNotZ], chainEq];
-            dischRZ = HOL`Bool`DISCH[rEqZTm, contradF];
-            HOL`Bool`NOTINTRO[dischRZ]
-          ];
-          (* (r = SUC r') ⊢ ¬(r = 0) *)
-
-          sucRLeqP = EQMP[unfoldLt[abMod, pV], rLtP];
-          (* (prime p) ⊢ SUC (a MOD p) ≤ p *)
-          leqTransAt = HOL`Bool`SPEC[aV,
-            HOL`Bool`SPEC[pV,
-              HOL`Bool`SPEC[mkComb[sucConst[], abMod], leqTransThm]]];
-          (* ⊢ SUC r ≤ p ⇒ p ≤ a ⇒ SUC r ≤ a *)
-          sucRLeqA = HOL`Bool`MP[HOL`Bool`MP[leqTransAt, sucRLeqP], pLeqAHyp];
-          (* (prime p, p ≤ a) ⊢ SUC (a MOD p) ≤ a *)
-          rLtA = EQMP[HOL`Equal`SYM[unfoldLt[abMod, aV]], sucRLeqA];
-          (* (prime p, p ≤ a) ⊢ (a MOD p) < a *)
-
-          sihAtR = HOL`Bool`SPEC[abMod, sihAtAHyp];
-          sihAtRMpd = HOL`Bool`MP[sihAtR, rLtA];
-          (* (sih, prime p, p ≤ a) ⊢ ∀b'. p|r*b' ⇒ p|r ∨ p|b' *)
-
-          (* p | r*b chain:
-             a*b = (p*q + r)*b via APTHM[APTERM[*, divEq], b].
-             divides p (a*b) = divides p ((p*q+r)*b) via APTERM divides p.
-             EQMP with hypPDAB.
-             (p*q + r)*b = p*q*b + r*b via distribRight.
-             APTERM + EQMP again.
-             p|p*q*b via dividesMultRight twice on dividesRefl.
-             dividesAddRightThm chain. *)
-          aBeqPqrBEq = HOL`Equal`APTHM[
-            HOL`Equal`APTERM[timesConst[], divEq], bV];
-          (* (prime p) ⊢ a * b = (p*(a DIV p) + (a MOD p)) * b *)
-          pDivPqrB = EQMP[
-            HOL`Equal`APTERM[mkComb[dividesConst[], pV], aBeqPqrBEq],
-            hypPDAB];
-          (* (prime p, p|a*b) ⊢ divides p ((p*(a DIV p) + (a MOD p)) * b) *)
-
-          distribAt = HOL`Bool`SPEC[bV,
-            HOL`Bool`SPEC[abMod,
-              HOL`Bool`SPEC[timesTm[pV, abDiv], timesDistribRightThm]]];
-          (* ⊢ (p*q + r)*b = p*q*b + r*b *)
-          pDivPqBplusRBeq = HOL`Equal`APTERM[
-            mkComb[dividesConst[], pV], distribAt];
-          pDivPqBplusRB = EQMP[pDivPqBplusRBeq, pDivPqrB];
-          (* (prime p, p|a*b) ⊢ divides p (p*q*b + r*b) *)
-
-          pDivPq = HOL`Bool`MP[
-            HOL`Bool`SPEC[abDiv,
-              HOL`Bool`SPEC[pV, HOL`Bool`SPEC[pV, dividesMultRightThm]]],
-            HOL`Bool`SPEC[pV, dividesReflThm]];
-          (* ⊢ divides p (p * (a DIV p)) *)
-          pDivPqB = HOL`Bool`MP[
-            HOL`Bool`SPEC[bV,
-              HOL`Bool`SPEC[timesTm[pV, abDiv],
-                HOL`Bool`SPEC[pV, dividesMultRightThm]]],
-            pDivPq];
-          (* ⊢ divides p (p*q*b) *)
-
-          addRightAt = HOL`Bool`SPEC[timesTm[abMod, bV],
-            HOL`Bool`SPEC[timesTm[timesTm[pV, abDiv], bV],
-              HOL`Bool`SPEC[pV, dividesAddRightThm]]];
-          (* ⊢ p|(p*q*b) ⇒ p|((p*q*b)+(r*b)) ⇒ p|r*b *)
-          pDivRB = HOL`Bool`MP[HOL`Bool`MP[addRightAt, pDivPqB], pDivPqBplusRB];
-          (* (prime p, p|a*b) ⊢ divides p (r * b) *)
-
-          pDivROrB = HOL`Bool`MP[HOL`Bool`SPEC[bV, sihAtRMpd], pDivRB];
-          (* (sih, prime p, p|a*b, p ≤ a) ⊢ divides p r ∨ divides p b *)
-
-          pDivRBranch = Module[{pDivRHyp, pLeqR, rLeqSucR, sucRLeqP2,
-                                rLeqP, pEqRR, notREqP, contradF},
-            pDivRHyp = ASSUME[dividesTm[pV, abMod]];
-            pLeqR = HOL`Bool`MP[
-              HOL`Bool`MP[
-                HOL`Bool`SPEC[abMod,
-                  HOL`Bool`SPEC[pV, dividesLeqThm]],
-                rNotZero],
-              pDivRHyp];
-            (* (prime p, r=SUC r', p|r) ⊢ p ≤ r *)
-            rLeqSucR = HOL`Bool`SPEC[abMod, leqSucThm];
-            (* ⊢ r ≤ SUC r *)
-            rLeqP = HOL`Bool`MP[
-              HOL`Bool`MP[
-                HOL`Bool`SPEC[pV,
-                  HOL`Bool`SPEC[mkComb[sucConst[], abMod],
-                    HOL`Bool`SPEC[abMod, leqTransThm]]],
-                rLeqSucR],
-              sucRLeqP];
-            (* (prime p) ⊢ r ≤ p *)
-            pEqRR = HOL`Bool`MP[
-              HOL`Bool`MP[
-                HOL`Bool`SPEC[abMod, HOL`Bool`SPEC[pV, leqAntisymThm]],
-                pLeqR],
-              rLeqP];
-            (* (..., p|r) ⊢ p = r *)
-            notREqP = HOL`Bool`MP[
-              HOL`Bool`SPEC[pV,
-                HOL`Bool`SPEC[abMod, ltImpliesNotEqThm]],
-              rLtP];
-            (* (prime p) ⊢ ¬(r = p) *)
-            contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[notREqP],
-              HOL`Equal`SYM[pEqRR]];
-            (* (...) ⊢ F *)
-            HOL`Bool`CONTR[orTm[dividesTm[pV, aV], dividesTm[pV, bV]],
-              contradF]
-            (* (..., p|r) ⊢ divides p a ∨ divides p b *)
-          ];
-
-          pDivBBranch = Module[{pDivBHyp},
-            pDivBHyp = ASSUME[dividesTm[pV, bV]];
-            HOL`Bool`DISJ2[pDivBHyp, dividesTm[pV, aV]]
-            (* (p|b) ⊢ divides p a ∨ divides p b *)
-          ];
-
-          disjFinal = HOL`Bool`DISJCASES[pDivROrB,
-            pDivRBranch, pDivBBranch];
-          (* (sih, prime p, p|a*b, p ≤ a, r=SUC r') ⊢ divides p a ∨ divides p b *)
-          choseRp = HOL`Bool`CHOOSE[rpV, exRpHyp, disjFinal];
-          (* (sih, prime p, p|a*b, p ≤ a, ∃r'. r=SUC r') ⊢ … *)
-          choseRp
-        ];
-
-        mergedR = HOL`Bool`DISJCASES[rCases, rZeroBranch, rSucBranch];
-        (* (sih, prime p, p ≤ a, p|a*b) ⊢ divides p a ∨ divides p b *)
-        mergedR
-      ];
-
-      (* === Case B: a ≤ p === *)
-      caseB = Module[{aLeqPTm, aLeqPHyp, leqCaseAt,
-                      aEqPCase, aLtPCase, mergedB},
-        aLeqPTm = leqTm[aV, pV];
-        aLeqPHyp = ASSUME[aLeqPTm];
-
-        leqCaseAt = HOL`Bool`MP[
-          HOL`Bool`SPEC[pV, HOL`Bool`SPEC[aV, leqCaseEqLtThm]],
-          aLeqPHyp];
-        (* (a ≤ p) ⊢ a = p ∨ a < p *)
-
-        (* Sub-case: a = p. p|a via refl + rewrite. *)
-        aEqPCase = Module[{aEqPTm, aEqPHyp, pDivP, rewriteEq, pDivA, disj1},
-          aEqPTm = mkEq[aV, pV];
-          aEqPHyp = ASSUME[aEqPTm];
-          pDivP = HOL`Bool`SPEC[pV, dividesReflThm];
-          (* ⊢ divides p p *)
-          rewriteEq = HOL`Equal`APTERM[mkComb[dividesConst[], pV],
-                                       HOL`Equal`SYM[aEqPHyp]];
-          (* (a=p) ⊢ divides p p = divides p a *)
-          pDivA = EQMP[rewriteEq, pDivP];
-          (* (a=p) ⊢ divides p a *)
-          disj1 = HOL`Bool`DISJ1[pDivA, dividesTm[pV, bV]];
-          disj1
-          (* (a=p) ⊢ divides p a ∨ divides p b *)
-        ];
-
-        (* Sub-case: a < p. DIV p by a; SIH descent. *)
-        aLtPCase = Module[{aLtPTm, aLtPHyp, divPairBAt, divEqB, rLtA,
-                           pBeqRhsEq, pBeqRhsB, pDivPB, pDivRhs,
-                           distribAtB,
-                           assoc1, comm1, assoc2,
-                           commApp1, assoc1Sym, aqBeqAbq,
-                           pDivABq, pDivAQB,
-                           addRightAtB, pDivRB,
-                           sihAtR, sihAtRMpd, pDivROrB,
-                           pDivRBranchB, pDivBBranchB, disjFinalB},
-          aLtPTm = ltTm[aV, pV];
-          aLtPHyp = ASSUME[aLtPTm];
-
-          divPairBAt = HOL`Bool`MP[
-            HOL`Bool`SPEC[aV, HOL`Bool`SPEC[pV, divisionPairThm]],
-            aNotZero];
-          (* (a=SUC a') ⊢ p = a*(p DIV a) + (p MOD a) ∧ (p MOD a) < a *)
-          divEqB = HOL`Bool`CONJUNCT1[divPairBAt];
-          rLtA = HOL`Bool`CONJUNCT2[divPairBAt];
-
-          (* Derive p|r*b. p|a*b ⇒ p|(a*b)*q via mult; rewrite       *)
-          (* (a*b)*q to (a*q)*b via the chain assoc → comm → assoc.   *)
-          (* p|p*b refl+mult. Then dividesAddRightThm on the equation *)
-          (* p*b = (a*q)*b + r*b yields p|r*b.                        *)
-          pBeqRhsEq = HOL`Equal`APTHM[
-            HOL`Equal`APTERM[timesConst[], divEqB], bV];
-          (* (a=SUC a') ⊢ p * b = (a*(p DIV a) + (p MOD a)) * b *)
-          distribAtB = HOL`Bool`SPEC[bV,
-            HOL`Bool`SPEC[paMod,
-              HOL`Bool`SPEC[timesTm[aV, paDiv], timesDistribRightThm]]];
-          (* ⊢ (a*(p DIV a) + (p MOD a)) * b = a*(p DIV a)*b + (p MOD a)*b *)
-          pBeqRhsB = TRANS[pBeqRhsEq, distribAtB];
-          (* (a=SUC a') ⊢ p * b = a*(p DIV a)*b + (p MOD a)*b *)
-
-          (* p | p*b *)
-          pDivPB = HOL`Bool`MP[
-            HOL`Bool`SPEC[bV,
-              HOL`Bool`SPEC[pV, HOL`Bool`SPEC[pV, dividesMultRightThm]]],
-            HOL`Bool`SPEC[pV, dividesReflThm]];
-          (* ⊢ divides p (p * b) *)
-          pDivRhs = EQMP[
-            HOL`Equal`APTERM[mkComb[dividesConst[], pV], pBeqRhsB],
-            pDivPB];
-          (* (a=SUC a') ⊢ divides p (a*(p DIV a)*b + (p MOD a)*b) *)
-
-          (* p | a*(p DIV a)*b from p|a*b. *)
-          pDivABq = HOL`Bool`MP[
-            HOL`Bool`SPEC[paDiv,
-              HOL`Bool`SPEC[timesTm[aV, bV],
-                HOL`Bool`SPEC[pV, dividesMultRightThm]]],
-            hypPDAB];
-          (* (p|a*b) ⊢ divides p ((a*b) * (p DIV a)) *)
-          (* Now rewrite (a*b) * (p DIV a) = (a*(p DIV a))*b
-             chain: (a*b)*q = a*(b*q) = a*(q*b) = (a*q)*b *)
-          assoc1 = HOL`Bool`SPEC[paDiv,
-            HOL`Bool`SPEC[bV,
-              HOL`Bool`SPEC[aV, timesAssocThm]]];
-          (* ⊢ (a*b)*(p DIV a) = a*(b*(p DIV a)) *)
-          comm1 = HOL`Bool`SPEC[paDiv,
-            HOL`Bool`SPEC[bV, timesCommThm]];
-          (* ⊢ b*(p DIV a) = (p DIV a)*b *)
-          commApp1 = HOL`Equal`APTERM[mkComb[timesConst[], aV], comm1];
-          (* ⊢ a*(b*(p DIV a)) = a*((p DIV a)*b) *)
-          assoc2 = HOL`Bool`SPEC[bV,
-            HOL`Bool`SPEC[paDiv,
-              HOL`Bool`SPEC[aV, timesAssocThm]]];
-          (* ⊢ (a*(p DIV a))*b = a*((p DIV a)*b) *)
-          assoc1Sym = HOL`Equal`SYM[assoc2];
-          (* ⊢ a*((p DIV a)*b) = (a*(p DIV a))*b *)
-          aqBeqAbq = TRANS[TRANS[assoc1, commApp1], assoc1Sym];
-          (* ⊢ (a*b)*(p DIV a) = (a*(p DIV a))*b *)
-          pDivAQB = EQMP[
-            HOL`Equal`APTERM[mkComb[dividesConst[], pV], aqBeqAbq],
-            pDivABq];
-          (* (p|a*b) ⊢ divides p ((a*(p DIV a))*b) *)
-
-          addRightAtB = HOL`Bool`SPEC[timesTm[paMod, bV],
-            HOL`Bool`SPEC[timesTm[timesTm[aV, paDiv], bV],
-              HOL`Bool`SPEC[pV, dividesAddRightThm]]];
-          (* ⊢ p|(a*(p DIV a))*b ⇒ p|((a*(p DIV a))*b + (p MOD a)*b)
-                                 ⇒ p|(p MOD a)*b *)
-          pDivRB = HOL`Bool`MP[HOL`Bool`MP[addRightAtB, pDivAQB], pDivRhs];
-          (* (a=SUC a', p|a*b) ⊢ divides p ((p MOD a)*b) *)
-
-          sihAtR = HOL`Bool`SPEC[paMod, sihAtAHyp];
-          sihAtRMpd = HOL`Bool`MP[sihAtR, rLtA];
-          (* (sih, a=SUC a') ⊢ ∀b'. p|r*b' ⇒ p|r ∨ p|b' *)
-
-          pDivROrB = HOL`Bool`MP[HOL`Bool`SPEC[bV, sihAtRMpd], pDivRB];
-          (* (sih, a=SUC a', p|a*b) ⊢ divides p (p MOD a) ∨ divides p b *)
-
-          pDivRBranchB = Module[{pDivRHyp, rCases2, rZBranch, rSBranch},
-            pDivRHyp = ASSUME[dividesTm[pV, paMod]];
-            rCases2 = HOL`Bool`SPEC[paMod, numCasesThm];
-
-            (* r = 0: a*q = p, so a|p; primeUniv ⇒ a = 1 ∨ a = p.
-               a=1 ⇒ a*b = b ⇒ p|b.
-               a=p contradicts a<p. *)
-            rZBranch = Module[{rEqZTm, rEqZH, divEqBRZ, plusZAt,
-                               pEqAq, pEqAqSym, aDivPexBody, aDivPexists, aDivP,
-                               primeUnivAtA, aEqDisj,
-                               aEqSucZBranch, aEqPBranch, mergedADisj},
-              rEqZTm = mkEq[paMod, zeroConst[]];
-              rEqZH = ASSUME[rEqZTm];
-              divEqBRZ = TRANS[divEqB,
-                HOL`Equal`APTERM[
-                  mkComb[plusConst[], timesTm[aV, paDiv]], rEqZH]];
-              (* (a=SUC a', r=0) ⊢ p = a*(p DIV a) + 0 *)
-              plusZAt = HOL`Bool`SPEC[timesTm[aV, paDiv], plusZeroEqThm];
-              pEqAq = TRANS[divEqBRZ, plusZAt];
-              (* (a=SUC a', r=0) ⊢ p = a * (p DIV a) *)
-
-              aDivPexBody = mkComb[existsC[numTy],
-                mkAbs[cV, mkEq[pV, timesTm[aV, cV]]]];
-              aDivPexists = HOL`Bool`EXISTS[aDivPexBody, paDiv, pEqAq];
-              (* (a=SUC a', r=0) ⊢ ∃c. p = a * c *)
-              aDivP = EQMP[HOL`Equal`SYM[unfoldDivides[aV, pV]],
-                aDivPexists];
-              (* (a=SUC a', r=0) ⊢ divides a p *)
-
-              primeUnivAtA = HOL`Bool`SPEC[aV, primeUniv];
-              (* (prime p) ⊢ divides a p ⇒ a = SUC 0 ∨ a = p *)
-              aEqDisj = HOL`Bool`MP[primeUnivAtA, aDivP];
-              (* (prime p, a=SUC a', r=0) ⊢ a = SUC 0 ∨ a = p *)
-
-              (* a = SUC 0 case: a*b = b ⇒ p|b *)
-              aEqSucZBranch = Module[{aEqSucZHyp, abEqBRewrite, abEqBByOne,
-                                      pDivBBuilt, disj2},
-                aEqSucZHyp = ASSUME[mkEq[aV, mkComb[sucConst[], zeroConst[]]]];
-                (* abEqBRewrite: a*b = SUC 0 * b *)
-                abEqBRewrite = HOL`Equal`APTHM[
-                  HOL`Equal`APTERM[timesConst[], aEqSucZHyp], bV];
-                (* (a=SUC 0) ⊢ a*b = SUC 0 * b *)
-                abEqBByOne = TRANS[abEqBRewrite,
-                  HOL`Bool`SPEC[bV, oneTimesEqThm]];
-                (* (a=SUC 0) ⊢ a*b = b *)
-                pDivBBuilt = EQMP[
-                  HOL`Equal`APTERM[mkComb[dividesConst[], pV], abEqBByOne],
-                  hypPDAB];
-                (* (a=SUC 0, p|a*b) ⊢ divides p b *)
-                disj2 = HOL`Bool`DISJ2[pDivBBuilt, dividesTm[pV, aV]];
-                disj2
-                (* (a=SUC 0, p|a*b) ⊢ divides p a ∨ divides p b *)
-              ];
-
-              (* a = p case: contradicts a<p. *)
-              aEqPBranch = Module[{aEqPHyp2, notAEqP, contradF},
-                aEqPHyp2 = ASSUME[mkEq[aV, pV]];
-                notAEqP = HOL`Bool`MP[
-                  HOL`Bool`SPEC[pV,
-                    HOL`Bool`SPEC[aV, ltImpliesNotEqThm]],
-                  aLtPHyp];
-                (* (a<p) ⊢ ¬(a = p) *)
-                contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[notAEqP], aEqPHyp2];
-                HOL`Bool`CONTR[
-                  orTm[dividesTm[pV, aV], dividesTm[pV, bV]], contradF]
-              ];
-
-              mergedADisj = HOL`Bool`DISJCASES[aEqDisj,
-                aEqSucZBranch, aEqPBranch];
-              mergedADisj
-              (* (sih, prime p, a=SUC a', r=0, p|a*b, a<p) ⊢ divides p a ∨ divides p b *)
-            ];
-
-            (* r = SUC r': same contradiction as case A. *)
-            rSBranch = Module[{exRpTmB, exRpHypB, rEqSucRpTmB, rEqSucRpHypB,
-                               rNotZeroB, pLeqRB, rLeqSucRB, sucRLeqAB,
-                               sucRLeqPB, rLeqPB, pEqRRB, notREqPB,
-                               contradFB, dischResult, choseRpB},
-              exRpTmB = mkComb[existsC[numTy],
-                mkAbs[rpV, mkEq[paMod, mkComb[sucConst[], rpV]]]];
-              exRpHypB = ASSUME[exRpTmB];
-              rEqSucRpTmB = mkEq[paMod, mkComb[sucConst[], rpV]];
-              rEqSucRpHypB = ASSUME[rEqSucRpTmB];
-
-              rNotZeroB = Module[{rEqZTm, rEqZH, chainEq, sucRpNZ, contradF, dischRZ},
-                rEqZTm = mkEq[paMod, zeroConst[]];
-                rEqZH = ASSUME[rEqZTm];
-                chainEq = TRANS[HOL`Equal`SYM[rEqSucRpHypB], rEqZH];
-                sucRpNZ = HOL`Bool`SPEC[rpV, sucNotZeroThm];
-                contradF = HOL`Bool`MP[HOL`Bool`NOTELIM[sucRpNZ], chainEq];
-                dischRZ = HOL`Bool`DISCH[rEqZTm, contradF];
-                HOL`Bool`NOTINTRO[dischRZ]
-              ];
-              (* (r=SUC r') ⊢ ¬(r=0) *)
-
-              pLeqRB = HOL`Bool`MP[
-                HOL`Bool`MP[
-                  HOL`Bool`SPEC[paMod, HOL`Bool`SPEC[pV, dividesLeqThm]],
-                  rNotZeroB],
-                pDivRHyp];
-              (* (p|r, r=SUC r') ⊢ p ≤ (p MOD a) *)
-
-              (* (p MOD a) < p via (p MOD a) < a < p chain.
-                 sucRLeqAB = SUC r ≤ a (from r < a).
-                 r ≤ SUC r (leqSuc), so r ≤ a (leqTrans).
-                 a ≤ p (aLeqPHyp). So r ≤ p (leqTrans). *)
-              sucRLeqAB = EQMP[unfoldLt[paMod, aV], rLtA];
-              (* (a=SUC a') ⊢ SUC r ≤ a *)
-              rLeqSucRB = HOL`Bool`SPEC[paMod, leqSucThm];
-              (* ⊢ r ≤ SUC r *)
-              (* r ≤ a via leqTrans *)
-              Module[{rLeqA, leqTransSlow},
-                leqTransSlow = HOL`Bool`SPEC[aV,
-                  HOL`Bool`SPEC[mkComb[sucConst[], paMod],
-                    HOL`Bool`SPEC[paMod, leqTransThm]]];
-                rLeqA = HOL`Bool`MP[HOL`Bool`MP[leqTransSlow, rLeqSucRB], sucRLeqAB];
-                rLeqPB = HOL`Bool`MP[
-                  HOL`Bool`MP[
-                    HOL`Bool`SPEC[pV,
-                      HOL`Bool`SPEC[aV,
-                        HOL`Bool`SPEC[paMod, leqTransThm]]],
-                    rLeqA],
-                  aLeqPHyp];
-                (* (a=SUC a', a ≤ p) ⊢ r ≤ p *)
-              ];
-
-              pEqRRB = HOL`Bool`MP[
-                HOL`Bool`MP[
-                  HOL`Bool`SPEC[paMod, HOL`Bool`SPEC[pV, leqAntisymThm]],
-                  pLeqRB],
-                rLeqPB];
-              (* (...) ⊢ p = (p MOD a) *)
-
-              (* Need r < p, but we have r < a < p. Easiest: derive r < p chain.
-                 Actually we want ¬(r = p). We have ¬(a = p) from a<p. Hmm.
-                 Better: derive r < p directly via SUC r ≤ a ≤ p ⇒ SUC r ≤ p ⇒ r < p.
-                 Then ltImpliesNotEq at r, p: ¬(r = p). *)
-              Module[{sucRLeqPCycB, rLtPB},
-                sucRLeqPCycB = HOL`Bool`MP[
-                  HOL`Bool`MP[
-                    HOL`Bool`SPEC[pV,
-                      HOL`Bool`SPEC[aV,
-                        HOL`Bool`SPEC[mkComb[sucConst[], paMod], leqTransThm]]],
-                    sucRLeqAB],
-                  aLeqPHyp];
-                (* (a=SUC a', a ≤ p) ⊢ SUC r ≤ p *)
-                rLtPB = EQMP[HOL`Equal`SYM[unfoldLt[paMod, pV]], sucRLeqPCycB];
-                (* (a=SUC a', a ≤ p) ⊢ r < p *)
-                notREqPB = HOL`Bool`MP[
-                  HOL`Bool`SPEC[pV,
-                    HOL`Bool`SPEC[paMod, ltImpliesNotEqThm]],
-                  rLtPB]
-                (* (a=SUC a', a ≤ p) ⊢ ¬(r = p) *)
-              ];
-
-              contradFB = HOL`Bool`MP[HOL`Bool`NOTELIM[notREqPB],
-                HOL`Equal`SYM[pEqRRB]];
-              (* (...) ⊢ F *)
-              dischResult = HOL`Bool`CONTR[
-                orTm[dividesTm[pV, aV], dividesTm[pV, bV]], contradFB];
-              (* (...) ⊢ divides p a ∨ divides p b *)
-              choseRpB = HOL`Bool`CHOOSE[rpV, exRpHypB, dischResult];
-              choseRpB
-            ];
-
-            HOL`Bool`DISJCASES[rCases2, rZBranch, rSBranch]
-            (* (...) ⊢ divides p a ∨ divides p b *)
-          ];
-
-          pDivBBranchB = Module[{pDivBHyp},
-            pDivBHyp = ASSUME[dividesTm[pV, bV]];
-            HOL`Bool`DISJ2[pDivBHyp, dividesTm[pV, aV]]
-          ];
-
-          disjFinalB = HOL`Bool`DISJCASES[pDivROrB,
-            pDivRBranchB, pDivBBranchB];
-          disjFinalB
-          (* (sih, prime p, a=SUC a', a<p, p|a*b) ⊢ divides p a ∨ divides p b *)
-        ];
-
-        mergedB = HOL`Bool`DISJCASES[leqCaseAt,
-          aEqPCase, aLtPCase];
-        (* (sih, prime p, a=SUC a', a ≤ p, p|a*b) ⊢ divides p a ∨ divides p b *)
-        mergedB
-      ];
-
-      merged = HOL`Bool`DISJCASES[leqTotalAtPA, caseA, caseB];
-      (* (sih, prime p, a=SUC a', p|a*b) ⊢ divides p a ∨ divides p b *)
-      dischHyp = HOL`Bool`DISCH[hypPDABTm, merged];
-      genBSuc = HOL`Bool`GEN[bV, dischHyp];
-      chooseApSuc = HOL`Bool`CHOOSE[apV, exApHyp, genBSuc];
-      chooseApSuc
-      (* (sih, prime p, ∃a'. a = SUC a') ⊢ predBodyAt[a] *)
-    ];
-
-    stepInner = HOL`Bool`DISJCASES[numCasesAtA, zeroCase, sucCase];
-    (* (sih, prime p) ⊢ predBodyAt[a] *)
-
-    stepFull = HOL`Bool`GEN[aV,
-      HOL`Bool`DISCH[sihAtATm, stepInner]];
-    (* (prime p) ⊢ ∀a. sihAtATm ⇒ predBodyAt[a] *)
-
-    strongSpec = HOL`Drule`CONVRULE[
-      HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[BETACONV]],
-      HOL`Bool`SPEC[predLam, strongInductionThm]];
-    mpStrong = HOL`Bool`MP[strongSpec, stepFull];
-    (* (prime p) ⊢ ∀a. predBodyAt[a] *)
-
-    specAB = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, mpStrong]];
-    (* (prime p) ⊢ divides p (a*b) ⇒ divides p a ∨ divides p b *)
-    dischPrime = HOL`Bool`DISCH[primePTm, specAB];
-    genB = HOL`Bool`GEN[bV, dischPrime];
-    genA = HOL`Bool`GEN[aV, genB];
-    genP = HOL`Bool`GEN[pV, genA]
-  ];
 
 (* ============================================================ *)
 (* PRE : num → num — predecessor (PRE 0 = 0), via Hilbert ε.     *)
@@ -7077,6 +6007,117 @@ leqAddMonusThm =
     dischd = HOL`Bool`DISCH[concl[leqHyp], bodyAt];
     genN = HOL`Bool`GEN[nV, dischd];
     genM = HOL`Bool`GEN[mV, genN]
+  ];
+
+(* ============================================================ *)
+(* exDiv — exact quotient via Hilbert ε (migrated from Rat.wl). *)
+(* exDiv n g = ε c. n = g * c. When g divides n this is the     *)
+(* unique quotient, and exDivThm falls straight out of selectAx *)
+(* with no DIV/MOD-uniqueness lemma. + multNonzero (no ℕ zero   *)
+(* divisors). Used downstream by FTA (coprimeReduced/exDivSelf) *)
+(* and Int (intDivNat).                                         *)
+(* ============================================================ *)
+
+zeroN[]   := zeroConst[];
+oneN[]    := mkComb[sucConst[], zeroConst[]];
+notTm[a_] := mkComb[notC[], a];
+
+exDivTy = tyFun[numTy, tyFun[numTy, numTy]];
+
+exDivDefThm = newDefinition[mkEq[
+  mkVar["exDiv", exDivTy],
+  Module[{nV, gV, cV},
+    nV = mkVar["n", numTy]; gV = mkVar["g", numTy]; cV = mkVar["c", numTy];
+    mkAbs[nV, mkAbs[gV,
+      mkComb[selectC[numTy], mkAbs[cV, mkEq[nV, timesTm[gV, cV]]]]]]]
+]];
+
+exDivConst[] := mkConst["exDiv", exDivTy];
+exDivTm[nT_, gT_] := mkComb[mkComb[exDivConst[], nT], gT];
+
+(* ⊢ exDiv n g = (@ c. n = g * c) *)
+unfoldExDiv[nT_, gT_] :=
+  Module[{ap1, beta1, ap2, beta2},
+    ap1 = HOL`Equal`APTHM[exDivDefThm, nT];
+    beta1 = BETACONV[concl[ap1][[2]]];
+    ap2 = HOL`Equal`APTHM[TRANS[ap1, beta1], gT];
+    beta2 = BETACONV[concl[ap2][[2]]];
+    TRANS[ap2, beta2]
+  ];
+
+(* ⊢ ∀g n. divides g n ⇒ n = g * exDiv n g *)
+exDivThm =
+  Module[{gV, nV, hyp, exTh, pred, selTh, unf, apTerm, result},
+    gV = mkVar["g", numTy]; nV = mkVar["n", numTy];
+    hyp = ASSUME[dividesTm[gV, nV]];                    (* divides g n *)
+    exTh = EQMP[unfoldDivides[gV, nV], hyp];            (* ∃c. n = g * c *)
+    pred = concl[exTh][[2]];                            (* λc. n = g * c *)
+    selTh = HOL`Stdlib`Num`selectOfExists[pred, exTh];  (* n = g * (@pred) *)
+    unf = unfoldExDiv[nV, gV];                          (* exDiv n g = @(λc. n=g*c) *)
+    apTerm = HOL`Equal`APTERM[
+      mkComb[HOL`Stdlib`Num`timesConst[], gV], HOL`Equal`SYM[unf]]; (* g*@pred = g*exDiv n g *)
+    result = TRANS[selTh, apTerm];                      (* n = g * exDiv n g *)
+    HOL`Bool`GEN[gV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[dividesTm[gV, nV], result]]]
+  ];
+
+(* ⊢ ∀n. exDiv n (SUC 0) = n *)
+exDivOneThm =
+  Module[{nV, oneT, oneTimesN, nEqOneTimesN, existsBody, exTh, divThm,
+          eqStep, oneTimesEx, result},
+    nV = mkVar["n", numTy]; oneT = oneN[];
+    oneTimesN = HOL`Bool`SPEC[nV, HOL`Stdlib`Num`oneTimesEqThm];  (* SUC 0 * n = n *)
+    nEqOneTimesN = HOL`Equal`SYM[oneTimesN];            (* n = SUC 0 * n *)
+    existsBody = concl[unfoldDivides[oneT, nV]][[2]];   (* ∃c. n = SUC 0 * c *)
+    exTh = HOL`Bool`EXISTS[existsBody, nV, nEqOneTimesN];
+    divThm = EQMP[HOL`Equal`SYM[unfoldDivides[oneT, nV]], exTh];  (* divides (SUC 0) n *)
+    eqStep = HOL`Bool`MP[
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[oneT, exDivThm]], divThm];  (* n = SUC 0 * exDiv n (SUC 0) *)
+    oneTimesEx = HOL`Bool`SPEC[exDivTm[nV, oneT], HOL`Stdlib`Num`oneTimesEqThm];
+    result = HOL`Equal`SYM[TRANS[eqStep, oneTimesEx]];  (* exDiv n (SUC 0) = n *)
+    HOL`Bool`GEN[nV, result]
+  ];
+
+(* ⊢ ∀g. ¬ (g = 0) ⇒ exDiv 0 g = 0 *)
+exDivZeroThm =
+  Module[{gV, zeroT, divisG0, eqStep, prodEq0, disj, notGEq0,
+          falseTh, case1, case2, elim, gEq0Tm, exDiv0gEq0Tm},
+    gV = mkVar["g", numTy]; zeroT = zeroN[];
+    divisG0 = HOL`Bool`SPEC[gV, HOL`Stdlib`Num`dividesZeroThm];   (* divides g 0 *)
+    eqStep = HOL`Bool`MP[
+      HOL`Bool`SPEC[zeroT, HOL`Bool`SPEC[gV, exDivThm]], divisG0]; (* 0 = g * exDiv 0 g *)
+    prodEq0 = HOL`Equal`SYM[eqStep];                    (* g * exDiv 0 g = 0 *)
+    disj = HOL`Bool`MP[
+      HOL`Bool`SPEC[exDivTm[zeroT, gV],
+        HOL`Bool`SPEC[gV, HOL`Stdlib`Num`multEqZeroThm]],
+      prodEq0];                                         (* g = 0 ∨ exDiv 0 g = 0 *)
+    gEq0Tm = mkEq[gV, zeroT];
+    exDiv0gEq0Tm = mkEq[exDivTm[zeroT, gV], zeroT];
+    notGEq0 = ASSUME[notTm[gEq0Tm]];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notGEq0], ASSUME[gEq0Tm]];  (* F *)
+    case1 = HOL`Bool`CONTR[exDiv0gEq0Tm, falseTh];
+    case2 = ASSUME[exDiv0gEq0Tm];
+    elim = HOL`Bool`DISJCASES[disj, case1, case2];      (* ¬(g=0) ⊢ exDiv 0 g = 0 *)
+    HOL`Bool`GEN[gV, HOL`Bool`DISCH[notTm[gEq0Tm], elim]]
+  ];
+
+(* ⊢ ∀m n. ¬ (m = 0) ⇒ ¬ (n = 0) ⇒ ¬ (m * n = 0) *)
+multNonzeroThm =
+  Module[{mV, nV, notM0, notN0, prodEq0Tm, prodEq0, disj, case1, case2, falseTh},
+    mV = mkVar["m", numTy]; nV = mkVar["n", numTy];
+    notM0 = ASSUME[notTm[mkEq[mV, zeroN[]]]];
+    notN0 = ASSUME[notTm[mkEq[nV, zeroN[]]]];
+    prodEq0Tm = mkEq[timesTm[mV, nV], zeroN[]];
+    prodEq0 = ASSUME[prodEq0Tm];
+    disj = HOL`Bool`MP[
+      HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, HOL`Stdlib`Num`multEqZeroThm]], prodEq0]; (* m=0∨n=0 *)
+    case1 = HOL`Bool`MP[HOL`Bool`NOTELIM[notM0], ASSUME[mkEq[mV, zeroN[]]]];  (* F *)
+    case2 = HOL`Bool`MP[HOL`Bool`NOTELIM[notN0], ASSUME[mkEq[nV, zeroN[]]]];  (* F *)
+    falseTh = HOL`Bool`DISJCASES[disj, case1, case2];   (* F *)
+    HOL`Bool`GEN[mV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[notTm[mkEq[mV, zeroN[]]],
+        HOL`Bool`DISCH[notTm[mkEq[nV, zeroN[]]],
+          HOL`Bool`NOTINTRO[HOL`Bool`DISCH[prodEq0Tm, falseTh]]]]]]
   ];
 
 End[];
