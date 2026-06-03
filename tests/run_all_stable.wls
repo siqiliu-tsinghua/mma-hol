@@ -66,6 +66,10 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "stdlib", "Int.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Rat.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Cut.wl"}]];
+  (* Field.wl: FRONTIER file — cold runners load it; build_snapshot.wls
+     does not (keeps the dev.wls loop cheap). Add to build_snapshot at
+     graduation. *)
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Field.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
 

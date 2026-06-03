@@ -143,3 +143,28 @@ HOLTest`runTests["stdlib/Real: realLtDefThm — ⊢ realLt = (λx y. ¬ (realLe 
 HOLTest`runTests["stdlib/Real: realLtNotLeThm — ⊢ ∀x y. realLt x y = ¬ (realLe y x)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLtNotLeThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLtNotLeThm], "is a theorem"]];
+
+(* ===== Field.wl Stage A: &ℝ embedding ===== *)
+
+HOLTest`runTests["stdlib/Real: realOfRatDefThm — ⊢ &ℝ = (λq. ABS_real (λp. ratLt p q))",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatDefThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatDefThm], "is a theorem"];
+  HOLTest`assertTrue[
+    concl[HOL`Stdlib`Real`realOfRatDefThm][[1, 2]] === realOfRatConst[],
+    "LHS is the &ℝ constant"]];
+
+HOLTest`runTests["stdlib/Real: repRealOfRatThm — ⊢ REP_real (&ℝ q) = (λp. ratLt p q)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`repRealOfRatThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`repRealOfRatThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realOfRatMemThm — ⊢ ∀q p. REP_real (&ℝ q) p = ratLt p q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatMemThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatMemThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realOfRatInjThm — ⊢ ∀a b. &ℝ a = &ℝ b ⇒ a = b",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatInjThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatInjThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realOfRatLeThm — ⊢ ∀a b. realLe (&ℝ a) (&ℝ b) = ratLe a b",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatLeThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatLeThm], "is a theorem"]];
