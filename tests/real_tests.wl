@@ -213,3 +213,96 @@ HOLTest`runTests["stdlib/Real: ratAddRightCancelThm — ⊢ ∀a b c. a+c = b+c 
 HOLTest`runTests["stdlib/Real: realAddAssocThm — ⊢ ∀x y z. realAdd (realAdd x y) z = realAdd x (realAdd y z)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAddAssocThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAddAssocThm], "is a theorem"]];
+
+(* ===== Field.wl Stage C: ℚ negation algebra (foundation for realNeg) ===== *)
+
+HOLTest`runTests["stdlib/Real: ratNegNegThm — ⊢ ∀q. ratNeg (ratNeg q) = q",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratNegNegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratNegNegThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratAddLeftCancelThm — ⊢ ∀a x y. a+x = a+y ⇒ x = y",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratAddLeftCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratAddLeftCancelThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratNegAddThm — ⊢ ∀a b. ratNeg (ratAdd a b) = ratAdd (ratNeg a) (ratNeg b)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratNegAddThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratNegAddThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratSubLtSelfThm — ⊢ ∀v r. 0<r ⇒ (v−r) < v",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratSubLtSelfThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratSubLtSelfThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratLtSubPosThm — ⊢ ∀a b. a<b ⇒ 0 < (b−a)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratLtSubPosThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratLtSubPosThm], "is a theorem"]];
+
+(* ===== Field.wl Stage C: realNeg (Rudin cut negation) ===== *)
+
+HOLTest`runTests["stdlib/Real: negCutIsCutThm — ⊢ ∀x. IS_CUT (negation set of REP x)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`negCutIsCutThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`negCutIsCutThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realNegDefThm — ⊢ realNeg = (λx. ABS_real (…))",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNegDefThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNegDefThm], "is a theorem"];
+  HOLTest`assertTrue[
+    concl[HOL`Stdlib`Real`realNegDefThm][[1, 2]] === realNegConst[],
+    "LHS is the realNeg constant"]];
+
+HOLTest`runTests["stdlib/Real: repRealNegThm — ⊢ ∀x. REP_real (realNeg x) = (λp. …)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`repRealNegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`repRealNegThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realNegMemThm — ⊢ ∀x p. REP_real (realNeg x) p = (∃r. …)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNegMemThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNegMemThm], "is a theorem"]];
+
+(* ===== Field.wl Stage C: ℚ-Archimedean foundation (int side) ===== *)
+
+HOLTest`runTests["stdlib/Real: intLtLeTransThm — ⊢ ∀a b c. intLt a b ⇒ intLe b c ⇒ intLt a c",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`intLtLeTransThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`intLtLeTransThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: intLeLtTransThm — ⊢ ∀a b c. intLe a b ⇒ intLt b c ⇒ intLt a c",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`intLeLtTransThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`intLeLtTransThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: intArchThm — ⊢ ∀z. ∃n. intLt z (&ℤ n)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`intArchThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`intArchThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratArchThm — ⊢ ∀q. ∃n. ratLt q (&ℚ (&ℤ n))",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratArchThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratArchThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratMulRightCancelThm — ⊢ ∀w a b. w≠0 ⇒ a·w=b·w ⇒ a=b",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratMulRightCancelThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratMulRightCancelThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratLtMulPosThm — ⊢ ∀w a b. 0<w ⇒ a<b ⇒ a·w < b·w",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratLtMulPosThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratLtMulPosThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratNatMulGtThm — ⊢ ∀w r. 0<w ⇒ ∃n. r < (&ℚ(&ℤ n))·w",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratNatMulGtThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratNatMulGtThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: ratNatSucMulThm — ⊢ ∀w k. (&ℚ(&ℤ(SUC k)))·w = (&ℚ(&ℤ k))·w + w",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratNatSucMulThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratNatSucMulThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: cutStraddleThm — Rudin straddle (∃ boundary M)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`cutStraddleThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`cutStraddleThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realAddNegLeThm — ⊢ ∀x. realLe (realAdd x (realNeg x)) (&ℝ 0)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAddNegLeThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAddNegLeThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realAddNegGeThm — ⊢ ∀x. realLe (&ℝ 0) (realAdd x (realNeg x))",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAddNegGeThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAddNegGeThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realAddNegThm — ⊢ ∀x. realAdd x (realNeg x) = &ℝ (&ℚ (&ℤ 0))",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAddNegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAddNegThm], "is a theorem"]];
