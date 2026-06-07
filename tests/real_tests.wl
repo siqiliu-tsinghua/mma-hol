@@ -306,3 +306,21 @@ HOLTest`runTests["stdlib/Real: realAddNegGeThm — ⊢ ∀x. realLe (&ℝ 0) (re
 HOLTest`runTests["stdlib/Real: realAddNegThm — ⊢ ∀x. realAdd x (realNeg x) = &ℝ (&ℚ (&ℤ 0))",
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAddNegThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAddNegThm], "is a theorem"]];
+
+(* === Stage D Layer 1: non-negative multiplication core === *)
+
+HOLTest`runTests["stdlib/Real: nnMulCutIsCutThm — ⊢ ∀x y. 0≤x ⇒ 0≤y ⇒ IS_CUT (nnMulBody x y)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`nnMulCutIsCutThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`nnMulCutIsCutThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: repRealNnMulThm — ⊢ ∀x y. 0≤x ⇒ 0≤y ⇒ REP_real (realNnMul x y) = nnMulBody x y",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`repRealNnMulThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`repRealNnMulThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realNnMulMemThm — ⊢ ∀x y. 0≤x ⇒ 0≤y ⇒ ∀r. REP_real (realNnMul x y) r = …",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNnMulMemThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNnMulMemThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realNnMulCommThm — ⊢ ∀x y. 0≤x ⇒ 0≤y ⇒ realNnMul x y = realNnMul y x",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNnMulCommThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNnMulCommThm], "is a theorem"]];

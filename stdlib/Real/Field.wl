@@ -647,8 +647,12 @@ negCutBodyTm[xT_] :=
   ];
 
 (* the ∃r-form (= negCutBody applied to pT, after β) *)
+(* hygiene: pT is rat-typed and could carry a free "r", so this internal
+   binder uses a distinctive name "rNE" (not "r") — a caller's pT can't be
+   captured.  Only appears in proof scaffolding (never a public statement);
+   matching is by aconv, so the name is free to differ. *)
 negExTerm[xT_, pT_] :=
-  Module[{rV}, rV = mkVar["r", ratTy];
+  Module[{rV}, rV = mkVar["rNE", ratTy];
     existsTm[rV, conjTm[ratLtTm[zeroQ[], rV],
       notTm[repApp[xT, ratNegTm[ratAddTm[pT, rV]]]]]]];
 
