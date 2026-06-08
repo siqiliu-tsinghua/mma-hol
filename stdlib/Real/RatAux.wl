@@ -38,6 +38,10 @@ ratAddLeftCancelThm::usage = "ratAddLeftCancelThm — ⊢ ∀a x y. ratAdd a x =
 ratNegAddThm::usage = "ratNegAddThm — ⊢ ∀a b. ratNeg (ratAdd a b) = ratAdd (ratNeg a) (ratNeg b).";
 ratSubLtSelfThm::usage = "ratSubLtSelfThm — ⊢ ∀v r. ratLt (&ℚ (&ℤ 0)) r ⇒ ratLt (ratAdd v (ratNeg r)) v. (0<r ⇒ v−r < v.)";
 ratLtSubPosThm::usage = "ratLtSubPosThm — ⊢ ∀a b. ratLt a b ⇒ ratLt (&ℚ (&ℤ 0)) (ratAdd b (ratNeg a)). (a<b ⇒ 0 < b−a.)";
+ratLeLtTransThm::usage = "ratLeLtTransThm — ⊢ ∀a b c. ratLe a b ⇒ ratLt b c ⇒ ratLt a c.";
+ratMulPosThm::usage = "ratMulPosThm — ⊢ ∀a b. ratLt (&ℚ (&ℤ 0)) a ⇒ ratLt (&ℚ (&ℤ 0)) b ⇒ ratLt (&ℚ (&ℤ 0)) (ratMul a b). Product of two positives is positive.";
+ratInvPosThm::usage = "ratInvPosThm — ⊢ ∀q. ratLt (&ℚ (&ℤ 0)) q ⇒ ratLt (&ℚ (&ℤ 0)) (ratInv q). The inverse of a positive is positive.";
+ratLtImpLeThm::usage = "ratLtImpLeThm — ⊢ ∀a b. ratLt a b ⇒ ratLe a b.";
 
 Begin["`Private`"];
 
@@ -618,6 +622,84 @@ ratNegPosThm =
              HOL`Bool`SPEC[ratNegTm[aV], HOL`Stdlib`Rat`ratAddZeroThm]];   (* 0+(−a) = −a *)
     HOL`Bool`GEN[aV, HOL`Bool`DISCH[concl[ha],
       EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLtC[], lhsE], rhsE], mono]]]
+  ];
+
+(* ============================================================ *)
+(* ℚ order/inverse extras (for Real mul Layer 1 — realNnMulOne). *)
+(* ============================================================ *)
+
+(* ⊢ ∀a b c. ratLe a b ⇒ ratLt b c ⇒ ratLt a c *)
+ratLeLtTransThm =
+  Module[{aV, bV, cV, hab, hbc, cases, ltCase, eqCase, result},
+    aV = mkVar["a", ratTy]; bV = mkVar["b", ratTy]; cV = mkVar["c", ratTy];
+    hab = ASSUME[ratLeTm[aV, bV]]; hbc = ASSUME[ratLtTm[bV, cV]];
+    cases = HOL`Bool`MP[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, ratLeCasesThm]], hab];   (* a<b ∨ a=b *)
+    ltCase = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[cV, HOL`Bool`SPEC[bV,
+               HOL`Bool`SPEC[aV, ratLtTransThm]]], ASSUME[ratLtTm[aV, bV]]], hbc];   (* a<c *)
+    eqCase = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLtC[],
+               HOL`Equal`SYM[ASSUME[mkEq[aV, bV]]]], REFL[cV]], hbc];   (* a<c from a=b *)
+    result = HOL`Bool`DISJCASES[cases, ltCase, eqCase];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Bool`DISCH[concl[hab], HOL`Bool`DISCH[concl[hbc], result]]]]]
+  ];
+
+(* ⊢ ∀a b. 0<a ⇒ 0<b ⇒ 0 < a·b *)
+ratMulPosThm =
+  Module[{aV, bV, h0a, h0b, step, zeroMulEq, result},
+    aV = mkVar["a", ratTy]; bV = mkVar["b", ratTy];
+    h0a = ASSUME[ratLtTm[zeroQ[], aV]]; h0b = ASSUME[ratLtTm[zeroQ[], bV]];
+    step = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[aV, HOL`Bool`SPEC[zeroQ[],
+             HOL`Bool`SPEC[bV, ratLtMulPosThm]]], h0b], h0a];   (* ratLt (0·b)(a·b) *)
+    zeroMulEq = TRANS[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[zeroQ[], HOL`Stdlib`Rat`ratMulCommThm]],
+                  HOL`Bool`SPEC[bV, HOL`Stdlib`Rat`ratMulZeroThm]];   (* 0·b = b·0 = 0 *)
+    result = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLtC[], zeroMulEq],
+               REFL[ratMulTm[aV, bV]]], step];   (* 0 < a·b *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[concl[h0a], HOL`Bool`DISCH[concl[h0b], result]]]]
+  ];
+
+(* ⊢ ∀q. 0<q ⇒ 0 < ratInv q *)
+ratInvPosThm =
+  Module[{qV, h0q, invQ, qNe0, qInvEq1, le0q, notInvLe0, result},
+    qV = mkVar["q", ratTy]; h0q = ASSUME[ratLtTm[zeroQ[], qV]]; invQ = ratInvTm[qV];
+    qNe0 = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[qV, zeroQ[]],
+             HOL`Bool`MP[HOL`Bool`NOTELIM[HOL`Bool`SPEC[zeroQ[], ratLtIrreflThm]],
+               EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLtC[], REFL[zeroQ[]]],
+                 ASSUME[mkEq[qV, zeroQ[]]]], h0q]]]];   (* ¬(q=0) *)
+    qInvEq1 = HOL`Bool`MP[HOL`Bool`SPEC[qV, HOL`Stdlib`Rat`ratMulInvThm], qNe0];   (* q·q⁻¹ = 1 *)
+    le0q = HOL`Bool`DISJCASES[HOL`Bool`SPEC[qV, HOL`Bool`SPEC[zeroQ[], ratLeTotalThm]],
+             ASSUME[ratLeTm[zeroQ[], qV]],
+             HOL`Bool`CONTR[ratLeTm[zeroQ[], qV],
+               HOL`Bool`MP[HOL`Bool`NOTELIM[EQMP[HOL`Bool`SPEC[qV, HOL`Bool`SPEC[zeroQ[],
+                 HOL`Stdlib`Rat`ratLtNotLeThm]], h0q]], ASSUME[ratLeTm[qV, zeroQ[]]]]]];   (* 0≤q *)
+    notInvLe0 = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[ratLeTm[invQ, zeroQ[]],
+      Module[{hInvLe0, mono, rw, oneNotLe0},
+        hInvLe0 = ASSUME[ratLeTm[invQ, zeroQ[]]];
+        mono = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[zeroQ[], HOL`Bool`SPEC[invQ,
+                 HOL`Bool`SPEC[qV, HOL`Stdlib`Rat`ratLeMulNonnegThm]]], le0q], hInvLe0];
+        (* ratLe (q·q⁻¹)(q·0) *)
+        rw = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLeC[], qInvEq1],
+               HOL`Bool`SPEC[qV, HOL`Stdlib`Rat`ratMulZeroThm]], mono];   (* ratLe 1 0 *)
+        oneNotLe0 = HOL`Bool`NOTELIM[EQMP[HOL`Bool`SPEC[oneQ[], HOL`Bool`SPEC[zeroQ[],
+                      HOL`Stdlib`Rat`ratLtNotLeThm]], ratZeroLtOneThm]];   (* (1≤0) ⇒ F *)
+        HOL`Bool`MP[oneNotLe0, rw]
+      ]]];   (* ¬(q⁻¹≤0) *)
+    result = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[invQ, HOL`Bool`SPEC[zeroQ[],
+               HOL`Stdlib`Rat`ratLtNotLeThm]]], notInvLe0];   (* 0 < q⁻¹ *)
+    HOL`Bool`GEN[qV, HOL`Bool`DISCH[concl[h0q], result]]
+  ];
+
+(* ⊢ ∀a b. a<b ⇒ a≤b *)
+ratLtImpLeThm =
+  Module[{aV, bV, hab, result},
+    aV = mkVar["a", ratTy]; bV = mkVar["b", ratTy];
+    hab = ASSUME[ratLtTm[aV, bV]];
+    result = HOL`Bool`DISJCASES[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, ratLeTotalThm]],
+               ASSUME[ratLeTm[aV, bV]],
+               HOL`Bool`CONTR[ratLeTm[aV, bV],
+                 HOL`Bool`MP[HOL`Bool`NOTELIM[EQMP[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV,
+                   HOL`Stdlib`Rat`ratLtNotLeThm]], hab]], ASSUME[ratLeTm[bV, aV]]]]];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[concl[hab], result]]]
   ];
 
 End[];
