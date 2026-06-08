@@ -39,6 +39,7 @@ ratNegAddThm::usage = "ratNegAddThm — ⊢ ∀a b. ratNeg (ratAdd a b) = ratAdd
 ratSubLtSelfThm::usage = "ratSubLtSelfThm — ⊢ ∀v r. ratLt (&ℚ (&ℤ 0)) r ⇒ ratLt (ratAdd v (ratNeg r)) v. (0<r ⇒ v−r < v.)";
 ratLtSubPosThm::usage = "ratLtSubPosThm — ⊢ ∀a b. ratLt a b ⇒ ratLt (&ℚ (&ℤ 0)) (ratAdd b (ratNeg a)). (a<b ⇒ 0 < b−a.)";
 ratLeLtTransThm::usage = "ratLeLtTransThm — ⊢ ∀a b c. ratLe a b ⇒ ratLt b c ⇒ ratLt a c.";
+ratLtLeTransThm::usage = "ratLtLeTransThm — ⊢ ∀a b c. ratLt a b ⇒ ratLe b c ⇒ ratLt a c.";
 ratMulPosThm::usage = "ratMulPosThm — ⊢ ∀a b. ratLt (&ℚ (&ℤ 0)) a ⇒ ratLt (&ℚ (&ℤ 0)) b ⇒ ratLt (&ℚ (&ℤ 0)) (ratMul a b). Product of two positives is positive.";
 ratInvPosThm::usage = "ratInvPosThm — ⊢ ∀q. ratLt (&ℚ (&ℤ 0)) q ⇒ ratLt (&ℚ (&ℤ 0)) (ratInv q). The inverse of a positive is positive.";
 ratLtImpLeThm::usage = "ratLtImpLeThm — ⊢ ∀a b. ratLt a b ⇒ ratLe a b.";
@@ -638,6 +639,21 @@ ratLeLtTransThm =
                HOL`Bool`SPEC[aV, ratLtTransThm]]], ASSUME[ratLtTm[aV, bV]]], hbc];   (* a<c *)
     eqCase = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLtC[],
                HOL`Equal`SYM[ASSUME[mkEq[aV, bV]]]], REFL[cV]], hbc];   (* a<c from a=b *)
+    result = HOL`Bool`DISJCASES[cases, ltCase, eqCase];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Bool`DISCH[concl[hab], HOL`Bool`DISCH[concl[hbc], result]]]]]
+  ];
+
+(* ⊢ ∀a b c. ratLt a b ⇒ ratLe b c ⇒ ratLt a c *)
+ratLtLeTransThm =
+  Module[{aV, bV, cV, hab, hbc, cases, ltCase, eqCase, result},
+    aV = mkVar["a", ratTy]; bV = mkVar["b", ratTy]; cV = mkVar["c", ratTy];
+    hab = ASSUME[ratLtTm[aV, bV]]; hbc = ASSUME[ratLeTm[bV, cV]];
+    cases = HOL`Bool`MP[HOL`Bool`SPEC[cV, HOL`Bool`SPEC[bV, ratLeCasesThm]], hbc];   (* b<c ∨ b=c *)
+    ltCase = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[cV, HOL`Bool`SPEC[bV,
+               HOL`Bool`SPEC[aV, ratLtTransThm]]], hab], ASSUME[ratLtTm[bV, cV]]];   (* a<c *)
+    eqCase = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLtC[], REFL[aV]],
+               ASSUME[mkEq[bV, cV]]], hab];   (* a<c from b=c *)
     result = HOL`Bool`DISJCASES[cases, ltCase, eqCase];
     HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
       HOL`Bool`DISCH[concl[hab], HOL`Bool`DISCH[concl[hbc], result]]]]]
