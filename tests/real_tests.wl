@@ -337,6 +337,10 @@ HOLTest`runTests["stdlib/Real: realNnMulOneThm — ⊢ ∀x. 0≤x ⇒ realNnMul
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNnMulOneThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNnMulOneThm], "is a theorem"]];
 
+HOLTest`runTests["stdlib/Real: realNnMulAssocNonnegThm — ⊢ ∀x y z. 0≤x⇒0≤y⇒0≤z ⇒ (x·y)·z = x·(y·z)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNnMulAssocNonnegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNnMulAssocNonnegThm], "is a theorem"]];
+
 (* RatAux ℚ order/inverse extras (added for realNnMulOne) *)
 HOLTest`runTests["stdlib/Real: RatAux extras — ratLeLtTrans / ratMulPos / ratInvPos / ratLtImpLe",
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratLeLtTransThm], "ratLeLtTrans"];
