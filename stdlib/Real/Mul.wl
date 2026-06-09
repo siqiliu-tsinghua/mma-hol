@@ -75,6 +75,30 @@ realNnMulOneThm::usage = "realNnMulOneThm — ⊢ ∀x. realLe (&ℝ 0) x ⇒ re
 realNnMulAssocNonnegThm::usage = "realNnMulAssocNonnegThm — ⊢ ∀x y z. realLe (&ℝ 0) x ⇒ realLe (&ℝ 0) y ⇒ realLe (&ℝ 0) z ⇒ realNnMul (realNnMul x y) z = realNnMul x (realNnMul y z).";
 realNnMulDistribNonnegThm::usage = "realNnMulDistribNonnegThm — ⊢ ∀x y z. realLe (&ℝ 0) x ⇒ realLe (&ℝ 0) y ⇒ realLe (&ℝ 0) z ⇒ realNnMul x (realAdd y z) = realAdd (realNnMul x y) (realNnMul x z). Non-negative left distributivity (last Layer-1 piece).";
 
+(* ---- Layer 2: signed realMul (COND binary 0≤x/0≤y split) ---- *)
+realMulConst::usage = "realMulConst[] — realMul : real → real → real, the signed product. COND binary on 0≤x / 0≤y: nonneg×nonneg → realNnMul; one factor negative → realNeg of the realNnMul of the absolute values; both negative → realNnMul of the negations.";
+realMulDefThm::usage = "realMulDefThm — ⊢ realMul = (λx y. COND (realLe 0 x) (COND (realLe 0 y) (realNnMul x y) (realNeg (realNnMul x (realNeg y)))) (COND (realLe 0 y) (realNeg (realNnMul (realNeg x) y)) (realNnMul (realNeg x) (realNeg y)))).";
+realMulCasePPThm::usage = "realMulCasePPThm — ⊢ ∀x y. realLe 0 x ⇒ realLe 0 y ⇒ realMul x y = realNnMul x y.";
+realMulCasePNThm::usage = "realMulCasePNThm — ⊢ ∀x y. realLe 0 x ⇒ ¬(realLe 0 y) ⇒ realMul x y = realNeg (realNnMul x (realNeg y)).";
+realMulCaseNPThm::usage = "realMulCaseNPThm — ⊢ ∀x y. ¬(realLe 0 x) ⇒ realLe 0 y ⇒ realMul x y = realNeg (realNnMul (realNeg x) y).";
+realMulCaseNNThm::usage = "realMulCaseNNThm — ⊢ ∀x y. ¬(realLe 0 x) ⇒ ¬(realLe 0 y) ⇒ realMul x y = realNnMul (realNeg x) (realNeg y).";
+realNegZeroThm::usage = "realNegZeroThm — ⊢ realNeg (&ℝ 0) = &ℝ 0.";
+realNegNegThm::usage = "realNegNegThm — ⊢ ∀x. realNeg (realNeg x) = x.";
+realLeNegThm::usage = "realLeNegThm — ⊢ ∀x y. realLe x y ⇒ realLe (realNeg y) (realNeg x). Negation reverses the order.";
+realNegAddThm::usage = "realNegAddThm — ⊢ ∀x y. realNeg (realAdd x y) = realAdd (realNeg x) (realNeg y).";
+realMulCommThm::usage = "realMulCommThm — ⊢ ∀x y. realMul x y = realMul y x.";
+realMulZeroThm::usage = "realMulZeroThm — ⊢ ∀x. realMul x (&ℝ 0) = &ℝ 0.";
+realMulOneThm::usage = "realMulOneThm — ⊢ ∀x. realMul x (&ℝ (&ℚ (&ℤ (SUC 0)))) = x.";
+realMulNegRightThm::usage = "realMulNegRightThm — ⊢ ∀x y. realMul x (realNeg y) = realNeg (realMul x y).";
+realMulNegLeftThm::usage = "realMulNegLeftThm — ⊢ ∀x y. realMul (realNeg x) y = realNeg (realMul x y).";
+realMulNonnegThm::usage = "realMulNonnegThm — ⊢ ∀x y. realLe 0 x ⇒ realLe 0 y ⇒ realLe 0 (realMul x y).";
+realMulAssocThm::usage = "realMulAssocThm — ⊢ ∀x y z. realMul (realMul x y) z = realMul x (realMul y z).";
+realMulDistribThm::usage = "realMulDistribThm — ⊢ ∀x y z. realMul x (realAdd y z) = realAdd (realMul x y) (realMul x z). Signed left distributivity (Stage D capstone, the no-reference step).";
+realLeMulNonnegThm::usage = "realLeMulNonnegThm — ⊢ ∀x y. realLe 0 x ⇒ realLe 0 y ⇒ realLe 0 (realMul x y).";
+realLtMulPosThm::usage = "realLtMulPosThm — ⊢ ∀x y. realLt 0 x ⇒ realLt 0 y ⇒ realLt 0 (realMul x y).";
+notLeWitnessThm::usage = "notLeWitnessThm — ⊢ ∀a b. ¬(realLe a b) ⇒ ∃q. REP_real a q ∧ ¬(REP_real b q). Failure of inclusion yields a separating point.";
+realPosHasPosMemThm::usage = "realPosHasPosMemThm — ⊢ ∀x. realLt (&ℝ 0) x ⇒ ∃p. REP_real x p ∧ ratLt (&ℚ (&ℤ 0)) p. A positive real's cut has a positive member.";
+
 Begin["`Private`"];
 
 (* ============================================================ *)
@@ -1244,6 +1268,678 @@ realNnMulDistribNonnegThm =
     HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[zV,
       HOL`Bool`DISCH[nonnegTm[xV], HOL`Bool`DISCH[nonnegTm[yV], HOL`Bool`DISCH[nonnegTm[zV],
         realEqFromRepEq[lhs, rhs, perR]]]]]]]
+  ];
+
+(* ============================================================ *)
+(* Layer 2 — signed multiplication  realMul.                    *)
+(* Binary COND split on 0≤x / 0≤y (zero folds into nonneg);     *)
+(* all sign cases reduce to the Layer-1 nonneg laws via the     *)
+(* realNeg sign homomorphism.  Blueprint: ../archive/tautology  *)
+(* Cut/Mul.lean + MulComm.lean (ternary→binary; signed distrib  *)
+(* is the one no-reference step).                                *)
+(* ============================================================ *)
+
+(* ---- real additive-group micro-helpers (abelian; concise chains) ---- *)
+rNeg[a_] := realNegTm[a];
+rAdd[a_, b_] := realAddTm[a, b];
+rZ[] := zeroRealTm[];
+rAddZeroR[a_] := HOL`Bool`SPEC[a, realAddZeroThm];                       (* a+0 = a *)
+rComm[a_, b_] := HOL`Bool`SPEC[b, HOL`Bool`SPEC[a, realAddCommThm]];     (* a+b = b+a *)
+rAddZeroL[a_] := TRANS[rComm[rZ[], a], rAddZeroR[a]];                    (* 0+a = a *)
+rAddNegR[a_] := HOL`Bool`SPEC[a, realAddNegThm];                         (* a+(−a) = 0 *)
+rAddNegL[a_] := TRANS[rComm[rNeg[a], a], rAddNegR[a]];                   (* (−a)+a = 0 *)
+rAssoc[a_, b_, c_] := HOL`Bool`SPEC[c, HOL`Bool`SPEC[b, HOL`Bool`SPEC[a, realAddAssocThm]]];   (* (a+b)+c = a+(b+c) *)
+rAddCongL[eq_, c_] := HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], eq], REFL[c]];  (* a=b → a+c = b+c *)
+rAddCongR[c_, eq_] := HOL`Equal`APTERM[mkComb[realAddConst[], c], eq];   (* a=b → c+a = c+b *)
+rNegCong[eq_] := HOL`Equal`APTERM[realNegConst[], eq];                   (* a=b → −a = −b *)
+
+(* ⊢ ∀a b c. realAdd a b = realAdd a c ⇒ b = c  (left cancellation). *)
+realAddCancelLeftThm =
+  Module[{aV, bV, cV, h, naTm, apL, chain},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; cV = mkVar["c", realTy];
+    h = ASSUME[mkEq[rAdd[aV, bV], rAdd[aV, cV]]];
+    naTm = rNeg[aV];
+    apL = HOL`Equal`APTERM[mkComb[realAddConst[], naTm], h];   (* na+(a+b) = na+(a+c) *)
+    chain[tT_] := TRANS[HOL`Equal`SYM[rAssoc[naTm, aV, tT]],
+                    TRANS[rAddCongL[rAddNegL[aV], tT], rAddZeroL[tT]]];   (* na+(a+t) = t *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Bool`DISCH[concl[h], TRANS[HOL`Equal`SYM[chain[bV]], TRANS[apL, chain[cV]]]]]]]
+  ];
+
+(* ⊢ realNeg (&ℝ 0) = &ℝ 0. *)
+realNegZeroThm =
+  Module[{nz},
+    nz = rNeg[rZ[]];
+    TRANS[HOL`Equal`SYM[rAddZeroR[nz]], TRANS[rComm[nz, rZ[]], rAddNegR[rZ[]]]]
+  ];
+
+(* ⊢ ∀x. realNeg (realNeg x) = x  (group: inverse of inverse). *)
+realNegNegThm =
+  Module[{xV, nx, e1, e2, eqAdd, cancel},
+    xV = mkVar["x", realTy]; nx = rNeg[xV];
+    e1 = rAddNegL[xV];                 (* (−x)+x = 0 *)
+    e2 = rAddNegR[nx];                 (* (−x)+(−−x) = 0 *)
+    eqAdd = TRANS[e1, HOL`Equal`SYM[e2]];   (* (−x)+x = (−x)+(−−x) *)
+    cancel = HOL`Bool`MP[HOL`Bool`SPEC[rNeg[nx], HOL`Bool`SPEC[xV, HOL`Bool`SPEC[nx, realAddCancelLeftThm]]], eqAdd];
+    HOL`Bool`GEN[xV, HOL`Equal`SYM[cancel]]   (* x = −−x  ⟹  −−x = x *)
+  ];
+
+(* ⊢ ∀x y. realLe x y ⇒ realLe (realNeg y) (realNeg x).
+   Pure cut: if t ∉ y then t ∉ x (x⊆y), so the same witness r serves −x. *)
+realLeNegThm =
+  Module[{xV, yV, h, leUnf, qV, rV, memNegY, memNegX, hMem, redMem, bodyX,
+          innerBodyY, hConj, posR, notY, tArg, notX, condX, exX, memNegXq, chR,
+          impl, allQ, leNeg},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    h = ASSUME[realLeTm[xV, yV]];
+    leUnf = EQMP[unfoldRealLe[xV, yV], h];   (* ∀p. REP x p ⇒ REP y p *)
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    memNegY = HOL`Bool`SPEC[qV, HOL`Bool`SPEC[yV, realNegMemThm]];
+    memNegX = HOL`Bool`SPEC[qV, HOL`Bool`SPEC[xV, realNegMemThm]];
+    hMem = ASSUME[repApp[rNeg[yV], qV]];
+    redMem = EQMP[memNegY, hMem];            (* ∃r. 0<r ∧ ¬REP y(−(q+r)) *)
+    bodyX = concl[memNegX][[2]];
+    innerBodyY = concl[BETACONV[mkComb[concl[memNegY][[2, 2]], rV]]][[2]];
+    hConj = ASSUME[innerBodyY];
+    posR = HOL`Bool`CONJUNCT1[hConj]; notY = HOL`Bool`CONJUNCT2[hConj];
+    tArg = ratNegTm[ratAddTm[qV, rV]];
+    notX = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[repApp[xV, tArg],
+             HOL`Bool`MP[HOL`Bool`NOTELIM[notY],
+               HOL`Bool`MP[HOL`Bool`SPEC[tArg, leUnf], ASSUME[repApp[xV, tArg]]]]]];
+    condX = HOL`Bool`CONJ[posR, notX];
+    exX = HOL`Bool`EXISTS[bodyX, rV, condX];
+    memNegXq = EQMP[HOL`Equal`SYM[memNegX], exX];
+    chR = HOL`Bool`CHOOSE[rV, redMem, memNegXq];
+    impl = HOL`Bool`DISCH[concl[hMem], chR];
+    allQ = HOL`Bool`GEN[qV, impl];
+    leNeg = EQMP[HOL`Equal`SYM[unfoldRealLe[rNeg[yV], rNeg[xV]]], allQ];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`DISCH[concl[h], leNeg]]]
+  ];
+
+(* ⊢ ∀x. realLe x 0 ⇒ realLe 0 (realNeg x).  (from realLeNeg + realNegZero) *)
+realNegNonnegThm =
+  Module[{xV, h, ln},
+    xV = mkVar["x", realTy];
+    h = ASSUME[realLeTm[xV, rZ[]]];
+    ln = HOL`Bool`MP[HOL`Bool`SPEC[rZ[], HOL`Bool`SPEC[xV, realLeNegThm]], h];   (* realLe(−0)(−x) *)
+    HOL`Bool`GEN[xV, HOL`Bool`DISCH[concl[h],
+      EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], realNegZeroThm], REFL[rNeg[xV]]], ln]]]
+  ];
+
+(* ⊢ ∀x. realLe 0 x ⇒ realLe (realNeg x) 0.  (from realLeNeg + realNegZero) *)
+realNegNonposThm =
+  Module[{xV, h, ln},
+    xV = mkVar["x", realTy];
+    h = ASSUME[realLeTm[rZ[], xV]];
+    ln = HOL`Bool`MP[HOL`Bool`SPEC[xV, HOL`Bool`SPEC[rZ[], realLeNegThm]], h];   (* realLe(−x)(−0) *)
+    HOL`Bool`GEN[xV, HOL`Bool`DISCH[concl[h],
+      EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], REFL[rNeg[xV]]], realNegZeroThm], ln]]]
+  ];
+
+(* ⊢ ∀x. ¬(realLe 0 x) ⇒ realLe x 0.  (totality) *)
+notNonnegToLeZeroThm =
+  Module[{xV, hN, total, xLe0},
+    xV = mkVar["x", realTy];
+    hN = ASSUME[notTm[realLeTm[rZ[], xV]]];
+    total = HOL`Bool`SPEC[rZ[], HOL`Bool`SPEC[xV, realLeTotalThm]];   (* realLe x 0 ∨ realLe 0 x *)
+    xLe0 = HOL`Bool`DISJCASES[total, ASSUME[realLeTm[xV, rZ[]]],
+             HOL`Bool`CONTR[realLeTm[xV, rZ[]], HOL`Bool`MP[HOL`Bool`NOTELIM[hN], ASSUME[realLeTm[rZ[], xV]]]]];
+    HOL`Bool`GEN[xV, HOL`Bool`DISCH[concl[hN], xLe0]]
+  ];
+
+(* ⊢ ∀x. ¬(realLe 0 x) ⇒ realLe 0 (realNeg x). *)
+notNonnegNegThm =
+  Module[{xV, hN},
+    xV = mkVar["x", realTy];
+    hN = ASSUME[notTm[realLeTm[rZ[], xV]]];
+    HOL`Bool`GEN[xV, HOL`Bool`DISCH[concl[hN],
+      HOL`Bool`MP[HOL`Bool`SPEC[xV, realNegNonnegThm],
+        HOL`Bool`MP[HOL`Bool`SPEC[xV, notNonnegToLeZeroThm], hN]]]]
+  ];
+
+(* ⊢ ∀x y. realNeg (realAdd x y) = realAdd (realNeg x) (realNeg y). *)
+realNegAddThm =
+  Module[{xV, yV, nx, ny, inner, sumZero, e2, eqAdd, cancel},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy]; nx = rNeg[xV]; ny = rNeg[yV];
+    (* inner : y+(−y) within  b+((−a)+(−b)) reduction  — compute (x+y)+((−x)+(−y)) = 0 *)
+    inner = TRANS[rAddCongR[yV, rComm[nx, ny]],            (* y+((−x)+(−y)) = y+((−y)+(−x)) *)
+              TRANS[HOL`Equal`SYM[rAssoc[yV, ny, nx]],     (*   = (y+(−y))+(−x) *)
+                TRANS[rAddCongL[rAddNegR[yV], nx], rAddZeroL[nx]]]];   (*   = 0+(−x) = (−x) *)
+    sumZero = TRANS[rAssoc[xV, yV, rAdd[nx, ny]],          (* (x+y)+((−x)+(−y)) = x+(y+((−x)+(−y))) *)
+                TRANS[rAddCongR[xV, inner], rAddNegR[xV]]];   (*   = x+(−x) = 0 *)
+    e2 = rAddNegR[rAdd[xV, yV]];                           (* (x+y)+(−(x+y)) = 0 *)
+    eqAdd = TRANS[e2, HOL`Equal`SYM[sumZero]];             (* (x+y)+(−(x+y)) = (x+y)+((−x)+(−y)) *)
+    cancel = HOL`Bool`MP[HOL`Bool`SPEC[rAdd[nx, ny], HOL`Bool`SPEC[rNeg[rAdd[xV, yV]],
+               HOL`Bool`SPEC[rAdd[xV, yV], realAddCancelLeftThm]]], eqAdd];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, cancel]]
+  ];
+
+(* ---- realMul definition (nested COND, binary sign split) ---- *)
+realMulTyL2 = tyFun[realTy, tyFun[realTy, realTy]];
+condTm[cT_, aT_, bT_] := mkComb[mkComb[mkComb[HOL`Bool`condConst[realTy], cT], aT], bT];
+
+(* the four branch values *)
+brPP[xT_, yT_] := realNnMulTm[xT, yT];
+brPN[xT_, yT_] := rNeg[realNnMulTm[xT, rNeg[yT]]];
+brNP[xT_, yT_] := rNeg[realNnMulTm[rNeg[xT], yT]];
+brNN[xT_, yT_] := realNnMulTm[rNeg[xT], rNeg[yT]];
+innerPosTm[xT_, yT_] := condTm[nonnegTm[yT], brPP[xT, yT], brPN[xT, yT]];
+innerNegTm[xT_, yT_] := condTm[nonnegTm[yT], brNP[xT, yT], brNN[xT, yT]];
+realMulBodyTm[xT_, yT_] := condTm[nonnegTm[xT], innerPosTm[xT, yT], innerNegTm[xT, yT]];
+
+realMulDefThm =
+  Module[{xV, yV, body},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    body = mkAbs[xV, mkAbs[yV, realMulBodyTm[xV, yV]]];
+    newDefinition[mkEq[mkVar["realMul", realMulTyL2], body]]
+  ];
+
+realMulConst[] := mkConst["realMul", realMulTyL2];
+realMulTm[xT_, yT_] := mkComb[mkComb[realMulConst[], xT], yT];
+
+unfoldRealMul[xT_, yT_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[realMulDefThm, xT];
+    s1b = TRANS[s1, BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, yT];
+    TRANS[s2, BETACONV[concl[s2][[2]]]]
+  ];
+
+(* local EQF intro (HOL`Auto`PropTaut`eqfIntro is Private — unreachable here). *)
+falseTm[] := mkConst["F", boolTy];
+eqfIntroL[thNotP_] :=
+  Module[{p, pToF, fToP},
+    p = concl[thNotP][[2]];
+    pToF = HOL`Bool`MP[HOL`Bool`NOTELIM[thNotP], ASSUME[p]];
+    fToP = HOL`Bool`CONTR[p, ASSUME[falseTm[]]];
+    HOL`Kernel`DEDUCTANTISYM[fToP, pToF]];
+
+(* COND condition rewriters: condProof ⊢ c gives COND c a b = a; ¬c gives = b. *)
+condReduceT[condProof_, aT_, bT_] :=
+  TRANS[HOL`Equal`APTHM[HOL`Equal`APTHM[
+          HOL`Equal`APTERM[HOL`Bool`condConst[realTy], HOL`Bool`EQTINTRO[condProof]], aT], bT],
+        HOL`Bool`ISPEC[bT, HOL`Bool`ISPEC[aT, HOL`Bool`condTThm]]];
+condReduceF[notCondProof_, aT_, bT_] :=
+  TRANS[HOL`Equal`APTHM[HOL`Equal`APTHM[
+          HOL`Equal`APTERM[HOL`Bool`condConst[realTy], eqfIntroL[notCondProof]], aT], bT],
+        HOL`Bool`ISPEC[bT, HOL`Bool`ISPEC[aT, HOL`Bool`condFThm]]];
+
+(* the four case-reduction theorems *)
+realMulCasePPThm =
+  Module[{xV, yV, hPx, hPy, unfold, outer, inner},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    hPx = ASSUME[nonnegTm[xV]]; hPy = ASSUME[nonnegTm[yV]];
+    unfold = unfoldRealMul[xV, yV];
+    outer = condReduceT[hPx, innerPosTm[xV, yV], innerNegTm[xV, yV]];
+    inner = condReduceT[hPy, brPP[xV, yV], brPN[xV, yV]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`DISCH[nonnegTm[xV], HOL`Bool`DISCH[nonnegTm[yV],
+      TRANS[unfold, TRANS[outer, inner]]]]]]
+  ];
+realMulCasePNThm =
+  Module[{xV, yV, hPx, hNy, unfold, outer, inner},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    hPx = ASSUME[nonnegTm[xV]]; hNy = ASSUME[notTm[nonnegTm[yV]]];
+    unfold = unfoldRealMul[xV, yV];
+    outer = condReduceT[hPx, innerPosTm[xV, yV], innerNegTm[xV, yV]];
+    inner = condReduceF[hNy, brPP[xV, yV], brPN[xV, yV]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`DISCH[nonnegTm[xV], HOL`Bool`DISCH[notTm[nonnegTm[yV]],
+      TRANS[unfold, TRANS[outer, inner]]]]]]
+  ];
+realMulCaseNPThm =
+  Module[{xV, yV, hNx, hPy, unfold, outer, inner},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    hNx = ASSUME[notTm[nonnegTm[xV]]]; hPy = ASSUME[nonnegTm[yV]];
+    unfold = unfoldRealMul[xV, yV];
+    outer = condReduceF[hNx, innerPosTm[xV, yV], innerNegTm[xV, yV]];
+    inner = condReduceT[hPy, brNP[xV, yV], brNN[xV, yV]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`DISCH[notTm[nonnegTm[xV]], HOL`Bool`DISCH[nonnegTm[yV],
+      TRANS[unfold, TRANS[outer, inner]]]]]]
+  ];
+realMulCaseNNThm =
+  Module[{xV, yV, hNx, hNy, unfold, outer, inner},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    hNx = ASSUME[notTm[nonnegTm[xV]]]; hNy = ASSUME[notTm[nonnegTm[yV]]];
+    unfold = unfoldRealMul[xV, yV];
+    outer = condReduceF[hNx, innerPosTm[xV, yV], innerNegTm[xV, yV]];
+    inner = condReduceF[hNy, brNP[xV, yV], brNN[xV, yV]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`DISCH[notTm[nonnegTm[xV]], HOL`Bool`DISCH[notTm[nonnegTm[yV]],
+      TRANS[unfold, TRANS[outer, inner]]]]]]
+  ];
+
+(* binary sign-case combinator: posFn[hPos], negFn[hNeg] prove the same G. *)
+splitSign[tT_, posFn_, negFn_] :=
+  HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[nonnegTm[tT]],
+    posFn[ASSUME[nonnegTm[tT]]], negFn[ASSUME[notTm[nonnegTm[tT]]]]];
+
+(* per-factor: apply a case reduction at concrete terms (SPEC + MP twice). *)
+casePP[xT_, yT_, hPx_, hPy_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, realMulCasePPThm]], hPx], hPy];
+casePN[xT_, yT_, hPx_, hNy_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, realMulCasePNThm]], hPx], hNy];
+caseNP[xT_, yT_, hNx_, hPy_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, realMulCaseNPThm]], hNx], hPy];
+caseNN[xT_, yT_, hNx_, hNy_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, realMulCaseNNThm]], hNx], hNy];
+
+(* sign / nonneg-law shorthands *)
+posNeg[tT_, hNt_] := HOL`Bool`MP[HOL`Bool`SPEC[tT, notNonnegNegThm], hNt];        (* ¬0≤t ⊢ 0≤(−t) *)
+nnComm[aT_, bT_, hNa_, hNb_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[bT, HOL`Bool`SPEC[aT, realNnMulCommThm]], hNa], hNb];
+nnZeroR[aT_, hNa_] := HOL`Bool`MP[HOL`Bool`SPEC[aT, realNnMulZeroThm], hNa];       (* 0≤a ⊢ a·0 = 0 *)
+nnOneR[aT_, hNa_]  := HOL`Bool`MP[HOL`Bool`SPEC[aT, realNnMulOneThm], hNa];        (* 0≤a ⊢ a·1 = a *)
+nnNonneg[aT_, bT_, hNa_, hNb_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[bT, HOL`Bool`SPEC[aT, realNnMulNonnegThm]], hNa], hNb];
+
+(* ⊢ realLe (&ℝ0) (&ℝ1) *)
+oneNonneg[] :=
+  Module[{ratLe01},
+    ratLe01 = HOL`Bool`DISJCASES[HOL`Bool`SPEC[oneQ[], HOL`Bool`SPEC[zeroQ[], ratLeTotalThm]],
+      ASSUME[ratLeTm[zeroQ[], oneQ[]]],
+      HOL`Bool`CONTR[ratLeTm[zeroQ[], oneQ[]],
+        HOL`Bool`MP[HOL`Bool`NOTELIM[EQMP[HOL`Bool`SPEC[oneQ[], HOL`Bool`SPEC[zeroQ[],
+          HOL`Stdlib`Rat`ratLtNotLeThm]], ratZeroLtOneThm]], ASSUME[ratLeTm[oneQ[], zeroQ[]]]]]];
+    EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[oneQ[], HOL`Bool`SPEC[zeroQ[], realOfRatLeThm]]], ratLe01]
+  ];
+
+(* ============================================================ *)
+(* Signed laws: zero, one, comm — clean binary split (no product *)
+(* sign needed; zero folds into the nonneg branch).             *)
+(* ============================================================ *)
+
+(* ⊢ ∀x. realMul x (&ℝ0) = &ℝ0. *)
+realMulZeroThm =
+  Module[{xV, h00, posF, negF},
+    xV = mkVar["x", realTy];
+    h00 = HOL`Bool`SPEC[rZ[], realLeReflThm];   (* 0≤0 *)
+    posF = Function[{hPx},
+      TRANS[casePP[xV, rZ[], hPx, h00], nnZeroR[xV, hPx]]];
+    negF = Function[{hNx},
+      TRANS[caseNP[xV, rZ[], hNx, h00],
+        TRANS[rNegCong[nnZeroR[rNeg[xV], posNeg[xV, hNx]]], realNegZeroThm]]];
+    HOL`Bool`GEN[xV, splitSign[xV, posF, negF]]
+  ];
+
+(* ⊢ ∀x. realMul x (&ℝ1) = x. *)
+realMulOneThm =
+  Module[{xV, oneR, h1, posF, negF},
+    xV = mkVar["x", realTy];
+    oneR = realOfRatTm[oneQ[]]; h1 = oneNonneg[];
+    posF = Function[{hPx},
+      TRANS[casePP[xV, oneR, hPx, h1], nnOneR[xV, hPx]]];
+    negF = Function[{hNx},
+      TRANS[caseNP[xV, oneR, hNx, h1],
+        TRANS[rNegCong[nnOneR[rNeg[xV], posNeg[xV, hNx]]], HOL`Bool`SPEC[xV, realNegNegThm]]]];
+    HOL`Bool`GEN[xV, splitSign[xV, posF, negF]]
+  ];
+
+(* ⊢ ∀x y. realMul x y = realMul y x. *)
+realMulCommThm =
+  Module[{xV, yV, body},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    body = splitSign[xV,
+      Function[{hPx},
+        splitSign[yV,
+          Function[{hPy},   (* PP *)
+            TRANS[casePP[xV, yV, hPx, hPy],
+              TRANS[nnComm[xV, yV, hPx, hPy], HOL`Equal`SYM[casePP[yV, xV, hPy, hPx]]]]],
+          Function[{hNy},   (* PN: x≥0,y<0 → y·x is NP *)
+            TRANS[casePN[xV, yV, hPx, hNy],
+              TRANS[rNegCong[nnComm[xV, rNeg[yV], hPx, posNeg[yV, hNy]]],
+                HOL`Equal`SYM[caseNP[yV, xV, hNy, hPx]]]]]]],
+      Function[{hNx},
+        splitSign[yV,
+          Function[{hPy},   (* NP: x<0,y≥0 → y·x is PN *)
+            TRANS[caseNP[xV, yV, hNx, hPy],
+              TRANS[rNegCong[nnComm[rNeg[xV], yV, posNeg[xV, hNx], hPy]],
+                HOL`Equal`SYM[casePN[yV, xV, hPy, hNx]]]]],
+          Function[{hNy},   (* NN *)
+            TRANS[caseNN[xV, yV, hNx, hNy],
+              TRANS[nnComm[rNeg[xV], rNeg[yV], posNeg[xV, hNx], posNeg[yV, hNy]],
+                HOL`Equal`SYM[caseNN[yV, xV, hNy, hNx]]]]]]]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, body]]
+  ];
+
+(* ============================================================ *)
+(* Sign homomorphism: realMul x (−y) = −(realMul x y) and the    *)
+(* left version.  These pull all signs out, reducing assoc and   *)
+(* distrib to the Layer-1 nonneg laws.                           *)
+(* ============================================================ *)
+
+nnNegNeg[tT_] := HOL`Bool`SPEC[tT, realNegNegThm];          (* −(−t) = t *)
+mulCongR[xT_, eq_] := HOL`Equal`APTERM[mkComb[realMulConst[], xT], eq];   (* a=b → x·a = x·b *)
+nnCongR[xT_, eq_] := HOL`Equal`APTERM[mkComb[realNnMulConst[], xT], eq];  (* a=b → x·a = x·b (nn) *)
+
+(* ⊢ ∀x y. realMul x (realNeg y) = realNeg (realMul x y). *)
+realMulNegRightThm =
+  Module[{xV, yV, ny, body},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy]; ny = rNeg[yV];
+    body = splitSign[yV,
+      (* y≥0 *)
+      Function[{hPy},
+        splitSign[ny,
+          (* 0≤(−y): boundary y=0 *)
+          Function[{hPny},
+            Module[{yLe0, yEq, yEqR, lhsChain, rhsChain},
+              yLe0 = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], nnNegNeg[yV]], REFL[rZ[]]],
+                       HOL`Bool`MP[HOL`Bool`SPEC[ny, realNegNonposThm], hPny]];   (* realLe y 0 *)
+              yEq = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[yV, HOL`Bool`SPEC[rZ[], realLeAntisymThm]], hPy], yLe0];   (* 0 = y *)
+              yEqR = HOL`Equal`SYM[yEq];   (* y = 0 *)
+              lhsChain = TRANS[mulCongR[xV, rNegCong[yEqR]],
+                           TRANS[mulCongR[xV, realNegZeroThm], HOL`Bool`SPEC[xV, realMulZeroThm]]];
+              rhsChain = TRANS[rNegCong[mulCongR[xV, yEqR]],
+                           TRANS[rNegCong[HOL`Bool`SPEC[xV, realMulZeroThm]], realNegZeroThm]];
+              TRANS[lhsChain, HOL`Equal`SYM[rhsChain]]]],
+          (* ¬0≤(−y): −y<0 *)
+          Function[{hNny},
+            splitSign[xV,
+              Function[{hPx},   (* x≥0 *)
+                TRANS[TRANS[casePN[xV, ny, hPx, hNny], rNegCong[nnCongR[xV, nnNegNeg[yV]]]],
+                  HOL`Equal`SYM[rNegCong[casePP[xV, yV, hPx, hPy]]]]],
+              Function[{hNx},   (* x<0 *)
+                TRANS[TRANS[caseNN[xV, ny, hNx, hNny], nnCongR[rNeg[xV], nnNegNeg[yV]]],
+                  HOL`Equal`SYM[TRANS[rNegCong[caseNP[xV, yV, hNx, hPy]],
+                    nnNegNeg[realNnMulTm[rNeg[xV], yV]]]]]]]]]],
+      (* y<0 *)
+      Function[{hNy},
+        splitSign[xV,
+          Function[{hPx},   (* x≥0 *)
+            TRANS[casePP[xV, ny, hPx, posNeg[yV, hNy]],
+              HOL`Equal`SYM[TRANS[rNegCong[casePN[xV, yV, hPx, hNy]],
+                nnNegNeg[realNnMulTm[xV, ny]]]]]],
+          Function[{hNx},   (* x<0 *)
+            TRANS[caseNP[xV, ny, hNx, posNeg[yV, hNy]],
+              HOL`Equal`SYM[rNegCong[caseNN[xV, yV, hNx, hNy]]]]]]]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, body]]
+  ];
+
+(* ⊢ ∀x y. realMul (realNeg x) y = realNeg (realMul x y).  (comm + NegRight) *)
+realMulNegLeftThm =
+  Module[{xV, yV},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      TRANS[HOL`Bool`SPEC[yV, HOL`Bool`SPEC[rNeg[xV], realMulCommThm]],
+        TRANS[HOL`Bool`SPEC[xV, HOL`Bool`SPEC[yV, realMulNegRightThm]],
+          rNegCong[HOL`Bool`SPEC[xV, HOL`Bool`SPEC[yV, realMulCommThm]]]]]]]
+  ];
+
+(* ⊢ ∀x y. realLe 0 x ⇒ realLe 0 y ⇒ realLe 0 (realMul x y). *)
+realMulNonnegThm =
+  Module[{xV, yV, hPx, hPy},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    hPx = ASSUME[nonnegTm[xV]]; hPy = ASSUME[nonnegTm[yV]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`DISCH[nonnegTm[xV], HOL`Bool`DISCH[nonnegTm[yV],
+      EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], REFL[rZ[]]],
+             HOL`Equal`SYM[casePP[xV, yV, hPx, hPy]]], nnNonneg[xV, yV, hPx, hPy]]]]]]
+  ];
+realLeMulNonnegThm = realMulNonnegThm;
+
+(* ============================================================ *)
+(* Associativity — nested sign-peel reduction to the all-nonneg  *)
+(* base assocCore, pulling each negative factor out with the     *)
+(* mulNeg homomorphism (binary, 3 peels deep).                   *)
+(* ============================================================ *)
+
+mulCongL[eq_, cT_] := HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realMulConst[], eq], REFL[cT]];   (* a=b → a·c = b·c *)
+mnegR[xT_, wT_] := HOL`Bool`SPEC[wT, HOL`Bool`SPEC[xT, realMulNegRightThm]];  (* x·(−w) = −(x·w) *)
+mnegL[xT_, wT_] := HOL`Bool`SPEC[wT, HOL`Bool`SPEC[xT, realMulNegLeftThm]];   (* (−x)·w = −(x·w) *)
+
+(* all-nonneg base: realMul(realMul x y) z = realMul x (realMul y z). *)
+assocCore[xT_, yT_, zT_, hPx_, hPy_, hPz_] :=
+  Module[{xy, yz, redL, redR, assocNN},
+    xy = realNnMulTm[xT, yT]; yz = realNnMulTm[yT, zT];
+    redL = TRANS[mulCongL[casePP[xT, yT, hPx, hPy], zT],
+             casePP[xy, zT, nnNonneg[xT, yT, hPx, hPy], hPz]];   (* (x·y)·z = nn(nn x y) z *)
+    redR = TRANS[mulCongR[xT, casePP[yT, zT, hPy, hPz]],
+             casePP[xT, yz, hPx, nnNonneg[yT, zT, hPy, hPz]]];   (* x·(y·z) = nn x (nn y z) *)
+    assocNN = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[zT, HOL`Bool`SPEC[yT,
+                HOL`Bool`SPEC[xT, realNnMulAssocNonnegThm]]], hPx], hPy], hPz];
+    TRANS[redL, TRANS[assocNN, HOL`Equal`SYM[redR]]]
+  ];
+
+assocGenZ[xT_, yT_, zT_, hPx_, hPy_] :=
+  splitSign[zT,
+    Function[{hPz}, assocCore[xT, yT, zT, hPx, hPy, hPz]],
+    Function[{hNz},
+      Module[{nz, hPnz, xRw, lhsTot, yzRed, rhsTot, sub},
+        nz = rNeg[zT]; hPnz = posNeg[zT, hNz];
+        xRw = HOL`Equal`SYM[nnNegNeg[zT]];   (* z = −(−z) *)
+        lhsTot = TRANS[mulCongR[realMulTm[xT, yT], xRw],
+                   mnegR[realMulTm[xT, yT], nz]];   (* (x·y)·z = −((x·y)·nz) *)
+        yzRed = TRANS[mulCongR[yT, xRw], mnegR[yT, nz]];   (* y·z = −(y·nz) *)
+        rhsTot = TRANS[mulCongR[xT, yzRed], mnegR[xT, realMulTm[yT, nz]]];   (* x·(y·z) = −(x·(y·nz)) *)
+        sub = assocCore[xT, yT, nz, hPx, hPy, hPnz];
+        TRANS[lhsTot, TRANS[rNegCong[sub], HOL`Equal`SYM[rhsTot]]]]]];
+
+assocGenY[xT_, yT_, zT_, hPx_] :=
+  splitSign[yT,
+    Function[{hPy}, assocGenZ[xT, yT, zT, hPx, hPy]],
+    Function[{hNy},
+      Module[{ny, hPny, yRw, xyRed, lhsTot, yzRed, rhsTot, sub},
+        ny = rNeg[yT]; hPny = posNeg[yT, hNy];
+        yRw = HOL`Equal`SYM[nnNegNeg[yT]];   (* y = −(−y) *)
+        xyRed = TRANS[mulCongR[xT, yRw], mnegR[xT, ny]];   (* x·y = −(x·ny) *)
+        lhsTot = TRANS[mulCongL[xyRed, zT], mnegL[realMulTm[xT, ny], zT]];   (* (x·y)·z = −((x·ny)·z) *)
+        yzRed = TRANS[mulCongL[yRw, zT], mnegL[ny, zT]];   (* y·z = −(ny·z) *)
+        rhsTot = TRANS[mulCongR[xT, yzRed], mnegR[xT, realMulTm[ny, zT]]];   (* x·(y·z) = −(x·(ny·z)) *)
+        sub = assocGenZ[xT, ny, zT, hPx, hPny];
+        TRANS[lhsTot, TRANS[rNegCong[sub], HOL`Equal`SYM[rhsTot]]]]]];
+
+assocGen[xT_, yT_, zT_] :=
+  splitSign[xT,
+    Function[{hPx}, assocGenY[xT, yT, zT, hPx]],
+    Function[{hNx},
+      Module[{nx, hPnx, xRw, xyRed, lhsTot, rhsTot, sub},
+        nx = rNeg[xT]; hPnx = posNeg[xT, hNx];
+        xRw = HOL`Equal`SYM[nnNegNeg[xT]];   (* x = −(−x) *)
+        xyRed = TRANS[mulCongL[xRw, yT], mnegL[nx, yT]];   (* x·y = −(nx·y) *)
+        lhsTot = TRANS[mulCongL[xyRed, zT], mnegL[realMulTm[nx, yT], zT]];   (* (x·y)·z = −((nx·y)·z) *)
+        rhsTot = TRANS[mulCongL[xRw, realMulTm[yT, zT]], mnegL[nx, realMulTm[yT, zT]]];   (* x·(y·z) = −(nx·(y·z)) *)
+        sub = assocGenY[nx, yT, zT, hPnx];
+        TRANS[lhsTot, TRANS[rNegCong[sub], HOL`Equal`SYM[rhsTot]]]]]];
+
+realMulAssocThm =
+  Module[{xV, yV, zV},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy]; zV = mkVar["z", realTy];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[zV, assocGen[xV, yV, zV]]]]
+  ];
+
+(* ============================================================ *)
+(* Signed left distributivity — the no-reference Stage D step.   *)
+(*   realMul x (y+z) = realMul x y + realMul x z.                *)
+(* Core: prove for 0≤x and all y,z (sign-case on y,z,(y+z)),     *)
+(* reusing realNnMulDistribNonneg + the real additive group;     *)
+(* then peel x<0 with mulNegLeft + realNegAdd.                   *)
+(* ============================================================ *)
+
+nnDistrib[xT_, uT_, vT_, hx_, hu_, hv_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+  HOL`Bool`SPEC[vT, HOL`Bool`SPEC[uT, HOL`Bool`SPEC[xT, realNnMulDistribNonnegThm]]], hx], hu], hv];
+realAddNN[aT_, bT_, hNa_, hNb_] := HOL`Bool`MP[HOL`Bool`MP[
+  HOL`Bool`SPEC[bT, HOL`Bool`SPEC[aT, realAddNonnegThm]], hNa], hNb];
+rNegAddSplit[aT_, bT_] := HOL`Bool`SPEC[bT, HOL`Bool`SPEC[aT, realNegAddThm]];   (* −(a+b)=(−a)+(−b) *)
+
+(* 0≤x, 0≤a, b<0 ⊢ realMul x (a+b) = realMul x a + realMul x b. *)
+mixedCase[xT_, aT_, bT_, hPx_, hPa_, hNb_] :=
+  Module[{nb, hPnb, abTm, rhsRed},
+    nb = rNeg[bT]; hPnb = posNeg[bT, hNb]; abTm = rAdd[aT, bT];
+    rhsRed = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], casePP[xT, aT, hPx, hPa]],
+               casePN[xT, bT, hPx, hNb]];   (* x·a + x·b = (nn x a) + (−(nn x nb)) *)
+    splitSign[abTm,
+      Function[{hPab},
+        Module[{P, R, abnbEqA, aSplit, step, lhsPos},
+          P = realNnMulTm[xT, abTm]; R = realNnMulTm[xT, nb];
+          abnbEqA = TRANS[rAssoc[aT, bT, nb], TRANS[rAddCongR[aT, rAddNegR[bT]], rAddZeroR[aT]]];
+          aSplit = TRANS[nnCongR[xT, HOL`Equal`SYM[abnbEqA]], nnDistrib[xT, abTm, nb, hPx, hPab, hPnb]];
+          step = TRANS[rAddCongL[aSplit, rNeg[R]],
+                   TRANS[rAssoc[P, R, rNeg[R]], TRANS[rAddCongR[P, rAddNegR[R]], rAddZeroR[P]]]];
+          lhsPos = TRANS[casePP[xT, abTm, hPx, hPab], HOL`Equal`SYM[step]];
+          TRANS[lhsPos, HOL`Equal`SYM[rhsRed]]]],
+      Function[{hNab},
+        Module[{nab, hPnab, A, N, S, negAddAB, aNabEqNb, nbSplit, negS, step, lhsNeg},
+          nab = rNeg[abTm]; hPnab = posNeg[abTm, hNab];
+          A = realNnMulTm[xT, aT]; N = realNnMulTm[xT, nab]; S = realNnMulTm[xT, nb];
+          negAddAB = rNegAddSplit[aT, bT];
+          aNabEqNb = TRANS[rAddCongR[aT, negAddAB],
+                       TRANS[HOL`Equal`SYM[rAssoc[aT, rNeg[aT], rNeg[bT]]],
+                         TRANS[rAddCongL[rAddNegR[aT], rNeg[bT]], rAddZeroL[rNeg[bT]]]]];
+          nbSplit = TRANS[nnCongR[xT, HOL`Equal`SYM[aNabEqNb]], nnDistrib[xT, aT, nab, hPx, hPa, hPnab]];
+          negS = TRANS[rNegCong[nbSplit], HOL`Bool`SPEC[N, HOL`Bool`SPEC[A, realNegAddThm]]];
+          step = TRANS[rAddCongR[A, negS],
+                   TRANS[HOL`Equal`SYM[rAssoc[A, rNeg[A], rNeg[N]]],
+                     TRANS[rAddCongL[rAddNegR[A], rNeg[N]], rAddZeroL[rNeg[N]]]]];   (* A + (−S) = (−N) *)
+          lhsNeg = casePN[xT, abTm, hPx, hNab];   (* x·(a+b) = −(nn x nab) *)
+          TRANS[lhsNeg, TRANS[HOL`Equal`SYM[step], HOL`Equal`SYM[rhsRed]]]]]]
+  ];
+
+(* 0≤x, y<0, z<0 ⊢ realMul x (y+z) = realMul x y + realMul x z. *)
+nnNegCase[xT_, yT_, zT_, hPx_, hNy_, hNz_] :=
+  Module[{ny, nz, hPny, hPnz, sTm, hPs, yzTm, sEqNegYZ, yzEqNegS, lhsRed2,
+          distribS, negDistribS, rhsRed},
+    ny = rNeg[yT]; nz = rNeg[zT]; hPny = posNeg[yT, hNy]; hPnz = posNeg[zT, hNz];
+    sTm = rAdd[ny, nz]; hPs = realAddNN[ny, nz, hPny, hPnz]; yzTm = rAdd[yT, zT];
+    sEqNegYZ = HOL`Equal`SYM[rNegAddSplit[yT, zT]];   (* (−y)+(−z) = −(y+z) *)
+    yzEqNegS = HOL`Equal`SYM[TRANS[rNegCong[sEqNegYZ], nnNegNeg[yzTm]]];   (* y+z = −s *)
+    lhsRed2 = TRANS[TRANS[mulCongR[xT, yzEqNegS], mnegR[xT, sTm]],
+                rNegCong[casePP[xT, sTm, hPx, hPs]]];   (* x·(y+z) = −(nn x s) *)
+    distribS = nnDistrib[xT, ny, nz, hPx, hPny, hPnz];   (* nn x s = nn x ny + nn x nz *)
+    negDistribS = TRANS[rNegCong[distribS],
+                    HOL`Bool`SPEC[realNnMulTm[xT, nz], HOL`Bool`SPEC[realNnMulTm[xT, ny], realNegAddThm]]];
+    rhsRed = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], casePN[xT, yT, hPx, hNy]],
+               casePN[xT, zT, hPx, hNz]];   (* x·y + x·z = (−(nn x ny)) + (−(nn x nz)) *)
+    TRANS[lhsRed2, TRANS[negDistribS, HOL`Equal`SYM[rhsRed]]]
+  ];
+
+(* 0≤x ⊢ realMul x (y+z) = realMul x y + realMul x z  (all y,z). *)
+distribNonnegX[xT_, yT_, zT_, hPx_] :=
+  splitSign[yT,
+    Function[{hPy},
+      splitSign[zT,
+        Function[{hPz},
+          Module[{yzN, lhs, nnD, rhsRed},
+            yzN = realAddNN[yT, zT, hPy, hPz];
+            lhs = casePP[xT, rAdd[yT, zT], hPx, yzN];
+            nnD = nnDistrib[xT, yT, zT, hPx, hPy, hPz];
+            rhsRed = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], casePP[xT, yT, hPx, hPy]],
+                       casePP[xT, zT, hPx, hPz]];
+            TRANS[lhs, TRANS[nnD, HOL`Equal`SYM[rhsRed]]]]],
+        Function[{hNz}, mixedCase[xT, yT, zT, hPx, hPy, hNz]]]],
+    Function[{hNy},
+      splitSign[zT,
+        Function[{hPz},   (* y<0, z≥0: commute to mixedCase[x,z,y] *)
+          TRANS[mulCongR[xT, rComm[yT, zT]],
+            TRANS[mixedCase[xT, zT, yT, hPx, hPz, hNy],
+              rComm[realMulTm[xT, zT], realMulTm[xT, yT]]]]],
+        Function[{hNz}, nnNegCase[xT, yT, zT, hPx, hNy, hNz]]]]];
+
+realMulDistribThm =
+  Module[{xV, yV, zV, body},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy]; zV = mkVar["z", realTy];
+    body = splitSign[xV,
+      Function[{hPx}, distribNonnegX[xV, yV, zV, hPx]],
+      Function[{hNx},
+        Module[{nx, hPnx, xRw, yzTm, lhs1, distribNx, lhs2, negAdd, lhs3, xyEq, xzEq, rhsRed},
+          nx = rNeg[xV]; hPnx = posNeg[xV, hNx]; yzTm = rAdd[yV, zV];
+          xRw = HOL`Equal`SYM[nnNegNeg[xV]];   (* x = −(−x) *)
+          lhs1 = TRANS[mulCongL[xRw, yzTm], mnegL[nx, yzTm]];   (* x·(y+z) = −(nx·(y+z)) *)
+          distribNx = distribNonnegX[nx, yV, zV, hPnx];
+          lhs2 = TRANS[lhs1, rNegCong[distribNx]];   (* = −(nx·y + nx·z) *)
+          negAdd = HOL`Bool`SPEC[realMulTm[nx, zV], HOL`Bool`SPEC[realMulTm[nx, yV], realNegAddThm]];
+          lhs3 = TRANS[lhs2, negAdd];   (* = −(nx·y) + −(nx·z) *)
+          xyEq = TRANS[mulCongL[xRw, yV], mnegL[nx, yV]];   (* x·y = −(nx·y) *)
+          xzEq = TRANS[mulCongL[xRw, zV], mnegL[nx, zV]];   (* x·z = −(nx·z) *)
+          rhsRed = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], xyEq], xzEq];
+          TRANS[lhs3, HOL`Equal`SYM[rhsRed]]]]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV, HOL`Bool`GEN[zV, body]]]
+  ];
+
+(* ============================================================ *)
+(* Order surface: strict positivity of a product of positives.  *)
+(* ============================================================ *)
+
+realLtTm[aT_, bT_] := mkComb[mkComb[realLtConst[], aT], bT];
+
+(* ⊢ ∀a b. ¬(realLe a b) ⇒ ∃q. REP a q ∧ ¬(REP b q). *)
+notLeWitnessThm =
+  Module[{aV, bV, hNotLe, qV, exTerm, hNoEx, hRaq, hNRbq, ex, fls, repBq, impl,
+          allImpl, leAB, flsTop, exThm},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    hNotLe = ASSUME[notTm[realLeTm[aV, bV]]];
+    qV = mkVar["q", ratTy];
+    exTerm = existsTm[qV, conjTm[repApp[aV, qV], notTm[repApp[bV, qV]]]];
+    hNoEx = ASSUME[notTm[exTerm]];
+    hRaq = ASSUME[repApp[aV, qV]]; hNRbq = ASSUME[notTm[repApp[bV, qV]]];
+    ex = HOL`Bool`EXISTS[exTerm, qV, HOL`Bool`CONJ[hRaq, hNRbq]];
+    fls = HOL`Bool`MP[HOL`Bool`NOTELIM[hNoEx], ex];
+    repBq = HOL`Bool`CCONTR[repApp[bV, qV], fls];
+    impl = HOL`Bool`DISCH[repApp[aV, qV], repBq];
+    allImpl = HOL`Bool`GEN[qV, impl];
+    leAB = EQMP[HOL`Equal`SYM[unfoldRealLe[aV, bV]], allImpl];
+    flsTop = HOL`Bool`MP[HOL`Bool`NOTELIM[hNotLe], leAB];
+    exThm = HOL`Bool`CCONTR[exTerm, flsTop];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[notTm[realLeTm[aV, bV]], exThm]]]
+  ];
+
+(* ⊢ ∀x. realLt 0 x ⇒ ∃p. REP x p ∧ 0<p. *)
+realPosHasPosMemThm =
+  Module[{xV, h, hNotLe, wit, qV, rV, posBody, hConj, mXq, nNeg, memEq0, nLt, ge0q,
+          open, hOpen, mXr, qLtr, posr, posMem, exP, chR, chQ},
+    xV = mkVar["x", realTy];
+    h = ASSUME[realLtTm[rZ[], xV]];
+    hNotLe = EQMP[HOL`Bool`SPEC[xV, HOL`Bool`SPEC[rZ[], realLtNotLeThm]], h];   (* ¬realLe x 0 *)
+    wit = HOL`Bool`MP[HOL`Bool`SPEC[rZ[], HOL`Bool`SPEC[xV, notLeWitnessThm]], hNotLe];
+    qV = mkVar["q", ratTy]; rV = mkVar["r", ratTy];
+    posBody = existsTm[rV, conjTm[repApp[xV, rV], ratLtTm[zeroQ[], rV]]];
+    hConj = ASSUME[conjTm[repApp[xV, qV], notTm[repApp[zeroRealTm[], qV]]]];
+    mXq = HOL`Bool`CONJUNCT1[hConj]; nNeg = HOL`Bool`CONJUNCT2[hConj];
+    memEq0 = HOL`Bool`SPEC[qV, HOL`Bool`SPEC[zeroQ[], realOfRatMemThm]];   (* REP(&ℝ0) q = q<0 *)
+    nLt = EQMP[HOL`Equal`APTERM[notC[], memEq0], nNeg];   (* ¬(q<0) *)
+    ge0q = notNegToGe0[nLt, qV];   (* 0≤q *)
+    open = HOL`Bool`MP[HOL`Bool`SPEC[qV, HOL`Bool`SPEC[xV, realOpenThm]], mXq];
+    hOpen = ASSUME[conjTm[repApp[xV, rV], ratLtTm[qV, rV]]];
+    mXr = HOL`Bool`CONJUNCT1[hOpen]; qLtr = HOL`Bool`CONJUNCT2[hOpen];
+    posr = leLt2[ge0q, qLtr];   (* 0<r *)
+    posMem = HOL`Bool`CONJ[mXr, posr];
+    exP = HOL`Bool`EXISTS[posBody, rV, posMem];
+    chR = HOL`Bool`CHOOSE[rV, open, exP];
+    chQ = HOL`Bool`CHOOSE[qV, wit, chR];
+    HOL`Bool`GEN[xV, HOL`Bool`DISCH[realLtTm[rZ[], xV], chQ]]
+  ];
+
+(* realLt 0 t ⊢ realLe 0 t  (totality). *)
+realLtLeReal[tT_, htLt_] :=
+  Module[{hNotLe, total},
+    hNotLe = EQMP[HOL`Bool`SPEC[tT, HOL`Bool`SPEC[rZ[], realLtNotLeThm]], htLt];
+    total = HOL`Bool`SPEC[tT, HOL`Bool`SPEC[rZ[], realLeTotalThm]];
+    HOL`Bool`DISJCASES[total, ASSUME[realLeTm[rZ[], tT]],
+      HOL`Bool`CONTR[realLeTm[rZ[], tT], HOL`Bool`MP[HOL`Bool`NOTELIM[hNotLe], ASSUME[realLeTm[tT, rZ[]]]]]]
+  ];
+
+(* ⊢ ∀x y. realLt 0 x ⇒ realLt 0 y ⇒ realLt 0 (realMul x y). *)
+realLtMulPosThm =
+  Module[{xV, yV, hx, hy, hx0, hy0, posMemX, posMemY, pV, qV, body},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    hx = ASSUME[realLtTm[rZ[], xV]]; hy = ASSUME[realLtTm[rZ[], yV]];
+    hx0 = realLtLeReal[xV, hx]; hy0 = realLtLeReal[yV, hy];
+    posMemX = HOL`Bool`MP[HOL`Bool`SPEC[xV, realPosHasPosMemThm], hx];
+    posMemY = HOL`Bool`MP[HOL`Bool`SPEC[yV, realPosHasPosMemThm], hy];
+    pV = mkVar["p", ratTy]; qV = mkVar["q", ratTy];
+    body = Module[{hPx2, mXp, pPos, hQy, mYq, qPos, pqPos, mem0, hLe, leUnf, at0,
+                   lt00, fls, notLe, ltNn, ltMul, chQ, chP},
+      hPx2 = ASSUME[conjTm[repApp[xV, pV], ratLtTm[zeroQ[], pV]]];
+      mXp = HOL`Bool`CONJUNCT1[hPx2]; pPos = HOL`Bool`CONJUNCT2[hPx2];
+      hQy = ASSUME[conjTm[repApp[yV, qV], ratLtTm[zeroQ[], qV]]];
+      mYq = HOL`Bool`CONJUNCT1[hQy]; qPos = HOL`Bool`CONJUNCT2[hQy];
+      pqPos = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[qV, HOL`Bool`SPEC[pV, ratMulPosThm]], pPos], qPos];
+      mem0 = nnMemIntroR[xV, yV, zeroQ[], pV, qV,
+               HOL`Bool`CONJ[mXp, HOL`Bool`CONJ[mYq, HOL`Bool`CONJ[pPos, HOL`Bool`CONJ[qPos, pqPos]]]],
+               hx0, hy0];
+      hLe = ASSUME[realLeTm[realNnMulTm[xV, yV], rZ[]]];
+      leUnf = EQMP[unfoldRealLe[realNnMulTm[xV, yV], rZ[]], hLe];
+      at0 = HOL`Bool`MP[HOL`Bool`SPEC[zeroQ[], leUnf], mem0];
+      lt00 = EQMP[HOL`Bool`SPEC[zeroQ[], HOL`Bool`SPEC[zeroQ[], realOfRatMemThm]], at0];
+      fls = HOL`Bool`MP[HOL`Bool`NOTELIM[HOL`Bool`SPEC[zeroQ[], ratLtIrreflThm]], lt00];
+      notLe = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[concl[hLe], fls]];
+      ltNn = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[realNnMulTm[xV, yV], HOL`Bool`SPEC[rZ[], realLtNotLeThm]]], notLe];
+      ltMul = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLtConst[], REFL[rZ[]]],
+                 HOL`Equal`SYM[casePP[xV, yV, hx0, hy0]]], ltNn];
+      chQ = HOL`Bool`CHOOSE[qV, posMemY, ltMul];
+      chP = HOL`Bool`CHOOSE[pV, posMemX, chQ];
+      chP];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      HOL`Bool`DISCH[realLtTm[rZ[], xV], HOL`Bool`DISCH[realLtTm[rZ[], yV], body]]]]
   ];
 
 End[];

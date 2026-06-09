@@ -352,3 +352,63 @@ HOLTest`runTests["stdlib/Real: RatAux extras — ratLeLtTrans / ratMulPos / ratI
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratInvPosThm], "ratInvPos"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`ratLtImpLeThm], "ratLtImpLe"];
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`ratInvPosThm], {}, "ratInvPos no hyps"]];
+
+(* === Stage D Layer 2: signed multiplication realMul === *)
+
+HOLTest`runTests["stdlib/Real: realMul constant — realMul : real → real → real",
+  With[{rTy = mkType["real", {}]},
+    HOLTest`assertEq[HOL`Stdlib`Real`realMulConst[],
+      mkConst["realMul", tyFun[rTy, tyFun[rTy, rTy]]], "realMul const type"]];
+  HOLTest`assertEq[concl[HOL`Stdlib`Real`realMulDefThm][[1, 2]],
+    HOL`Stdlib`Real`realMulConst[], "realMulDefThm LHS is realMul"]];
+
+HOLTest`runTests["stdlib/Real: realMul case reductions (PP/PN/NP/NN)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulCasePPThm], {}, "PP no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulCasePPThm], "PP"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulCasePNThm], "PN"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulCaseNPThm], "NP"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulCaseNNThm], "NN"]];
+
+HOLTest`runTests["stdlib/Real: realNeg sign algebra — realNegZero / realNegNeg / realLeNeg / realNegAdd",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNegNegThm], {}, "realNegNeg no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNegZeroThm], "realNegZero"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNegNegThm], "realNegNeg"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLeNegThm], "realLeNeg"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNegAddThm], "realNegAdd"]];
+
+HOLTest`runTests["stdlib/Real: realMulZeroThm — ⊢ ∀x. realMul x 0 = 0",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulZeroThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulZeroThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realMulOneThm — ⊢ ∀x. realMul x 1 = x",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulOneThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulOneThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realMulCommThm — ⊢ ∀x y. realMul x y = realMul y x",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulCommThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulCommThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realMulNegRight/Left — sign homomorphism",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulNegRightThm], {}, "NegRight no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulNegRightThm], "NegRight"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulNegLeftThm], {}, "NegLeft no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulNegLeftThm], "NegLeft"]];
+
+HOLTest`runTests["stdlib/Real: realMulNonneg / realLeMulNonneg — ⊢ ∀x y. 0≤x⇒0≤y⇒0≤(x·y)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulNonnegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulNonnegThm], "realMulNonneg"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLeMulNonnegThm], "realLeMulNonneg"]];
+
+HOLTest`runTests["stdlib/Real: realMulAssocThm — ⊢ ∀x y z. (x·y)·z = x·(y·z)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulAssocThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulAssocThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realMulDistribThm — ⊢ ∀x y z. x·(y+z) = x·y + x·z (signed, Stage D capstone)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulDistribThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulDistribThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: realLtMulPosThm — ⊢ ∀x y. 0<x⇒0<y⇒0<(x·y)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLtMulPosThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLtMulPosThm], "is a theorem"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`notLeWitnessThm], "notLeWitness"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realPosHasPosMemThm], "realPosHasPosMem"]];
