@@ -98,6 +98,12 @@ realLeMulNonnegThm::usage = "realLeMulNonnegThm — ⊢ ∀x y. realLe 0 x ⇒ r
 realLtMulPosThm::usage = "realLtMulPosThm — ⊢ ∀x y. realLt 0 x ⇒ realLt 0 y ⇒ realLt 0 (realMul x y).";
 notLeWitnessThm::usage = "notLeWitnessThm — ⊢ ∀a b. ¬(realLe a b) ⇒ ∃q. REP_real a q ∧ ¬(REP_real b q). Failure of inclusion yields a separating point.";
 realPosHasPosMemThm::usage = "realPosHasPosMemThm — ⊢ ∀x. realLt (&ℝ 0) x ⇒ ∃p. REP_real x p ∧ ratLt (&ℚ (&ℤ 0)) p. A positive real's cut has a positive member.";
+realLeAddMonoThm::usage = "realLeAddMonoThm — ⊢ ∀a b c. realLe a b ⇒ realLe (realAdd a c) (realAdd b c). Additive monotonicity of ≤.";
+realLtAddMonoThm::usage = "realLtAddMonoThm — ⊢ ∀a b c. realLt a b ⇒ realLt (realAdd a c) (realAdd b c). Additive monotonicity of <.";
+realLeSubNonnegThm::usage = "realLeSubNonnegThm — ⊢ ∀a b. realLe a b = realLe (&ℝ 0) (realAdd b (realNeg a)). a ≤ b ⟺ 0 ≤ b − a.";
+realLtSubPosThm::usage = "realLtSubPosThm — ⊢ ∀a b. realLt a b = realLt (&ℝ 0) (realAdd b (realNeg a)). a < b ⟺ 0 < b − a.";
+realLeMulMonoThm::usage = "realLeMulMonoThm — ⊢ ∀a b c. realLe (&ℝ 0) c ⇒ realLe a b ⇒ realLe (realMul c a) (realMul c b). Multiply ≤ by a nonnegative.";
+realLtMulMonoThm::usage = "realLtMulMonoThm — ⊢ ∀a b c. realLt (&ℝ 0) c ⇒ realLt a b ⇒ realLt (realMul c a) (realMul c b). Multiply < by a positive.";
 
 Begin["`Private`"];
 
@@ -1940,6 +1946,135 @@ realLtMulPosThm =
       chP];
     HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
       HOL`Bool`DISCH[realLtTm[rZ[], xV], HOL`Bool`DISCH[realLtTm[rZ[], yV], body]]]]
+  ];
+
+(* ============================================================ *)
+(* Ordered-field: additive-order compatibility (+ ↔ ≤/<).       *)
+(* Reuses the rAdd group helpers above. realLeAddMono is a pure  *)
+(* cut-inclusion proof (a⊆b ⟹ (a+c)⊆(b+c)).                     *)
+(* ============================================================ *)
+
+(* (x+c)+(−c) = x ;  (b+(−a))+a = b *)
+gCancelR[xT_, cT_] := TRANS[rAssoc[xT, cT, rNeg[cT]],
+  TRANS[rAddCongR[xT, rAddNegR[cT]], rAddZeroR[xT]]];
+gSubAddR[bT_, aT_] := TRANS[rAssoc[bT, rNeg[aT], aT],
+  TRANS[rAddCongR[bT, rAddNegL[aT]], rAddZeroR[bT]]];
+
+(* ⊢ ∀a b c. realLe a b ⇒ realLe (realAdd a c) (realAdd b c). *)
+realLeAddMonoThm =
+  Module[{aV, bV, cV, h, leUnf, rV, sV, memAC, memBC, hMem, redMem, bodyBC, innerA,
+          hConj, mAs, mCrs, mBs, newConj, exBC, memBCr, chS, impl, allR, leRes},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; cV = mkVar["c", realTy];
+    h = ASSUME[realLeTm[aV, bV]];
+    leUnf = EQMP[unfoldRealLe[aV, bV], h];   (* ∀p. REP a p ⇒ REP b p *)
+    rV = mkVar["r", ratTy]; sV = mkVar["s", ratTy];
+    memAC = HOL`Bool`SPEC[rV, HOL`Bool`SPEC[cV, HOL`Bool`SPEC[aV, realAddMemThm]]];
+    memBC = HOL`Bool`SPEC[rV, HOL`Bool`SPEC[cV, HOL`Bool`SPEC[bV, realAddMemThm]]];
+    hMem = ASSUME[repApp[realAddTm[aV, cV], rV]];
+    redMem = EQMP[memAC, hMem];   (* ∃s. REP a s ∧ REP c (r−s) *)
+    bodyBC = concl[memBC][[2]];
+    innerA = concl[BETACONV[mkComb[concl[memAC][[2, 2]], sV]]][[2]];   (* REP a s ∧ REP c (r−s) *)
+    hConj = ASSUME[innerA];
+    mAs = HOL`Bool`CONJUNCT1[hConj]; mCrs = HOL`Bool`CONJUNCT2[hConj];
+    mBs = HOL`Bool`MP[HOL`Bool`SPEC[sV, leUnf], mAs];   (* REP b s *)
+    newConj = HOL`Bool`CONJ[mBs, mCrs];
+    exBC = HOL`Bool`EXISTS[bodyBC, sV, newConj];
+    memBCr = EQMP[HOL`Equal`SYM[memBC], exBC];   (* REP (b+c) r *)
+    chS = HOL`Bool`CHOOSE[sV, redMem, memBCr];
+    impl = HOL`Bool`DISCH[concl[hMem], chS];
+    allR = HOL`Bool`GEN[rV, impl];
+    leRes = EQMP[HOL`Equal`SYM[unfoldRealLe[realAddTm[aV, cV], realAddTm[bV, cV]]], allR];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV, HOL`Bool`DISCH[concl[h], leRes]]]]
+  ];
+
+leAddMono[abLe_, cT_] := Module[{a, b},
+  a = concl[abLe][[1, 2]]; b = concl[abLe][[2]];
+  HOL`Bool`MP[HOL`Bool`SPEC[cT, HOL`Bool`SPEC[b, HOL`Bool`SPEC[a, realLeAddMonoThm]]], abLe]];
+
+(* ⊢ ∀a b c. realLt a b ⇒ realLt (realAdd a c) (realAdd b c). *)
+realLtAddMonoThm =
+  Module[{aV, bV, cV, h, notLeBA, hLe, monoBack, leBA, fls, notLeRes, ltRes},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; cV = mkVar["c", realTy];
+    h = ASSUME[realLtTm[aV, bV]];
+    notLeBA = EQMP[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, realLtNotLeThm]], h];   (* ¬realLe b a *)
+    hLe = ASSUME[realLeTm[realAddTm[bV, cV], realAddTm[aV, cV]]];
+    monoBack = leAddMono[hLe, rNeg[cV]];   (* realLe ((b+c)+(−c)) ((a+c)+(−c)) *)
+    leBA = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], gCancelR[bV, cV]],
+             gCancelR[aV, cV]], monoBack];   (* realLe b a *)
+    fls = HOL`Bool`MP[HOL`Bool`NOTELIM[notLeBA], leBA];
+    notLeRes = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[concl[hLe], fls]];   (* ¬realLe (b+c)(a+c) *)
+    ltRes = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[realAddTm[bV, cV],
+              HOL`Bool`SPEC[realAddTm[aV, cV], realLtNotLeThm]]], notLeRes];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV, HOL`Bool`DISCH[concl[h], ltRes]]]]
+  ];
+
+(* ⊢ ∀a b. realLe a b = realLe (&ℝ0) (realAdd b (realNeg a)).  (a≤b ⟺ 0≤b−a) *)
+realLeSubNonnegThm =
+  Module[{aV, bV, sub, hF, fMono, fwd, hB, bMono, zeroAddA, bwd},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; sub = rAdd[bV, rNeg[aV]];
+    hF = ASSUME[realLeTm[aV, bV]];
+    fMono = leAddMono[hF, rNeg[aV]];   (* realLe (a+(−a)) (b+(−a)) *)
+    fwd = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], rAddNegR[aV]], REFL[sub]], fMono];   (* realLe 0 (b−a) *)
+    hB = ASSUME[realLeTm[rZ[], sub]];
+    bMono = leAddMono[hB, aV];   (* realLe (0+a) ((b−a)+a) *)
+    zeroAddA = rAddZeroL[aV];   (* 0+a = a *)
+    bwd = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], zeroAddA], gSubAddR[bV, aV]], bMono];   (* realLe a b *)
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Equal`SYM[HOL`Kernel`DEDUCTANTISYM[fwd, bwd]]]]
+  ];
+
+(* ⊢ ∀a b. realLt a b = realLt (&ℝ0) (realAdd b (realNeg a)).  (a<b ⟺ 0<b−a) *)
+realLtSubPosThm =
+  Module[{aV, bV, sub, ltAddMono, hF, fMono, fwd, hB, bMono, zeroAddA, bwd},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; sub = rAdd[bV, rNeg[aV]];
+    ltAddMono[abLt_, cT_] := Module[{a, b},
+      a = concl[abLt][[1, 2]]; b = concl[abLt][[2]];   (* realLt a b = ¬…; concl[[1,2]]/[[2]] = a,b *)
+      HOL`Bool`MP[HOL`Bool`SPEC[cT, HOL`Bool`SPEC[b, HOL`Bool`SPEC[a, realLtAddMonoThm]]], abLt]];
+    hF = ASSUME[realLtTm[aV, bV]];
+    fMono = ltAddMono[hF, rNeg[aV]];   (* realLt (a+(−a)) (b+(−a)) *)
+    fwd = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLtConst[], rAddNegR[aV]], REFL[sub]], fMono];
+    hB = ASSUME[realLtTm[rZ[], sub]];
+    bMono = ltAddMono[hB, aV];   (* realLt (0+a) ((b−a)+a) *)
+    zeroAddA = rAddZeroL[aV];
+    bwd = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLtConst[], zeroAddA], gSubAddR[bV, aV]], bMono];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Equal`SYM[HOL`Kernel`DEDUCTANTISYM[fwd, bwd]]]]
+  ];
+
+(* ============================================================ *)
+(* Ordered-field: multiplicative-order compatibility (× ↔ ≤/<). *)
+(* a≤b ∧ 0≤c ⟹ c·a≤c·b, via the bridge + distrib + sign-product. *)
+(* ============================================================ *)
+
+(* realMul c (b−a) = (c·b) + (−(c·a)) *)
+mulSubEq[cT_, aT_, bT_] := TRANS[
+  HOL`Bool`SPEC[rNeg[aT], HOL`Bool`SPEC[bT, HOL`Bool`SPEC[cT, realMulDistribThm]]],
+  rAddCongR[realMulTm[cT, bT], HOL`Bool`SPEC[aT, HOL`Bool`SPEC[cT, realMulNegRightThm]]]];
+
+(* ⊢ ∀a b c. realLe 0 c ⇒ realLe a b ⇒ realLe (realMul c a) (realMul c b). *)
+realLeMulMonoThm =
+  Module[{aV, bV, cV, h0c, hab, sub0, nn, subEq, nnSub, res},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; cV = mkVar["c", realTy];
+    h0c = ASSUME[nonnegTm[cV]]; hab = ASSUME[realLeTm[aV, bV]];
+    sub0 = EQMP[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, realLeSubNonnegThm]], hab];   (* 0 ≤ b−a *)
+    nn = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[rAdd[bV, rNeg[aV]], HOL`Bool`SPEC[cV, realMulNonnegThm]], h0c], sub0];   (* 0 ≤ c·(b−a) *)
+    subEq = mulSubEq[cV, aV, bV];
+    nnSub = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], REFL[rZ[]]], subEq], nn];   (* 0 ≤ (c·b)−(c·a) *)
+    res = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[realMulTm[cV, bV], HOL`Bool`SPEC[realMulTm[cV, aV], realLeSubNonnegThm]]], nnSub];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Bool`DISCH[nonnegTm[cV], HOL`Bool`DISCH[realLeTm[aV, bV], res]]]]]
+  ];
+
+(* ⊢ ∀a b c. realLt 0 c ⇒ realLt a b ⇒ realLt (realMul c a) (realMul c b). *)
+realLtMulMonoThm =
+  Module[{aV, bV, cV, h0c, hab, sub0, pos, subEq, posSub, res},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; cV = mkVar["c", realTy];
+    h0c = ASSUME[realLtTm[rZ[], cV]]; hab = ASSUME[realLtTm[aV, bV]];
+    sub0 = EQMP[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, realLtSubPosThm]], hab];   (* 0 < b−a *)
+    pos = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[rAdd[bV, rNeg[aV]], HOL`Bool`SPEC[cV, realLtMulPosThm]], h0c], sub0];   (* 0 < c·(b−a) *)
+    subEq = mulSubEq[cV, aV, bV];
+    posSub = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLtConst[], REFL[rZ[]]], subEq], pos];   (* 0 < (c·b)−(c·a) *)
+    res = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[realMulTm[cV, bV], HOL`Bool`SPEC[realMulTm[cV, aV], realLtSubPosThm]]], posSub];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Bool`DISCH[realLtTm[rZ[], cV], HOL`Bool`DISCH[realLtTm[aV, bV], res]]]]]
   ];
 
 End[];

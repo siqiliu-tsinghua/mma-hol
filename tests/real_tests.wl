@@ -454,3 +454,23 @@ HOLTest`runTests["stdlib/Real: realInvPos / realInvNeg / realNegPos case reducti
 HOLTest`runTests["stdlib/Real: realMulInvThm — ⊢ ∀x. ¬(x=0) ⇒ realMul x (realInv x) = 1 (ℝ is a FIELD)",
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulInvThm], {}, "no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulInvThm], "is a theorem"]];
+
+(* === ordered-field: additive-order compatibility === *)
+HOLTest`runTests["stdlib/Real: realLe/LtAddMonoThm — additive monotonicity of ≤ / <",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLeAddMonoThm], {}, "le no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLeAddMonoThm], "realLeAddMono"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLtAddMonoThm], {}, "lt no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLtAddMonoThm], "realLtAddMono"]];
+
+HOLTest`runTests["stdlib/Real: realLeSubNonneg / realLtSubPos — bridges a≤b⟺0≤b−a, a<b⟺0<b−a",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLeSubNonnegThm], {}, "le bridge no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLeSubNonnegThm], "realLeSubNonneg"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLtSubPosThm], {}, "lt bridge no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLtSubPosThm], "realLtSubPos"]];
+
+(* === ordered-field: multiplicative-order compatibility === *)
+HOLTest`runTests["stdlib/Real: realLeMulMono / realLtMulMono — multiply ≤/< by nonneg/pos",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLeMulMonoThm], {}, "le-mul no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLeMulMonoThm], "realLeMulMono"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLtMulMonoThm], {}, "lt-mul no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLtMulMonoThm], "realLtMulMono"]];
