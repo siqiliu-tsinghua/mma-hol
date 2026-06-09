@@ -434,3 +434,23 @@ HOLTest`runTests["stdlib/Real: repInvPosThm / invPosMemThm — REP of invPos",
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`repInvPosThm], {}, "repInvPos no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`repInvPosThm], "repInvPos"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`invPosMemThm], "invPosMem"]];
+
+(* Inv.wl increment 2: the Rudin reciprocal law (positive core) *)
+HOLTest`runTests["stdlib/Real: invPosNonnegThm — ⊢ ∀x. 0<x ⇒ 0≤invPos x",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`invPosNonnegThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`invPosNonnegThm], "is a theorem"]];
+
+HOLTest`runTests["stdlib/Real: invPosMulThm — ⊢ ∀x. 0<x ⇒ realNnMul x (invPos x) = 1",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`invPosMulThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`invPosMulThm], "is a theorem"]];
+
+(* Inv.wl increment 3: signed wrapper + field law *)
+HOLTest`runTests["stdlib/Real: realInvPos / realInvNeg / realNegPos case reductions",
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realInvPosThm], "realInvPos"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realInvNegThm], "realInvNeg"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realNegPosThm], {}, "realNegPos no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realNegPosThm], "realNegPos"]];
+
+HOLTest`runTests["stdlib/Real: realMulInvThm — ⊢ ∀x. ¬(x=0) ⇒ realMul x (realInv x) = 1 (ℝ is a FIELD)",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realMulInvThm], {}, "no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realMulInvThm], "is a theorem"]];
