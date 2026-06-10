@@ -474,3 +474,16 @@ HOLTest`runTests["stdlib/Real: realLeMulMono / realLtMulMono — multiply ≤/< 
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLeMulMonoThm], "realLeMulMono"];
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`realLtMulMonoThm], {}, "lt-mul no hyps"];
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realLtMulMonoThm], "realLtMulMono"]];
+
+(* === Stage E: &ℝ ring/order homomorphism ℚ ↪ ℝ === *)
+HOLTest`runTests["stdlib/Real: realOfRatAdd / realOfRatNeg — &ℝ additive homomorphism",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatAddThm], {}, "add no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatAddThm], "realOfRatAdd"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatNegThm], {}, "neg no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatNegThm], "realOfRatNeg"]];
+
+HOLTest`runTests["stdlib/Real: realOfRatNnMul / realOfRatMul — &ℝ multiplicative homomorphism",
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatNnMulThm], {}, "nnmul no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatNnMulThm], "realOfRatNnMul"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realOfRatMulThm], {}, "mul no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realOfRatMulThm], "realOfRatMul"]];

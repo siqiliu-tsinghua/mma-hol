@@ -104,6 +104,10 @@ realLeSubNonnegThm::usage = "realLeSubNonnegThm — ⊢ ∀a b. realLe a b = rea
 realLtSubPosThm::usage = "realLtSubPosThm — ⊢ ∀a b. realLt a b = realLt (&ℝ 0) (realAdd b (realNeg a)). a < b ⟺ 0 < b − a.";
 realLeMulMonoThm::usage = "realLeMulMonoThm — ⊢ ∀a b c. realLe (&ℝ 0) c ⇒ realLe a b ⇒ realLe (realMul c a) (realMul c b). Multiply ≤ by a nonnegative.";
 realLtMulMonoThm::usage = "realLtMulMonoThm — ⊢ ∀a b c. realLt (&ℝ 0) c ⇒ realLt a b ⇒ realLt (realMul c a) (realMul c b). Multiply < by a positive.";
+realOfRatAddThm::usage = "realOfRatAddThm — ⊢ ∀a b. &ℝ (ratAdd a b) = realAdd (&ℝ a) (&ℝ b). &ℝ is an additive homomorphism.";
+realOfRatNegThm::usage = "realOfRatNegThm — ⊢ ∀a. &ℝ (ratNeg a) = realNeg (&ℝ a). &ℝ preserves negation.";
+realOfRatNnMulThm::usage = "realOfRatNnMulThm — ⊢ ∀a b. ratLe (&ℚ (&ℤ 0)) a ⇒ ratLe (&ℚ (&ℤ 0)) b ⇒ realNnMul (&ℝ a) (&ℝ b) = &ℝ (ratMul a b). &ℝ preserves the non-negative product.";
+realOfRatMulThm::usage = "realOfRatMulThm — ⊢ ∀a b. &ℝ (ratMul a b) = realMul (&ℝ a) (&ℝ b). &ℝ is a multiplicative homomorphism (so a ring/order embedding ℚ ↪ ℝ).";
 
 Begin["`Private`"];
 
@@ -2075,6 +2079,268 @@ realLtMulMonoThm =
     res = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[realMulTm[cV, bV], HOL`Bool`SPEC[realMulTm[cV, aV], realLtSubPosThm]]], posSub];
     HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
       HOL`Bool`DISCH[realLtTm[rZ[], cV], HOL`Bool`DISCH[realLtTm[aV, bV], res]]]]]
+  ];
+
+(* ============================================================ *)
+(* Stage E — &ℝ : rat → real is a ring/order homomorphism.      *)
+(* realOfRatLe already in Field; here Add / Neg / Mul.          *)
+(* ============================================================ *)
+
+memOR[qT_, pT_] := HOL`Bool`SPEC[pT, HOL`Bool`SPEC[qT, realOfRatMemThm]];   (* REP(&ℝq) p = p<q *)
+ratComm[xT_, yT_] := HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, HOL`Stdlib`Rat`ratAddCommThm]];   (* x+y = y+x *)
+
+(* ⊢ ∀a b. &ℝ (a+b) = realAdd (&ℝ a) (&ℝ b). *)
+realOfRatAddThm =
+  Module[{aV, bV, rV, sV, abQ, lhs, rhs, memL, addEq, addBody, fwdImp, bwdImp, exEq, perR},
+    aV = mkVar["a", ratTy]; bV = mkVar["b", ratTy]; rV = mkVar["r", ratTy]; sV = mkVar["s", ratTy];
+    abQ = ratAddTm[aV, bV];
+    lhs = realOfRatTm[abQ]; rhs = realAddTm[realOfRatTm[aV], realOfRatTm[bV]];
+    memL = HOL`Bool`SPEC[rV, HOL`Bool`SPEC[abQ, realOfRatMemThm]];   (* REP(&ℝ(a+b)) r = r<(a+b) *)
+    addEq = HOL`Bool`SPEC[rV, HOL`Bool`SPEC[realOfRatTm[bV], HOL`Bool`SPEC[realOfRatTm[aV], realAddMemThm]]];
+    addBody = concl[addEq][[2]];   (* ∃s. REP(&ℝa)s ∧ REP(&ℝb)(r−s) *)
+    fwdImp = Module[{innerBody, hConj, mAs, mBrs, sLtA, rsLtB, i1, i2c, i2, chain, rsSub, rLtAB},
+      innerBody = concl[BETACONV[mkComb[addBody[[2]], sV]]][[2]];
+      hConj = ASSUME[innerBody];
+      mAs = HOL`Bool`CONJUNCT1[hConj]; mBrs = HOL`Bool`CONJUNCT2[hConj];
+      sLtA = EQMP[memOR[aV, sV], mAs];   (* s<a *)
+      rsLtB = EQMP[memOR[bV, ratSubTm[rV, sV]], mBrs];   (* (r−s)<b *)
+      i1 = ltAddR[rsLtB, sV];   (* (r−s)+s < b+s *)
+      i2c = ltAddR[sLtA, bV];   (* s+b < a+b *)
+      i2 = rwLt[i2c, ratComm[sV, bV], REFL[abQ]];   (* b+s < a+b *)
+      chain = ltLt2[i1, i2];   (* (r−s)+s < a+b *)
+      rsSub = HOL`Bool`SPEC[sV, HOL`Bool`SPEC[rV, ratSubAddThm]];   (* (r−s)+s = r *)
+      rLtAB = rwLt[chain, rsSub, REFL[abQ]];   (* r < a+b *)
+      HOL`Bool`CHOOSE[sV, ASSUME[addBody], rLtAB]
+    ];
+    bwdImp = Module[{hLt, monoH, rmbLtA, dense, rmbLtMid, midLtA, midTm, step1, rbbEqR,
+                     rLtMidB, step2, midbSubMid, rMidLtB, mMidA, mRmidB, conjB},
+      hLt = ASSUME[ratLtTm[rV, abQ]];
+      monoH = ltAddR[hLt, ratNegTm[bV]];   (* (r+(−b)) < ((a+b)+(−b)) *)
+      rmbLtA = rwLt[monoH, REFL[ratSubTm[rV, bV]],
+                 HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, ratAddSubCancelThm]]];   (* (r−b)<a *)
+      dense = HOL`Bool`MP[HOL`Bool`SPEC[aV, HOL`Bool`SPEC[ratSubTm[rV, bV], ratDenseThm]], rmbLtA];
+      rmbLtMid = HOL`Bool`CONJUNCT1[dense]; midLtA = HOL`Bool`CONJUNCT2[dense];
+      midTm = concl[rmbLtMid][[2]];
+      step1 = ltAddR[rmbLtMid, bV];   (* (r−b)+b < mid+b *)
+      rbbEqR = HOL`Bool`SPEC[bV, HOL`Bool`SPEC[rV, ratSubAddThm]];   (* (r−b)+b = r *)
+      rLtMidB = rwLt[step1, rbbEqR, REFL[ratAddTm[midTm, bV]]];   (* r < mid+b *)
+      step2 = ltAddR[rLtMidB, ratNegTm[midTm]];   (* (r+(−mid)) < ((mid+b)+(−mid)) *)
+      midbSubMid = TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[HOL`Stdlib`Rat`ratAddConst[],
+                     ratComm[midTm, bV]], REFL[ratNegTm[midTm]]],
+                     HOL`Bool`SPEC[midTm, HOL`Bool`SPEC[bV, ratAddSubCancelThm]]];   (* (mid+b)+(−mid) = b *)
+      rMidLtB = rwLt[step2, REFL[ratSubTm[rV, midTm]], midbSubMid];   (* (r−mid)<b *)
+      mMidA = EQMP[HOL`Equal`SYM[memOR[aV, midTm]], midLtA];   (* REP(&ℝa) mid *)
+      mRmidB = EQMP[HOL`Equal`SYM[memOR[bV, ratSubTm[rV, midTm]]], rMidLtB];   (* REP(&ℝb)(r−mid) *)
+      conjB = HOL`Bool`CONJ[mMidA, mRmidB];
+      HOL`Bool`EXISTS[addBody, midTm, conjB]
+    ];
+    exEq = HOL`Kernel`DEDUCTANTISYM[fwdImp, bwdImp];   (* (r<a+b) = addBody *)
+    perR = HOL`Bool`GEN[rV, TRANS[memL, TRANS[exEq, HOL`Equal`SYM[addEq]]]];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, realEqFromRepEq[lhs, rhs, perR]]]
+  ];
+
+(* ⊢ ∀a. &ℝ (ratNeg a) = realNeg (&ℝ a).  (via additive inverse cancellation) *)
+realOfRatNegThm =
+  Module[{aV, e1, e2, e2p, cancel},
+    aV = mkVar["a", ratTy];
+    e1 = HOL`Bool`SPEC[realOfRatTm[aV], realAddNegThm];   (* &ℝa + (−&ℝa) = &ℝ0 *)
+    e2 = HOL`Bool`SPEC[ratNegTm[aV], HOL`Bool`SPEC[aV, realOfRatAddThm]];   (* &ℝ(a+(−a)) = &ℝa + &ℝ(−a) *)
+    e2p = TRANS[HOL`Equal`SYM[e2], HOL`Equal`APTERM[realOfRatConst[], HOL`Bool`SPEC[aV, HOL`Stdlib`Rat`ratAddNegThm]]];
+       (* &ℝa + &ℝ(−a) = &ℝ(a+(−a)) = &ℝ0 *)
+    cancel = HOL`Bool`MP[HOL`Bool`SPEC[realOfRatTm[ratNegTm[aV]], HOL`Bool`SPEC[realNegTm[realOfRatTm[aV]],
+               HOL`Bool`SPEC[realOfRatTm[aV], realAddCancelLeftThm]]], TRANS[e1, HOL`Equal`SYM[e2p]]];
+       (* realNeg(&ℝa) = &ℝ(−a) *)
+    HOL`Bool`GEN[aV, HOL`Equal`SYM[cancel]]
+  ];
+
+(* ℚ multiplicative cancellation helpers (0<y ⟹ y≠0) *)
+rmC[xT_, yT_] := HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, HOL`Stdlib`Rat`ratMulCommThm]];   (* x·y = y·x *)
+mulCancelRgt[xT_, yT_, yPos_] :=                                              (* (x·y)·(1/y) = x *)
+  TRANS[HOL`Bool`SPEC[ratInvTm[yT], HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, HOL`Stdlib`Rat`ratMulAssocThm]]],
+    TRANS[HOL`Equal`APTERM[mkComb[ratMulC[], xT], HOL`Bool`MP[HOL`Bool`SPEC[yT, HOL`Stdlib`Rat`ratMulInvThm], posToNe0[yPos]]],
+      HOL`Bool`SPEC[xT, HOL`Stdlib`Rat`ratMulOneThm]]];
+invCancelRgt[xT_, yT_, yPos_] :=                                              (* (x·(1/y))·y = x *)
+  TRANS[HOL`Bool`SPEC[yT, HOL`Bool`SPEC[ratInvTm[yT], HOL`Bool`SPEC[xT, HOL`Stdlib`Rat`ratMulAssocThm]]],
+    TRANS[HOL`Equal`APTERM[mkComb[ratMulC[], xT],
+        TRANS[rmC[ratInvTm[yT], yT], HOL`Bool`MP[HOL`Bool`SPEC[yT, HOL`Stdlib`Rat`ratMulInvThm], posToNe0[yPos]]]],
+      HOL`Bool`SPEC[xT, HOL`Stdlib`Rat`ratMulOneThm]]];
+fstCancel[pT_, bT_, pPos_] :=                                                 (* (p·b)·(1/p) = b *)
+  TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratMulC[], rmC[pT, bT]], REFL[ratInvTm[pT]]],
+    mulCancelRgt[bT, pT, pPos]];
+(* 0≤r ⟹ 0 ≤ r·(1/y)  (y>0) *)
+le0RInv[rT_, yT_, yPos_, rGe0_] :=
+  Module[{yi = ratInvTm[yT], invPos2 = HOL`Bool`MP[HOL`Bool`SPEC[yT, ratInvPosThm], yPos]},
+    EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLeC[], HOL`Bool`SPEC[rT, HOL`Stdlib`Rat`ratMulZeroThm]], REFL[ratMulTm[rT, yi]]],
+      HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[yi, HOL`Bool`SPEC[zeroQ[], HOL`Bool`SPEC[rT, HOL`Stdlib`Rat`ratLeMulNonnegThm]]], rGe0],
+        HOL`Bool`MP[HOL`Bool`SPEC[yi, HOL`Bool`SPEC[zeroQ[], ratLtImpLeThm]], invPos2]]]];
+
+(* ⊢ ∀a b. 0≤a ⇒ 0≤b ⇒ realNnMul (&ℝ a) (&ℝ b) = &ℝ (a·b). *)
+realOfRatNnMulThm =
+  Module[{aV, bV, hRa, hRb, hNa, hNb, ipa, ipb, abQ, rV, prod, memEq, memProd,
+          zeroLeAB, posOfLeMul, fwd, bwd, perR},
+    aV = mkVar["a", ratTy]; bV = mkVar["b", ratTy];
+    hRa = ASSUME[ratLeTm[zeroQ[], aV]]; hRb = ASSUME[ratLeTm[zeroQ[], bV]];
+    hNa = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[aV, HOL`Bool`SPEC[zeroQ[], realOfRatLeThm]]], hRa];
+    hNb = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[zeroQ[], realOfRatLeThm]]], hRb];
+    ipa = realOfRatTm[aV]; ipb = realOfRatTm[bV]; abQ = ratMulTm[aV, bV];
+    rV = mkVar["r", ratTy]; prod = realNnMulTm[ipa, ipb];
+    memEq[rT_] := nnMemEq[ipa, ipb, rT, hNa, hNb];
+    memProd[rT_] := HOL`Bool`SPEC[rT, HOL`Bool`SPEC[abQ, realOfRatMemThm]];
+    zeroLeAB = EQMP[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratLeC[], HOL`Bool`SPEC[aV, HOL`Stdlib`Rat`ratMulZeroThm]], REFL[abQ]],
+                 HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[zeroQ[], HOL`Bool`SPEC[aV, HOL`Stdlib`Rat`ratLeMulNonnegThm]]], hRa], hRb]];   (* 0 ≤ a·b *)
+    (* 0<a·b ∧ 0≤a ⟹ 0<a  (kill the a=0 case) *)
+    posOfLeMul[xT_, yT_, hx_, abPos_] := HOL`Bool`DISJCASES[
+      HOL`Bool`MP[HOL`Bool`SPEC[xT, HOL`Bool`SPEC[zeroQ[], ratLeCasesThm]], hx],
+      ASSUME[ratLtTm[zeroQ[], xT]],
+      HOL`Bool`CONTR[ratLtTm[zeroQ[], xT],
+        HOL`Bool`MP[HOL`Bool`NOTELIM[HOL`Bool`SPEC[zeroQ[], ratLtIrreflThm]],
+          rwLt[abPos, REFL[zeroQ[]],
+            TRANS[HOL`Kernel`MKCOMB[HOL`Equal`APTERM[ratMulC[], HOL`Equal`SYM[ASSUME[mkEq[zeroQ[], xT]]]], REFL[yT]],
+              TRANS[rmC[zeroQ[], yT], HOL`Bool`SPEC[yT, HOL`Stdlib`Rat`ratMulZeroThm]]]]]]];   (* x·y → 0·... wait: rewrite a·b with a=0 *)
+
+    fwd = Module[{hMem, redMem, leftD, exPart, caseL, caseR, cases},
+      hMem = ASSUME[repApp[prod, rV]];
+      redMem = EQMP[memEq[rV], hMem];
+      leftD = concl[memEq[rV]][[2, 1, 2]]; exPart = concl[memEq[rV]][[2, 2]];
+      caseL = EQMP[HOL`Equal`SYM[memProd[rV]], ltLe2[ASSUME[leftD], zeroLeAB]];
+      caseR = Module[{pV, qV, innerP, condT, hC, mAp, c1, mBq, c2, pPos, c3, qPos,
+                      rLtpq, pLtA, qLtB, aPos, pqLtaq, qaLtba, aqLtab, pqLtab, rLtab},
+        pV = mkVar["p", ratTy]; qV = mkVar["q", ratTy];
+        innerP = concl[BETACONV[mkComb[exPart[[2]], pV]]][[2]];
+        condT = concl[BETACONV[mkComb[innerP[[2]], qV]]][[2]];
+        hC = ASSUME[condT];
+        mAp = HOL`Bool`CONJUNCT1[hC]; c1 = HOL`Bool`CONJUNCT2[hC];
+        mBq = HOL`Bool`CONJUNCT1[c1]; c2 = HOL`Bool`CONJUNCT2[c1];
+        pPos = HOL`Bool`CONJUNCT1[c2]; c3 = HOL`Bool`CONJUNCT2[c2];
+        qPos = HOL`Bool`CONJUNCT1[c3]; rLtpq = HOL`Bool`CONJUNCT2[c3];
+        pLtA = EQMP[memOR[aV, pV], mAp]; qLtB = EQMP[memOR[bV, qV], mBq];
+        aPos = ltLt2[pPos, pLtA];
+        pqLtaq = ltMulR[pLtA, qPos];   (* p·q < a·q *)
+        qaLtba = ltMulR[qLtB, aPos];   (* q·a < b·a *)
+        aqLtab = rwLt[qaLtba, rmC[qV, aV], rmC[bV, aV]];   (* a·q < a·b *)
+        pqLtab = ltLt2[pqLtaq, aqLtab];
+        rLtab = ltLt2[rLtpq, pqLtab];
+        HOL`Bool`CHOOSE[pV, ASSUME[exPart], HOL`Bool`CHOOSE[qV, ASSUME[innerP],
+          EQMP[HOL`Equal`SYM[memProd[rV]], rLtab]]]
+      ];
+      cases = HOL`Bool`DISJCASES[redMem, caseL, caseR];
+      HOL`Bool`DISCH[concl[hMem], cases]
+    ];
+
+    bwd = Module[{hMemP, rLtab, em, caseNeg, casePos, result},
+      hMemP = ASSUME[repApp[realOfRatTm[abQ], rV]];
+      rLtab = EQMP[memProd[rV], hMemP];
+      em = HOL`Bool`EXCLUDEDMIDDLE[ratLtTm[rV, zeroQ[]]];
+      caseNeg = nnMemIntroL[ipa, ipb, rV, ASSUME[ratLtTm[rV, zeroQ[]]], hNa, hNb];
+      casePos = Module[{hNotNeg, rGe0, abPos, aPos, bPos, invB, invBpos, rDivB,
+                        rDivBLtA, denseP, rDivBLtP, pLtA, pPos, pTm, invP, invPpos,
+                        pbGtR, rDivPLtB, denseQ, rDivPLtQ, qLtB, qPos, qTm, rLtpq,
+                        mAp, mBq, cond},
+        hNotNeg = ASSUME[notTm[ratLtTm[rV, zeroQ[]]]];
+        rGe0 = notNegToGe0[hNotNeg, rV];
+        abPos = leLt2[rGe0, rLtab];   (* 0 < a·b *)
+        aPos = posOfLeMul[aV, bV, hRa, abPos];   (* 0<a *)
+        bPos = posOfLeMul[bV, aV, hRb, rwLt[abPos, REFL[zeroQ[]], rmC[aV, bV]]];   (* 0<b (from 0<b·a) *)
+        invB = ratInvTm[bV]; invBpos = HOL`Bool`MP[HOL`Bool`SPEC[bV, ratInvPosThm], bPos];
+        rDivB = ratMulTm[rV, invB];
+        rDivBLtA = rwLt[ltMulR[rLtab, invBpos], REFL[rDivB], mulCancelRgt[aV, bV, bPos]];   (* r·(1/b) < a *)
+        denseP = HOL`Bool`MP[HOL`Bool`SPEC[aV, HOL`Bool`SPEC[rDivB, ratDenseThm]], rDivBLtA];
+        rDivBLtP = HOL`Bool`CONJUNCT1[denseP]; pLtA = HOL`Bool`CONJUNCT2[denseP];
+        pTm = concl[rDivBLtP][[2]];
+        pPos = leLt2[le0RInv[rV, bV, bPos, rGe0], rDivBLtP];   (* 0<p *)
+        pbGtR = rwLt[ltMulR[rDivBLtP, bPos], invCancelRgt[rV, bV, bPos], REFL[ratMulTm[pTm, bV]]];   (* r < p·b *)
+        invP = ratInvTm[pTm]; invPpos = HOL`Bool`MP[HOL`Bool`SPEC[pTm, ratInvPosThm], pPos];
+        rDivPLtB = rwLt[ltMulR[pbGtR, invPpos], REFL[ratMulTm[rV, invP]], fstCancel[pTm, bV, pPos]];   (* r·(1/p) < b *)
+        denseQ = HOL`Bool`MP[HOL`Bool`SPEC[bV, HOL`Bool`SPEC[ratMulTm[rV, invP], ratDenseThm]], rDivPLtB];
+        rDivPLtQ = HOL`Bool`CONJUNCT1[denseQ]; qLtB = HOL`Bool`CONJUNCT2[denseQ];
+        qTm = concl[rDivPLtQ][[2]];
+        qPos = leLt2[le0RInv[rV, pTm, pPos, rGe0], rDivPLtQ];   (* 0<q *)
+        rLtpq = rwLt[ltMulR[rDivPLtQ, pPos], invCancelRgt[rV, pTm, pPos], rmC[qTm, pTm]];   (* r < p·q *)
+        mAp = EQMP[HOL`Equal`SYM[memOR[aV, pTm]], pLtA];
+        mBq = EQMP[HOL`Equal`SYM[memOR[bV, qTm]], qLtB];
+        cond = HOL`Bool`CONJ[mAp, HOL`Bool`CONJ[mBq, HOL`Bool`CONJ[pPos, HOL`Bool`CONJ[qPos, rLtpq]]]];
+        nnMemIntroR[ipa, ipb, rV, pTm, qTm, cond, hNa, hNb]
+      ];
+      result = HOL`Bool`DISJCASES[em, caseNeg, casePos];
+      HOL`Bool`DISCH[concl[hMemP], result]
+    ];
+
+    perR = HOL`Bool`GEN[rV, HOL`Kernel`DEDUCTANTISYM[HOL`Bool`UNDISCH[bwd], HOL`Bool`UNDISCH[fwd]]];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[concl[hRa], HOL`Bool`DISCH[concl[hRb],
+        realEqFromRepEq[prod, realOfRatTm[abQ], perR]]]]]
+  ];
+
+(* ℚ multiplicative-negation facts (not in Rat) — for the signed homomorphism. *)
+ratNegC[] := HOL`Stdlib`Rat`ratNegConst[];
+ratMulNegR[aT_, bT_] :=   (* a·(−b) = ratNeg(a·b) *)
+  Module[{ab = ratMulTm[aT, bT], anb = ratMulTm[aT, ratNegTm[bT]], sumZero, eqC},
+    sumZero = TRANS[HOL`Equal`SYM[HOL`Bool`SPEC[bT, HOL`Bool`SPEC[ratNegTm[bT], HOL`Bool`SPEC[aT, HOL`Stdlib`Rat`ratMulDistribThm]]]],
+                TRANS[HOL`Equal`APTERM[mkComb[ratMulC[], aT],
+                    TRANS[ratComm[ratNegTm[bT], bT], HOL`Bool`SPEC[bT, HOL`Stdlib`Rat`ratAddNegThm]]],
+                  HOL`Bool`SPEC[aT, HOL`Stdlib`Rat`ratMulZeroThm]]];   (* a·(−b)+a·b = 0 *)
+    eqC = TRANS[TRANS[ratComm[ab, anb], sumZero], HOL`Equal`SYM[HOL`Bool`SPEC[ab, HOL`Stdlib`Rat`ratAddNegThm]]];
+       (* (a·b)+(a·(−b)) = (a·b)+ratNeg(a·b) *)
+    HOL`Bool`MP[HOL`Bool`SPEC[ratNegTm[ab], HOL`Bool`SPEC[anb, HOL`Bool`SPEC[ab, ratAddLeftCancelThm]]], eqC]
+  ];
+ratMulNegL[aT_, bT_] :=   (* (−a)·b = ratNeg(a·b) *)
+  TRANS[rmC[ratNegTm[aT], bT],
+    TRANS[ratMulNegR[bT, aT], HOL`Equal`APTERM[ratNegC[], rmC[bT, aT]]]];
+ratMulNegNeg[aT_, bT_] :=   (* (−a)·(−b) = a·b *)
+  TRANS[ratMulNegL[aT, ratNegTm[bT]],
+    TRANS[HOL`Equal`APTERM[ratNegC[], ratMulNegR[aT, bT]], HOL`Bool`SPEC[ratMulTm[aT, bT], ratNegNegThm]]];
+
+(* sign-hyp bridges: rat sign ↔ real sign of &ℝ; 0≤−q from ¬(0≤q). *)
+realNonnegOfRat[qT_, hq_] := EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[qT, HOL`Bool`SPEC[zeroQ[], realOfRatLeThm]]], hq];
+realNegOfRat[qT_, hnq_] := EQMP[HOL`Equal`APTERM[notC[], HOL`Equal`SYM[HOL`Bool`SPEC[qT, HOL`Bool`SPEC[zeroQ[], realOfRatLeThm]]]], hnq];
+ratNegNonneg[qT_, hnq_] := HOL`Bool`MP[HOL`Bool`SPEC[ratNegTm[qT], HOL`Bool`SPEC[zeroQ[], ratLtImpLeThm]],
+  HOL`Bool`MP[HOL`Bool`SPEC[qT, ratNegPosThm],
+    EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[zeroQ[], HOL`Bool`SPEC[qT, HOL`Stdlib`Rat`ratLtNotLeThm]]], hnq]]];
+
+(* ⊢ ∀a b. &ℝ (a·b) = realMul (&ℝ a) (&ℝ b). *)
+realOfRatMulThm =
+  Module[{aV, bV, ipa, ipb, abQ, nnOR, mkPP, mkPN, mkNP, mkNN, hRaT, hRbT, hNRaT, hNRbT},
+    aV = mkVar["a", ratTy]; bV = mkVar["b", ratTy];
+    ipa = realOfRatTm[aV]; ipb = realOfRatTm[bV]; abQ = ratMulTm[aV, bV];
+    hRaT = ratLeTm[zeroQ[], aV]; hRbT = ratLeTm[zeroQ[], bV];
+    hNRaT = notTm[hRaT]; hNRbT = notTm[hRbT];
+    nnOR[xT_, yT_, hx_, hy_] := HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, realOfRatNnMulThm]], hx], hy];
+    mkPP[hRa_, hRb_] := HOL`Equal`SYM[TRANS[casePP[ipa, ipb, realNonnegOfRat[aV, hRa], realNonnegOfRat[bV, hRb]],
+      nnOR[aV, bV, hRa, hRb]]];
+    mkPN[hRa_, hNotRb_] := Module[{hNa, e, e1, e2, argEq},
+      hNa = realNonnegOfRat[aV, hRa];
+      e = casePN[ipa, ipb, hNa, realNegOfRat[bV, hNotRb]];
+      e1 = nnCongR[ipa, HOL`Equal`SYM[HOL`Bool`SPEC[bV, realOfRatNegThm]]];
+      e2 = nnOR[aV, ratNegTm[bV], hRa, ratNegNonneg[bV, hNotRb]];
+      argEq = HOL`Equal`APTERM[realOfRatConst[],
+                TRANS[HOL`Equal`APTERM[ratNegC[], ratMulNegR[aV, bV]], HOL`Bool`SPEC[abQ, ratNegNegThm]]];
+      HOL`Equal`SYM[TRANS[e, TRANS[rNegCong[TRANS[e1, e2]],
+        TRANS[HOL`Equal`SYM[HOL`Bool`SPEC[ratMulTm[aV, ratNegTm[bV]], realOfRatNegThm]], argEq]]]]
+    ];
+    mkNP[hNotRa_, hRb_] := Module[{hNb, e, e1, e2, argEq},
+      hNb = realNonnegOfRat[bV, hRb];
+      e = caseNP[ipa, ipb, realNegOfRat[aV, hNotRa], hNb];
+      e1 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realNnMulConst[], HOL`Equal`SYM[HOL`Bool`SPEC[aV, realOfRatNegThm]]], REFL[ipb]];
+      e2 = nnOR[ratNegTm[aV], bV, ratNegNonneg[aV, hNotRa], hRb];
+      argEq = HOL`Equal`APTERM[realOfRatConst[],
+                TRANS[HOL`Equal`APTERM[ratNegC[], ratMulNegL[aV, bV]], HOL`Bool`SPEC[abQ, ratNegNegThm]]];
+      HOL`Equal`SYM[TRANS[e, TRANS[rNegCong[TRANS[e1, e2]],
+        TRANS[HOL`Equal`SYM[HOL`Bool`SPEC[ratMulTm[ratNegTm[aV], bV], realOfRatNegThm]], argEq]]]]
+    ];
+    mkNN[hNotRa_, hNotRb_] := Module[{e, e1, e2, argEq},
+      e = caseNN[ipa, ipb, realNegOfRat[aV, hNotRa], realNegOfRat[bV, hNotRb]];
+      e1 = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realNnMulConst[], HOL`Equal`SYM[HOL`Bool`SPEC[aV, realOfRatNegThm]]],
+             HOL`Equal`SYM[HOL`Bool`SPEC[bV, realOfRatNegThm]]];
+      e2 = nnOR[ratNegTm[aV], ratNegTm[bV], ratNegNonneg[aV, hNotRa], ratNegNonneg[bV, hNotRb]];
+      argEq = HOL`Equal`APTERM[realOfRatConst[], ratMulNegNeg[aV, bV]];
+      HOL`Equal`SYM[TRANS[e, TRANS[e1, TRANS[e2, argEq]]]]
+    ];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[hRaT],
+        HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[hRbT],
+          mkPP[ASSUME[hRaT], ASSUME[hRbT]], mkPN[ASSUME[hRaT], ASSUME[hNRbT]]],
+        HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[hRbT],
+          mkNP[ASSUME[hNRaT], ASSUME[hRbT]], mkNN[ASSUME[hNRaT], ASSUME[hNRbT]]]]]]
   ];
 
 End[];
