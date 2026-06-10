@@ -60,14 +60,15 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "stdlib", "Int.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Rat.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Cut.wl"}]];
-  (* Cut → RatAux → Field → Mul → Inv: the ℝ ordered-field core.  GRADUATED
-     2026-06-10 into build_snapshot.wls/bootstrap.mx (ordered field complete:
-     group + ring + field + linear order + ×/≤ compat + ℚ↪ℝ homomorphism).
-     New Real files (Complete.wl, Roots.wl, Seq.wl) are the next frontier. *)
+  (* Cut → RatAux → Field → Mul → Inv → Complete: the ℝ ordered-field core
+     (GRADUATED 2026-06-10: group + ring + field + linear order + ×/≤ compat
+     + ℚ↪ℝ homomorphism) + Dedekind completeness / Archimedean / ℚ-density.
+     New Real files (Roots.wl, Seq.wl) are the next frontier. *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "RatAux.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Field.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Mul.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Inv.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Complete.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
 
