@@ -60,11 +60,10 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "stdlib", "Int.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Rat.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Cut.wl"}]];
-  (* RatAux.wl / Field.wl / Mul.wl / Inv.wl are FRONTIER files (in-development):
-     loaded by the cold runners but deliberately NOT in
-     build_snapshot.wls/bootstrap.mx, so the dev.wls loop stays cheap.
-     Load order: Cut → RatAux → Field → Mul → Inv. Add to build_snapshot at
-     graduation. *)
+  (* Cut → RatAux → Field → Mul → Inv: the ℝ ordered-field core.  GRADUATED
+     2026-06-10 into build_snapshot.wls/bootstrap.mx (ordered field complete:
+     group + ring + field + linear order + ×/≤ compat + ℚ↪ℝ homomorphism).
+     New Real files (Complete.wl, Roots.wl, Seq.wl) are the next frontier. *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "RatAux.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Field.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Mul.wl"}]];

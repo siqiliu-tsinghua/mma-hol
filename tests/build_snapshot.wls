@@ -59,7 +59,11 @@ Module[{repoRoot, snapshotFile, holContexts, startTime, libs, loadList,
     {"stdlib", "FTA.wl"},
     {"stdlib", "Int.wl"},
     {"stdlib", "Rat.wl"},
-    {"stdlib", "Real", "Cut.wl"}
+    {"stdlib", "Real", "Cut.wl"},
+    {"stdlib", "Real", "RatAux.wl"},
+    {"stdlib", "Real", "Field.wl"},
+    {"stdlib", "Real", "Mul.wl"},
+    {"stdlib", "Real", "Inv.wl"}
   };
 
   loadList = If[uptoPattern === None, libs,
