@@ -311,6 +311,39 @@ HOLTest`runTests["bool: CHOOSE rejects wrong type",
     "CHOOSE rejects v of wrong type"];
 ]];
 
+HOLTest`runTests["bool: CHOOSE rejects v in extra body hypothesis",
+  Module[{alpha, x, y, v, c, d, existTm, exTh, bodyTm, baseBodyTh,
+          extraTm, bodyTh},
+  alpha = mkVarType["a"];
+  x = mkVar["x", alpha]; y = mkVar["y", alpha];
+  v = mkVar["v", alpha];
+  c = mkVar["c", alpha]; d = mkVar["d", alpha];
+  existTm = existsTerm[x, mkEq[x, c]];
+  exTh = EXISTS[existTm, c, REFL[c]];
+  bodyTm = existsTerm[y, mkEq[y, c]];
+  baseBodyTh = EXISTS[bodyTm, v, ASSUME[mkEq[v, c]]];
+  extraTm = mkEq[v, d];
+  bodyTh = CONJUNCT2[CONJ[ASSUME[extraTm], baseBodyTh]];
+  HOLTest`assertThrows[CHOOSE[v, exTh, bodyTh], "rule",
+    "CHOOSE rejects v free in extra body hypothesis"];
+]];
+
+HOLTest`runTests["bool: CHOOSE allows v in discharged body hypothesis",
+  Module[{alpha, x, y, v, c, existTm, exTh, bodyTm, bodyTh, th},
+  alpha = mkVarType["a"];
+  x = mkVar["x", alpha]; y = mkVar["y", alpha];
+  v = mkVar["v", alpha];
+  c = mkVar["c", alpha];
+  existTm = existsTerm[x, mkEq[x, c]];
+  exTh = EXISTS[existTm, c, REFL[c]];
+  bodyTm = existsTerm[y, mkEq[y, c]];
+  bodyTh = EXISTS[bodyTm, v, ASSUME[mkEq[v, c]]];
+  th = CHOOSE[v, exTh, bodyTh];
+  HOLTest`assertEq[concl[th], bodyTm,
+    "CHOOSE accepts v only in discharged body hypothesis"];
+  HOLTest`assertEq[hyp[th], {}, "CHOOSE discharges body hypothesis"];
+]];
+
 HOLTest`runTests["bool: DISJ1", Module[{p, q, th},
   p = mkVar["p", boolTy]; q = mkVar["q", boolTy];
   th = DISJ1[ASSUME[p], q];

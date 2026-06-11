@@ -358,7 +358,7 @@ HOL`Bool`EXISTS[existTm_, witness_, th_] :=
 
 HOL`Bool`CHOOSE[v : var[vName_String, _], existsTh_, bodyTh_] :=
   Module[{c, P, xTy, qRes, defInst, s1, b1, unfoldEq, step1, specTh,
-          pv, betaPv, assPv, bodyFromPv, withHyp, dischTh, genTh},
+          pv, betaPv, assPv, bodyFromPv, bodyInst, withHyp, dischTh, genTh},
     c = concl[existsTh];
     If[! MatchQ[c, comb[const["∃", _], abs[bvar[0, _], _, _String]]],
       HOL`Error`holError["rule", "CHOOSE: exists th must conclude ∃x. p",
@@ -375,16 +375,22 @@ HOL`Bool`CHOOSE[v : var[vName_String, _], existsTh_, bodyTh_] :=
     If[AnyTrue[hyp[existsTh], MemberQ[Map[First, freesIn[#]], vName] &],
       HOL`Error`holError["rule", "CHOOSE: v must not be free in exists-hypotheses",
         <|"v" -> v|>]];
+    pv = mkComb[P, v];
+    betaPv = BETACONV[pv];
+    assPv = ASSUME[pv];
+    bodyFromPv = EQMP[betaPv, assPv];
+    bodyInst = concl[bodyFromPv];
+    If[AnyTrue[hyp[bodyTh],
+      (! aconv[#, bodyInst] && ! aconv[#, pv] &&
+        MemberQ[Map[First, freesIn[#]], vName]) &],
+      HOL`Error`holError["rule", "CHOOSE: v must not be free in body-hypotheses",
+        <|"v" -> v|>]];
     defInst = INSTTYPE[{tyVar["a"] -> xTy}, existsDef];
     s1 = APTHM[defInst, P];
     b1 = BETACONV[rhsOfConcl[s1]];
     unfoldEq = TRANS[s1, b1];
     step1 = EQMP[unfoldEq, existsTh];
     specTh = HOL`Bool`SPEC[qRes, step1];
-    pv = mkComb[P, v];
-    betaPv = BETACONV[pv];
-    assPv = ASSUME[pv];
-    bodyFromPv = EQMP[betaPv, assPv];
     withHyp = proveHyp[bodyFromPv, bodyTh];
     dischTh = HOL`Bool`DISCH[pv, withHyp];
     genTh = HOL`Bool`GEN[v, dischTh];

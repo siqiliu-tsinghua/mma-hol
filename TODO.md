@@ -37,11 +37,10 @@ Audit pass against `fusion.ml` / `equal.ml` / `drule.ml` / `bool.ml` / `meson.ml
 - **Resolution**: moved `fixpointConvRule` to `Drule.wl` as public, added cycle detection (record concls in a seen-set; break if a concl recurs without being equal to the previous one). Added `productiveEqThm[eqTh]` (returns False when LHS aconv RHS). `REWRITERULE` now accepts a single eq or a list, filters non-productive rules, combines via `ORELSEC`, and iterates to fixpoint via `fixpointConvRule`. Tests cover non-productive filtering and cycle termination on `p ↔ q` rule pairs.
 - **Side note** (deferred): term-net indexing for fast rule lookup is still TBD — needed for SIMP scaling but not soundness.
 
-### F. `CHOOSE` freshness errors leak to kernel layer
+### F. `CHOOSE` freshness errors leak to kernel layer ✓ DONE
 - **Where**: `Bool.wl:303`.
-- **Symptom**: explicit checks for v ∉ FV(qRes), v ∉ hyps(existsTh); the v-not-in-bodyTh-hyps check is implicit via `GEN`'s internal `ABS`, so the user sees "ABS: binder occurs free in hypotheses" instead of a CHOOSE-tagged error. Sound, but UX.
-- **Action**: add the bodyTh-hyps check up front in CHOOSE, with its own tag.
-- **Status**: pending; cosmetic.
+- **Resolution**: `CHOOSE` now checks bodyTh hypotheses up front and throws `CHOOSE: v must not be free in body-hypotheses` before the proof reaches `GEN`/kernel `ABS`.
+- **Regression**: added a negative test for v leaking through an extra body hypothesis and a positive control that the discharged body instance is still allowed.
 
 ### G. `SUBCONV` / `onceDepthConv` / `topDownAllConv` fresh-name uses body free-vars only
 - **Where**: `Drule.wl:77, 179, 214`.
