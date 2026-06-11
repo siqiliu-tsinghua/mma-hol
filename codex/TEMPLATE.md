@@ -68,6 +68,11 @@ Bullet list of concrete artifacts (code, tests, doc line updates).
 10. **No `Return` inside `Do`/`For`/`While`** — it exits only the loop, NOT
     the surrounding Module; code after the loop still runs. Use a result
     flag (`out = Null; While[out === Null && …]`) or `Throw`/`Catch`.
+11. **`holError` is HoldRest** — msg and payload must be a LITERAL String /
+    Association at the call site. A computed msg (`name <> "…"`) or a
+    payload passed through a variable matches no DownValue: nothing is
+    thrown and the call returns unevaluated (bit brief-005). Put variables
+    INSIDE a literal `<|"k" -> v|>` wrapper instead.
 
 ## Verification (run each, in order; record exact output)
 
