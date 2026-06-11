@@ -75,6 +75,7 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Inv.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Complete.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Abs.wl"}]];
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "MinMax.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
 
