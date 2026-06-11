@@ -77,8 +77,7 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Abs.wl"}]];
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "MinMax.wl"}]];
 
-  (* REAL_ARITH loads after the Real folder (frontier: not yet in
-     build_snapshot.wls while Stages 2-3 are under construction) *)
+  (* REAL_ARITH loads after the Real folder it builds on *)
   Get[FileNameJoin[{repoRoot, "auto", "RealArith.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];

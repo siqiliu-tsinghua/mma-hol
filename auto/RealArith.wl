@@ -3,6 +3,7 @@
 BeginPackage["HOL`Auto`RealArith`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
+  "HOL`Tactics`",
   "HOL`Auto`PropTaut`",
   "HOL`Stdlib`Num`", "HOL`Stdlib`Int`", "HOL`Stdlib`Rat`",
   "HOL`Stdlib`Real`"
@@ -59,6 +60,12 @@ realLinNormConv::usage =
 realAtomNormConv::usage =
   "realAtomNormConv[atom] — normalizes a realLe/realLt linear atom to " <>
   "an equivalent atom with nonnegative canonical linear sides.";
+realArithProve::usage =
+  "realArithProve[goalTm] — proves universally quantified linear real " <>
+  "arithmetic implications via an exact Farkas oracle and kernel replay.";
+REALARITH::usage =
+  "REALARITH[][goal] — tactic wrapper for realArithProve. (HOL Light's " <>
+  "REAL_ARITH: underscore is not a valid WL symbol character.)";
 
 Begin["`Private`"];
 
@@ -1265,6 +1272,331 @@ HOL`Auto`RealArith`realAtomNormConv[atom_] :=
         "atom normalization produced a signed side", <|"atom" -> atom|>]];
     th3 = relCongEq[rel, eqL, eqR];
     TRANS[th1, TRANS[th2, th3]]
+  ];
+
+realUnsupported[where_String, tm_] :=
+  HOL`Error`holError["realarith-unsupported",
+    "unsupported real arithmetic shape", <|"where" -> where, "term" -> tm|>];
+
+realInternal[where_String, payload_] :=
+  HOL`Error`holError["realarith-internal",
+    "internal real arithmetic verifier failure",
+    <|"where" -> where, "payload" -> payload|>];
+
+realEqTermQ[t_] :=
+  MatchQ[t, comb[comb[const["=", _], _], _]] &&
+    HOL`Terms`typeOf[t[[1, 2]]] === realTy &&
+    HOL`Terms`typeOf[t[[2]]] === realTy;
+
+realAtomTermQ[t_] := realLeTermQ[t] || realLtTermQ[t] || realEqTermQ[t];
+
+realAtomSidesTerm[t_] := {t[[1, 2]], t[[2]]};
+
+openBvar0Typed[t_, v : var[_, _]] := openBvarAtTyped[t, 0, v];
+
+openBvarAtTyped[bvar[k_, ty_], k_, v : var[_, vty_]] /; ty === vty := v;
+openBvarAtTyped[t : bvar[_, _], _, _] := t;
+openBvarAtTyped[t : var[_, _], _, _] := t;
+openBvarAtTyped[t : const[_, _], _, _] := t;
+openBvarAtTyped[comb[f_, x_], k_, v_] :=
+  comb[openBvarAtTyped[f, k, v], openBvarAtTyped[x, k, v]];
+openBvarAtTyped[abs[bv_, body_, origin_], k_, v_] :=
+  abs[bv, openBvarAtTyped[body, k + 1, v], origin];
+
+peelForallReal[t_] :=
+  If[MatchQ[t, comb[const["∀", _], abs[bvar[0, _], _, _String]]],
+    Module[{ty, origin, v, opened, rec},
+      ty = t[[2, 1, 2]];
+      If[ty =!= realTy, realUnsupported["forall", t]];
+      origin = t[[2, 3]];
+      v = mkVar[origin, realTy];
+      opened = openBvar0Typed[t[[2, 2]], v];
+      rec = peelForallReal[opened];
+      {Prepend[rec[[1]], v], rec[[2]]}
+    ],
+    {{}, t}
+  ];
+
+peelImpReal[t_] :=
+  If[MatchQ[t, comb[comb[const["⇒", _], _], _]],
+    Module[{rec},
+      rec = peelImpReal[t[[2]]];
+      {Prepend[rec[[1]], t[[1, 2]]], rec[[2]]}
+    ],
+    {{}, t}
+  ];
+
+eqHypToLeFacts[eqTh_] :=
+  Module[{eqTm, a, b, iff, both},
+    eqTm = concl[eqTh];
+    a = eqTm[[1, 2]]; b = eqTm[[2]];
+    iff = specAll[realEqIffLeLeThm, {a, b}];
+    both = EQMP[iff, eqTh];
+    {HOL`Bool`CONJUNCT1[both], HOL`Bool`CONJUNCT2[both]}
+  ];
+
+notLtToLeFact[notLtTh_] :=
+  Module[{ltTm, s, t, leTS, notLe, ltST, ff},
+    ltTm = concl[notLtTh][[2]];
+    s = ltTm[[1, 2]]; t = ltTm[[2]];
+    leTS = rLe[t, s];
+    notLe = ASSUME[notTm[leTS]];
+    ltST = EQMP[notLeLtAt[t, s], notLe];
+    ff = HOL`Bool`MP[HOL`Bool`NOTELIM[notLtTh], ltST];
+    HOL`Bool`CCONTR[leTS, ff]
+  ];
+
+hypFactsFromThm[th_] :=
+  Module[{tm, atom, s, t},
+    tm = concl[th];
+    Which[
+      MatchQ[tm, comb[comb[const["∧", _], _], _]],
+        Join[hypFactsFromThm[HOL`Bool`CONJUNCT1[th]],
+          hypFactsFromThm[HOL`Bool`CONJUNCT2[th]]],
+      realLeTermQ[tm] || realLtTermQ[tm],
+        {th},
+      realEqTermQ[tm],
+        eqHypToLeFacts[th],
+      MatchQ[tm, comb[const["¬", _], _]],
+        atom = tm[[2]];
+        Which[
+          realLeTermQ[atom],
+            s = atom[[1, 2]]; t = atom[[2]];
+            {EQMP[notLeLtAt[s, t], th]},
+          realLtTermQ[atom],
+            {notLtToLeFact[th]},
+          realEqTermQ[atom],
+            realUnsupported["disequality hypothesis", tm],
+          True,
+            realUnsupported["negated hypothesis", tm]
+        ],
+      True,
+        realUnsupported["hypothesis", tm]
+    ]
+  ];
+
+normalizeRealFact[th_] := EQMP[HOL`Auto`RealArith`realAtomNormConv[concl[th]], th];
+
+negatedAtomFacts[atom_] :=
+  Module[{negTh, s, t},
+    negTh = ASSUME[notTm[atom]];
+    Which[
+      realLeTermQ[atom],
+        s = atom[[1, 2]]; t = atom[[2]];
+        {EQMP[notLeLtAt[s, t], negTh]},
+      realLtTermQ[atom],
+        {notLtToLeFact[negTh]},
+      True,
+        realUnsupported["negated conclusion atom", atom]
+    ]
+  ];
+
+rAssocScale[k_, a_Association] := DeleteCases[Map[k # &, a], 0];
+rAssocAdd[a_Association, b_Association] := DeleteCases[Merge[{a, b}, Total], 0];
+
+combineOnVarReal[x_, fmRealRow[pco_, pc_, ps_, ppr_],
+    fmRealRow[nco_, nc_, ns_, npr_]] :=
+  Module[{a, b},
+    a = pco[x]; b = -nco[x];
+    fmRealRow[
+      KeyDrop[rAssocAdd[rAssocScale[b, pco], rAssocScale[a, nco]], x],
+      b*pc + a*nc,
+      ps || ns,
+      rAssocAdd[rAssocScale[b, ppr], rAssocScale[a, npr]]]
+  ];
+
+fmRealContradictionQ[fmRealRow[co_, c_, strict_, _]] :=
+  Length[co] === 0 && (c < 0 || (strict && c <= 0));
+
+fmRealTautologyQ[row : fmRealRow[co_, c_, strict_, _]] :=
+  Length[co] === 0 && ! fmRealContradictionQ[row];
+
+fmRealLoop[rows_List] :=
+  Module[{bad, live, vars, x, pos, neg, zero, combos},
+    bad = SelectFirst[rows, fmRealContradictionQ];
+    If[! MissingQ[bad], Return[bad[[4]]]];
+    live = Select[rows, ! fmRealTautologyQ[#] &];
+    vars = If[live === {}, {}, Union @@ (Keys[#[[1]]] & /@ live)];
+    If[vars === {}, Return[$Failed]];
+    x = First[vars];
+    pos = Select[live, Lookup[#[[1]], x, 0] > 0 &];
+    neg = Select[live, Lookup[#[[1]], x, 0] < 0 &];
+    zero = Select[live, Lookup[#[[1]], x, 0] === 0 &];
+    combos = Flatten[Table[combineOnVarReal[x, p, nn], {p, pos}, {nn, neg}], 1];
+    fmRealLoop[Join[zero, combos]]
+  ];
+
+clearProvToNatVector[prov_Association, n_Integer] :=
+  Module[{vals, lcm, scaled, nz, g},
+    vals = Table[Lookup[prov, i, 0], {i, n}];
+    lcm = Apply[LCM, Join[{1}, Denominator /@ vals]];
+    scaled = (lcm # &) /@ vals;
+    nz = Select[scaled, # =!= 0 &];
+    g = If[nz === {}, 1, Apply[GCD, Abs /@ nz]];
+    If[g === 0, scaled, (#/g &) /@ scaled]
+  ];
+
+rowDiffFromFact[th_] :=
+  Module[{atom, lhs, rhs},
+    atom = concl[th];
+    lhs = parseLinR[atom[[1, 2]]];
+    rhs = parseLinR[atom[[2]]];
+    rLinAdd[rhs, rLinScale[-1, lhs]]
+  ];
+
+farkasFMReal[rows_List] :=
+  Module[{init, prov, cert, check, strictUsed},
+    init = Table[
+      With[{d = rows[[i]]["diff"]},
+        fmRealRow[d[[2]], d[[1]], rows[[i]]["strict"], <|i -> 1|>]],
+      {i, Length[rows]}];
+    prov = fmRealLoop[init];
+    If[prov === $Failed, Return[$Failed]];
+    cert = clearProvToNatVector[prov, Length[rows]];
+    check = Fold[rLinAdd, rLinZero[],
+      MapThread[rLinScale[#1, #2["diff"]] &, {cert, rows}]];
+    strictUsed = Or @@ MapThread[(#1 > 0 && #2["strict"]) &, {cert, rows}];
+    If[Length[check[[2]]] =!= 0 ||
+        ! (check[[1]] < 0 || (strictUsed && check[[1]] <= 0)),
+      HOL`Error`holError["realarith-internal",
+        "farkasFMReal: certificate is not contradictory",
+        <|"cert" -> cert, "check" -> check, "strict" -> strictUsed|>]];
+    cert
+  ];
+
+rowFromNormalizedFact[th_] :=
+  <|"diff" -> rowDiffFromFact[th], "strict" -> realLtTermQ[concl[th]]|>;
+
+scaleRealFact[th_, lam_Integer] :=
+  Which[
+    lam === 0, Null,
+    lam === 1, th,
+    realLeTermQ[concl[th]], leMulMono[HOL`Auto`RealArith`rnumPos[lam], th],
+    realLtTermQ[concl[th]], ltMulMono[HOL`Auto`RealArith`rnumPos[lam], th],
+    True, realInternal["scale fact", <|"lambda" -> lam, "fact" -> concl[th]|>]
+  ];
+
+combineRealFacts[th1_, th2_] :=
+  Module[{a, b, c, d, lt1, lt2, inst},
+    {a, b} = realAtomSidesTerm[concl[th1]];
+    {c, d} = realAtomSidesTerm[concl[th2]];
+    lt1 = realLtTermQ[concl[th1]];
+    lt2 = realLtTermQ[concl[th2]];
+    inst = Which[
+      ! lt1 && ! lt2,
+        specAll[realLeAddMono2Thm, {a, b, c, d}],
+      lt1 && ! lt2,
+        specAll[realLtLeAddMonoThm, {a, b, c, d}],
+      ! lt1 && lt2,
+        specAll[realLeLtAddMonoThm, {a, b, c, d}],
+      True,
+        specAll[realLtAddMono2Thm, {a, b, c, d}]
+    ];
+    HOL`Bool`MP[HOL`Bool`MP[inst, th1], th2]
+  ];
+
+groundRealContradiction[th_] :=
+  Module[{atom, lhs, rhs, a, b, notLe, ltAA, leBA, notLt},
+    atom = concl[th];
+    If[! realLeTermQ[atom] && ! realLtTermQ[atom],
+      realInternal["ground contradiction relation", atom]];
+    lhs = atom[[1, 2]]; rhs = atom[[2]];
+    If[! rnumLitQ[lhs] || ! rnumLitQ[rhs],
+      realInternal["ground contradiction variables", atom]];
+    a = rnumLitValue[lhs]; b = rnumLitValue[rhs];
+    Which[
+      realLeTermQ[atom] && a > b,
+        notLe = HOL`Auto`RealArith`rnumNotLe[a, b];
+        HOL`Bool`MP[HOL`Bool`NOTELIM[notLe], th],
+      realLtTermQ[atom] && a === b,
+        notLt = HOL`Bool`SPEC[rnumTm[a], realLtIrreflThm];
+        HOL`Bool`MP[HOL`Bool`NOTELIM[notLt], th],
+      realLtTermQ[atom] && a > b,
+        leBA = HOL`Auto`RealArith`rnumLe[b, a];
+        ltAA = ltLeTrans[th, leBA];
+        notLt = HOL`Bool`SPEC[rnumTm[a], realLtIrreflThm];
+        HOL`Bool`MP[HOL`Bool`NOTELIM[notLt], ltAA],
+      True,
+        realInternal["ground contradiction constants", <|"atom" -> atom, "a" -> a, "b" -> b|>]
+    ]
+  ];
+
+cancelCommonRealVars[th_] :=
+  Module[{atom, lhs, rhs, lrec, rrec, lc, rc, lvs, rvs, lenv, vTerm, cancelEq},
+    atom = concl[th];
+    lhs = atom[[1, 2]]; rhs = atom[[2]];
+    lrec = parseLinR[lhs]; rrec = parseLinR[rhs];
+    lc = lrec[[1]]; rc = rrec[[1]];
+    lvs = lrec[[2]]; rvs = rrec[[2]]; lenv = lrec[[3]];
+    If[lvs =!= rvs,
+      realInternal["common variable cancellation", <|"lhs" -> lrec, "rhs" -> rrec|>]];
+    If[Length[lvs] === 0, Return[th]];
+    vTerm = varListTerm[varKeysSorted[lvs], lvs, lenv];
+    cancelEq = specAll[If[realLeTermQ[atom], realLeAddCancelThm, realLtAddCancelThm],
+      {scalarTerm[lc], scalarTerm[rc], vTerm}];
+    EQMP[cancelEq, th]
+  ];
+
+farkasRefuteReal[facts_List] :=
+  Module[{rows, cert, scaled, combined, canon, ground},
+    rows = rowFromNormalizedFact /@ facts;
+    cert = farkasFMReal[rows];
+    If[cert === $Failed,
+      HOL`Error`holError["realarith-farkas",
+        "no Farkas certificate", <|"rows" -> rows|>]];
+    scaled = DeleteCases[MapThread[scaleRealFact, {facts, cert}], Null];
+    If[scaled === {}, realInternal["empty certificate", cert]];
+    combined = Fold[combineRealFacts, First[scaled], Rest[scaled]];
+    canon = EQMP[HOL`Auto`RealArith`realAtomNormConv[concl[combined]], combined];
+    ground = cancelCommonRealVars[canon];
+    groundRealContradiction[ground]
+  ];
+
+proveRealAtomUnderFacts[atom_, facts_List] :=
+  Module[{refFacts, ff},
+    refFacts = normalizeRealFact /@ negatedAtomFacts[atom];
+    ff = farkasRefuteReal[Join[facts, refFacts]];
+    HOL`Bool`CCONTR[atom, ff]
+  ];
+
+proveRealConclUnderFacts[conclTm_, facts_List] :=
+  Module[{atom, atomFacts, ff, a, b, leAB, leBA},
+    Which[
+      realLeTermQ[conclTm] || realLtTermQ[conclTm],
+        proveRealAtomUnderFacts[conclTm, facts],
+      realEqTermQ[conclTm],
+        a = conclTm[[1, 2]]; b = conclTm[[2]];
+        leAB = proveRealAtomUnderFacts[rLe[a, b], facts];
+        leBA = proveRealAtomUnderFacts[rLe[b, a], facts];
+        HOL`Bool`MP[HOL`Bool`MP[
+          specAll[HOL`Stdlib`Real`realLeAntisymThm, {a, b}], leAB], leBA],
+      MatchQ[conclTm, comb[const["¬", _], _]],
+        atom = conclTm[[2]];
+        If[! realAtomTermQ[atom], realUnsupported["negated conclusion", conclTm]];
+        atomFacts = normalizeRealFact /@ hypFactsFromThm[ASSUME[atom]];
+        ff = farkasRefuteReal[Join[facts, atomFacts]];
+        HOL`Bool`NOTINTRO[HOL`Bool`DISCH[atom, ff]],
+      True,
+        realUnsupported["conclusion", conclTm]
+    ]
+  ];
+
+HOL`Auto`RealArith`realArithProve[goalTm_] :=
+  Module[{pf, vars, body, pi, hypTms, conclTm, hypFacts, cThm, dischd},
+    pf = peelForallReal[goalTm];
+    vars = pf[[1]]; body = pf[[2]];
+    pi = peelImpReal[body];
+    hypTms = pi[[1]]; conclTm = pi[[2]];
+    hypFacts = normalizeRealFact /@ Flatten[hypFactsFromThm /@ (ASSUME /@ hypTms)];
+    cThm = proveRealConclUnderFacts[conclTm, hypFacts];
+    dischd = Fold[HOL`Bool`DISCH[#2, #1] &, cThm, Reverse[hypTms]];
+    Fold[HOL`Bool`GEN[#2, #1] &, dischd, Reverse[vars]]
+  ];
+
+HOL`Auto`RealArith`REALARITH[][g : HOL`Tactics`goal[asms_, conclTm_]] :=
+  Module[{th},
+    th = HOL`Auto`RealArith`realArithProve[conclTm];
+    HOL`Tactics`tacResult[{}, Function[{thList}, th]]
   ];
 
 End[];

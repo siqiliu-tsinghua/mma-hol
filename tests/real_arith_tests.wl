@@ -8,6 +8,7 @@ Needs["HOL`Kernel`"];
 Needs["HOL`Bootstrap`"];
 Needs["HOL`Equal`"];
 Needs["HOL`Bool`"];
+Needs["HOL`Tactics`"];
 Needs["HOL`Stdlib`Num`"];
 Needs["HOL`Stdlib`Int`"];
 Needs["HOL`Stdlib`Rat`"];
@@ -284,4 +285,77 @@ HOLTest`runTests["auto/RealArith: Stage 2 lemmas",
 
     assertThmConcl["rnumNe 2 3", HOL`Auto`RealArith`rnumNe[2, 3],
       notT[mkEq[rnumT[2], rnumT[3]]]]
+  ]];
+
+impT[p_, q_] := mkComb[
+  mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
+forallT[v : var[_, ty_], body_] :=
+  mkComb[mkConst["∀", tyFun[tyFun[ty, boolTy], boolTy]], mkAbs[v, body]];
+forallListT[vs_List, body_] :=
+  Fold[Function[{acc, v}, forallT[v, acc]], body, Reverse[vs]];
+impListT[hyps_List, body_] :=
+  Fold[Function[{acc, h}, impT[h, acc]], body, Reverse[hyps]];
+
+assertRealArithProves[name_String, goal_] :=
+  Module[{th},
+    th = HOL`Auto`RealArith`realArithProve[goal];
+    assertThmConcl[name, th, goal]
+  ];
+
+HOLTest`runTests["auto/RealArith: REAL_ARITH prover Stage 3",
+  Module[{x, y, z, a, b, n, capstoneGoal, goal},
+    x = mkVar["xRA", realTyRAT]; y = mkVar["yRA", realTyRAT];
+    z = mkVar["zRA", realTyRAT];
+    a = mkVar["aRA", realTyRAT]; b = mkVar["bRA", realTyRAT];
+    n = mkVar["nRA", numTyRAT];
+
+    capstoneGoal = forallListT[{a, b},
+      impT[rLtT[a, b],
+        rLtT[a, rMulT[rAddT[a, b], rInvT[rnumT[2]]]]]];
+    assertRealArithProves["capstone midpoint", capstoneGoal];
+
+    assertRealArithProves["reflexive le",
+      forallListT[{x}, rLeT[x, x]]];
+    assertRealArithProves["le transitive",
+      forallListT[{x, y, z}, impListT[{rLeT[x, y], rLeT[y, z]}, rLeT[x, z]]]];
+    assertRealArithProves["lt implies le",
+      forallListT[{x, y}, impT[rLtT[x, y], rLeT[x, y]]]];
+
+    assertRealArithProves["equality conclusion",
+      forallListT[{x, y}, impListT[{rLeT[x, y], rLeT[y, x]}, mkEq[x, y]]]];
+    assertRealArithProves["equality hypothesis",
+      forallListT[{x, y}, impT[mkEq[x, y], rLeT[x, y]]]];
+
+    assertRealArithProves["negated irreflexive lt",
+      forallListT[{x}, notT[rLtT[x, x]]]];
+    assertRealArithProves["negated conclusion",
+      forallListT[{x, y}, impT[rLtT[x, y], notT[rLtT[y, x]]]]];
+    assertRealArithProves["negated hypothesis",
+      forallListT[{x, y}, impT[notT[rLeT[x, y]], rLtT[y, x]]]];
+
+    assertRealArithProves["conjunction hypothesis",
+      forallListT[{x, y}, impT[conjT[rLeT[x, y], rLeT[y, x]], mkEq[x, y]]]];
+    assertRealArithProves["scaling",
+      forallListT[{x}, impT[rLeT[rMulT[rnumT[2], x], rnumT[6]], rLeT[x, rnumT[3]]]]];
+    assertRealArithProves["closed constants", rLtT[rnumT[2], rnumT[3]]];
+    assertRealArithProves["constant shift",
+      forallListT[{x}, rLeT[rAddT[x, rnumT[1]], rAddT[x, rnumT[2]]]]];
+    assertRealArithProves["opaque realAbs",
+      forallListT[{x}, impT[rLeT[rAbsT[x], rnumT[1]],
+        rLeT[rMulT[rnumT[2], rAbsT[x]], rnumT[2]]]]];
+
+    HOLTest`assertThrows[
+      HOL`Auto`RealArith`realArithProve[forallListT[{x, y}, rLeT[x, y]]],
+      "realarith-farkas", "unprovable x <= y throws"];
+    HOLTest`assertThrows[
+      HOL`Auto`RealArith`realArithProve[
+        forallListT[{x, y}, impT[notT[mkEq[x, y]], rLtT[x, y]]]],
+      "realarith-unsupported", "disequality hypothesis throws"];
+    HOLTest`assertThrows[
+      HOL`Auto`RealArith`realArithProve[forallT[n, rLeT[rnumT[0], rnumT[0]]]],
+      "realarith-unsupported", "num quantifier throws"];
+
+    goal = capstoneGoal;
+    assertThmConcl["REALARITH tactic capstone",
+      HOL`Tactics`prove[goal, HOL`Auto`RealArith`REALARITH[]], goal]
   ]];
