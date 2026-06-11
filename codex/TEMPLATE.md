@@ -65,6 +65,9 @@ Bullet list of concrete artifacts (code, tests, doc line updates).
    `mkComb`/`mkAbs` — never raw `comb[...]`/`abs[...]` literals.
 9. **Debug with narrow probes** (`Head[th]`, `hyp[th]`, one sub-slot), never
    print whole term trees.
+10. **No `Return` inside `Do`/`For`/`While`** — it exits only the loop, NOT
+    the surrounding Module; code after the loop still runs. Use a result
+    flag (`out = Null; While[out === Null && …]`) or `Throw`/`Catch`.
 
 ## Verification (run each, in order; record exact output)
 

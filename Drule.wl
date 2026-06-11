@@ -74,6 +74,48 @@ pickFreshName[preferred_String, forbidden_List] :=
     cand
   ];
 
+freeNamesInThm[th_] :=
+  DeleteDuplicates[
+    Join[Map[First, freesIn[concl[th]]],
+      Flatten[Map[Map[First, freesIn[#]] &, hyp[th]]]]];
+
+absBinderCollisionFailureQ[f_Failure] :=
+  f[[2, "msg"]] === "ABS: binder occurs free in hypotheses";
+absBinderCollisionFailureQ[_] := False;
+
+(* No Return inside the loop: Return in Do/For/While exits only the loop,
+   not the surrounding Module (wl_return_in_do) — loop state via `out`. *)
+absConvWithRetry[v_, convTh_, origin_String, bty_, body_, forbidden_List,
+                 convFn_] :=
+  Module[{res, avoid, v2, retryTh, attempt, out},
+    res = Catch[ABS[v, convTh], HOL`Error`holErrorTag];
+    Which[
+      ! MatchQ[res, _Failure], res,
+      ! absBinderCollisionFailureQ[res], Throw[res, HOL`Error`holErrorTag],
+      True,
+        avoid = DeleteDuplicates[Join[forbidden, freeNamesInThm[convTh]]];
+        v2 = v; retryTh = convTh; out = Null; attempt = 1;
+        While[out === Null && attempt <= 3,
+          Module[{name, openTh, opened},
+            name = pickFreshName[origin, avoid];
+            v2 = mkVar[name, bty];
+            openTh = BETA[comb[abs[bvar[0, bty], body, name], v2]];
+            opened = concl[openTh][[2]];
+            retryTh = convFn[opened];
+            If[retryTh === $convFailed,
+              out = $convFailed,
+              res = Catch[ABS[v2, retryTh], HOL`Error`holErrorTag];
+              Which[
+                ! MatchQ[res, _Failure], out = res,
+                ! absBinderCollisionFailureQ[res],
+                  Throw[res, HOL`Error`holErrorTag],
+                True,
+                  avoid = DeleteDuplicates[
+                    Join[avoid, freeNamesInThm[retryTh]]]]]];
+          attempt++];
+        If[out === Null, ABS[v2, retryTh], out]]
+  ];
+
 HOL`Drule`SUBCONV[c_][comb[f_, x_]] :=
   MKCOMB[HOL`Drule`TRYCONV[c][f], HOL`Drule`TRYCONV[c][x]];
 
@@ -85,7 +127,8 @@ HOL`Drule`SUBCONV[c_][abs[bvar[0, bty_], body_, origin_String]] :=
     openTh = BETA[comb[abs[bvar[0, bty], body, name], v]];
     opened = concl[openTh][[2]];
     convTh = HOL`Drule`TRYCONV[c][opened];
-    ABS[v, convTh]
+    absConvWithRetry[v, convTh, origin, bty, body, forbidden,
+      Function[{openedRetry}, HOL`Drule`TRYCONV[c][openedRetry]]]
   ];
 
 HOL`Drule`SUBCONV[c_][t : (var[_, _] | const[_, _])] :=
@@ -350,7 +393,8 @@ onceDepthConv[c_][t_] :=
         convTh = tryConv[onceDepthConv[c][opened]];
         If[convTh === $convFailed,
           convFail["ONCE_DEPTH_CONV: no subterm matched under abs"],
-          ABS[v, convTh]],
+          absConvWithRetry[v, convTh, t[[3]], bty, t[[2]], forbidden,
+            Function[{openedRetry}, tryConv[onceDepthConv[c][openedRetry]]]]],
       True,
         convFail["ONCE_DEPTH_CONV: atomic, no match",
           <|"term" -> t|>]
@@ -415,7 +459,8 @@ topDownAllConv[c_][t_] :=
         openTh = BETA[comb[abs[bvar[0, bty], t[[2]], name], v]];
         opened = concl[openTh][[2]];
         innerConv = topDownAllConv[c][opened];
-        ABS[v, innerConv],
+        absConvWithRetry[v, innerConv, t[[3]], bty, t[[2]], forbidden,
+          Function[{openedRetry}, topDownAllConv[c][openedRetry]]],
       True,
         REFL[t]
     ]

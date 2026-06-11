@@ -42,12 +42,12 @@ Audit pass against `fusion.ml` / `equal.ml` / `drule.ml` / `bool.ml` / `meson.ml
 - **Resolution**: `CHOOSE` now checks bodyTh hypotheses up front and throws `CHOOSE: v must not be free in body-hypotheses` before the proof reaches `GEN`/kernel `ABS`.
 - **Regression**: added a negative test for v leaking through an extra body hypothesis and a positive control that the discharged body instance is still allowed.
 
-### G. `SUBCONV` / `onceDepthConv` / `topDownAllConv` fresh-name uses body free-vars only
+### G. `SUBCONV` / `onceDepthConv` / `topDownAllConv` fresh-name uses body free-vars only ✓ DONE
 - **Where**: `Drule.wl:77, 179, 214`.
 - **Symptom**: `pickFreshName[origin, freesIn[body]]` ignores any free var the inner conversion `c` might introduce. Final `ABS[v, convTh]` will fail at the kernel if the chosen v gets shadowed, so soundness is preserved, but error surfaces at ABS.
 - **HOL Light reference**: `ABS_CONV` retries via `Clash` exception with a re-variant'd binder.
-- **Action**: catch the kernel ABS failure and retry with a fresh variant.
-- **Status**: pending; low impact at current scale.
+- **Resolution**: added shared `absConvWithRetry` in `Drule.wl`; it catches only the kernel `ABS: binder occurs free in hypotheses` failure, extends the avoid-set with the converted theorem's free names, re-opens under a variant, and re-runs the inner conversion before `ABS`.
+- **Regression**: `drule_tests.wl` covers the colliding `λx. T` / `T = x` case and keeps the existing normal `SUBCONV` abstraction case as a positive control.
 
 ## Performance
 

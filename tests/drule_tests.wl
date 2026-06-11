@@ -78,7 +78,23 @@ HOLTest`runTests["drule: SUBCONV abs", Module[{x, y, inner, outer, th, expected}
   (* SUBCONV[BETACONV][λx. (λx. x) y] reduces the inner β under the abs. *)
   th = SUBCONV[BETACONV][outer];
   expected = mkAbs[x, y];
+  HOLTest`assertTrue[aconv[concl[th][[1, 2]], outer], "SUBCONV abs lhs alpha"];
   HOLTest`assertEq[concl[th][[2]], expected, "SUBCONV descends into abs"];
+]];
+
+HOLTest`runTests["drule: SUBCONV abs retries binder collision",
+  Module[{x, c0, eqTh, target, th, rhs},
+    x = mkVar["x", boolTy];
+    c0 = mkConst["T", boolTy];
+    eqTh = ASSUME[mkEq[c0, x]];
+    target = mkAbs[x, c0];
+    th = SUBCONV[REWRCONV[eqTh]][target];
+    rhs = concl[th][[2]];
+    HOLTest`assertTrue[aconv[concl[th][[1, 2]], target],
+      "SUBCONV retry lhs alpha"];
+    HOLTest`assertEq[hyp[th], {mkEq[c0, x]}, "SUBCONV retry preserves hyp"];
+    HOLTest`assertEq[rhs[[3]], "z", "SUBCONV retry variants binder"];
+    HOLTest`assertEq[rhs[[2]], x, "SUBCONV retry keeps introduced free var"];
 ]];
 
 HOLTest`runTests["drule: SUBCONV atomic fails", Module[{x},
