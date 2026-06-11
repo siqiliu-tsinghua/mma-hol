@@ -149,3 +149,139 @@ HOLTest`runTests["auto/RealArith: ordered-field order and cancellation lemmas",
     assertThmConcl["realEqIffLeLeThm", th,
       conjT[rLeT[rnumT[4], rnumT[4]], rLeT[rnumT[4], rnumT[4]]]]
   ]];
+
+rNegT[x_] := mkComb[HOL`Stdlib`Real`realNegConst[], x];
+rInvT[x_] := mkComb[HOL`Stdlib`Real`realInvConst[], x];
+rAbsT[x_] := mkComb[HOL`Stdlib`Real`realAbsConst[], x];
+
+realConstT[c_Integer] :=
+  If[c >= 0, rnumT[c], rNegT[rnumT[-c]]];
+
+realSummandT[c_Integer, x_] :=
+  Which[
+    c > 0, rMulT[rnumT[c], x],
+    c < 0, rNegT[rMulT[rnumT[-c], x]],
+    True, rnumT[0]
+  ];
+
+rightRealSumT[{x_}] := x;
+rightRealSumT[xs_List] :=
+  Fold[rAddT[#2, #1] &, Last[xs], Reverse[Most[xs]]];
+
+canonRealT[c_Integer, pairs_List] :=
+  Module[{clean, sorted, terms},
+    clean = Select[pairs, #[[1]] =!= 0 &];
+    sorted = Sort[clean,
+      Order[stripOrigin[#1[[2]]], stripOrigin[#2[[2]]]] === 1 &];
+    terms = Prepend[(realSummandT[#[[1]], #[[2]]] &) /@ sorted,
+      realConstT[c]];
+    rightRealSumT[terms]
+  ];
+
+assertRealConv[name_String, input_, expected_] :=
+  Module[{th},
+    th = HOL`Auto`RealArith`realLinNormConv[input];
+    HOLTest`assertEq[hyp[th], {}, name <> " no hyps"];
+    HOLTest`assertTrue[aconv[concl[th], mkEq[input, expected]],
+      name <> " concl"]
+  ];
+
+assertAtomConv[name_String, input_, expected_] :=
+  Module[{th},
+    th = HOL`Auto`RealArith`realAtomNormConv[input];
+    HOLTest`assertEq[hyp[th], {}, name <> " no hyps"];
+    HOLTest`assertTrue[aconv[concl[th], mkEq[input, expected]],
+      name <> " concl"]
+  ];
+
+HOLTest`runTests["auto/RealArith: realLinNormConv canonical forms",
+  Module[{x, y, z, ax, halfX},
+    x = mkVar["xRLN", realTyRAT];
+    y = mkVar["yRLN", realTyRAT];
+    z = mkVar["zRLN", realTyRAT];
+    ax = rAbsT[z];
+    halfX = rMulT[x, rInvT[rnumT[2]]];
+
+    assertRealConv["literal add", rAddT[rnumT[2], rnumT[3]], rnumT[5]];
+    assertRealConv["single var", x, canonRealT[0, {{1, x}}]];
+    assertRealConv["x plus x", rAddT[x, x], canonRealT[0, {{2, x}}]];
+    assertRealConv["sort y plus x", rAddT[y, x],
+      canonRealT[0, {{1, y}, {1, x}}]];
+    assertRealConv["weighted merge plus const",
+      rAddT[rAddT[rMulT[rnumT[2], x], rMulT[rnumT[3], x]], rnumT[1]],
+      canonRealT[1, {{5, x}}]];
+    assertRealConv["neg x plus x", rAddT[rNegT[x], x], rnumT[0]];
+    assertRealConv["scale sum", rMulT[rnumT[2], rAddT[x, y]],
+      canonRealT[0, {{2, x}, {2, y}}]];
+    assertRealConv["neg of signed sum", rNegT[rAddT[x, rNegT[y]]],
+      canonRealT[0, {{-1, x}, {1, y}}]];
+    assertRealConv["half plus half", rAddT[halfX, halfX],
+      canonRealT[0, {{1, x}}]];
+    assertRealConv["realAbs opaque merge", rAddT[rMulT[rnumT[2], ax], ax],
+      canonRealT[0, {{3, ax}}]];
+
+    HOLTest`assertThrows[HOL`Auto`RealArith`realLinNormConv[halfX],
+      "realarith-norm", "x over two rejected as final form"];
+    HOLTest`assertThrows[HOL`Auto`RealArith`realLinNormConv[natT[1]],
+      "realarith-norm", "num term rejected"]
+  ]];
+
+HOLTest`runTests["auto/RealArith: realAtomNormConv canonical atoms",
+  Module[{x, y, atom, expected, th, got},
+    x = mkVar["xRAN", realTyRAT];
+    y = mkVar["yRAN", realTyRAT];
+
+    atom = rLeT[x, y];
+    expected = rLeT[canonRealT[0, {{1, x}}], canonRealT[0, {{1, y}}]];
+    assertAtomConv["le var atom", atom, expected];
+
+    atom = rLtT[x, y];
+    expected = rLtT[canonRealT[0, {{1, x}}], canonRealT[0, {{1, y}}]];
+    assertAtomConv["lt var atom", atom, expected];
+
+    atom = rLtT[rAddT[x, rNegT[y]], rnumT[3]];
+    expected = rLtT[canonRealT[0, {{1, x}}], canonRealT[3, {{1, y}}]];
+    assertAtomConv["balance negative right", atom, expected];
+
+    atom = rLeT[rMulT[x, rInvT[rnumT[2]]], y];
+    expected = rLeT[canonRealT[0, {{1, x}}], canonRealT[0, {{2, y}}]];
+    assertAtomConv["clear denominator", atom, expected];
+
+    atom = rLeT[
+      rAddT[rMulT[rnumT[2], x], rNegT[rMulT[rnumT[3], y]]],
+      rAddT[rnumT[1], rNegT[x]]];
+    expected = rLeT[canonRealT[0, {{3, x}}], canonRealT[1, {{3, y}}]];
+    assertAtomConv["balance both sides", atom, expected];
+
+    atom = rLeT[x, y];
+    th = HOL`Auto`RealArith`realAtomNormConv[atom];
+    got = EQMP[th, ASSUME[atom]];
+    HOLTest`assertEq[hyp[got], {atom}, "EQMP sanity hyp"];
+    HOLTest`assertTrue[aconv[concl[got],
+      rLeT[canonRealT[0, {{1, x}}], canonRealT[0, {{1, y}}]]],
+      "EQMP sanity concl"]
+  ]];
+
+HOLTest`runTests["auto/RealArith: Stage 2 lemmas",
+  Module[{leEq, ltEq, shifted, base},
+    leEq = specAllT[HOL`Auto`RealArith`realLeAddCancelThm,
+      {rnumT[1], rnumT[2], rnumT[3]}];
+    shifted = EQMP[HOL`Equal`SYM[leEq], HOL`Auto`RealArith`rnumLe[1, 2]];
+    assertThmConcl["realLeAddCancel backward", shifted,
+      rLeT[rAddT[rnumT[1], rnumT[3]], rAddT[rnumT[2], rnumT[3]]]];
+    base = EQMP[leEq, shifted];
+    assertThmConcl["realLeAddCancel forward", base,
+      rLeT[rnumT[1], rnumT[2]]];
+
+    ltEq = specAllT[HOL`Auto`RealArith`realLtAddCancelThm,
+      {rnumT[1], rnumT[2], rnumT[3]}];
+    shifted = EQMP[HOL`Equal`SYM[ltEq], HOL`Auto`RealArith`rnumLt[1, 2]];
+    assertThmConcl["realLtAddCancel backward", shifted,
+      rLtT[rAddT[rnumT[1], rnumT[3]], rAddT[rnumT[2], rnumT[3]]]];
+    base = EQMP[ltEq, shifted];
+    assertThmConcl["realLtAddCancel forward", base,
+      rLtT[rnumT[1], rnumT[2]]];
+
+    assertThmConcl["rnumNe 2 3", HOL`Auto`RealArith`rnumNe[2, 3],
+      notT[mkEq[rnumT[2], rnumT[3]]]]
+  ]];
