@@ -80,6 +80,10 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   (* REAL_ARITH loads after the Real folder it builds on *)
   Get[FileNameJoin[{repoRoot, "auto", "RealArith.wl"}]];
 
+  (* Seq consumes realArithProve at load time, so it loads after RealArith
+     (frontier: not yet in build_snapshot.wls while M7-8 stages continue) *)
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Seq.wl"}]];
+
   runGroup["post-bootstrap", postBootstrapTests];
 
   HOLTest`testExit[]
