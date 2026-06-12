@@ -12,3 +12,6 @@ Thumbs.db
 .idea/
 .vscode/
 *~
+
+# cross-team bug-report exchange (not part of the source tree)
+bug_report/
