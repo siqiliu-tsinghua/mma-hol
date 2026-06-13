@@ -34,6 +34,7 @@ zeroRealRST[] := rnumRST[0];
 rAddRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realAddConst[], a], b];
 rNegRST[a_] := mkComb[HOL`Stdlib`Real`realNegConst[], a];
 rAbsRST[a_] := mkComb[HOL`Stdlib`Real`realAbsConst[], a];
+rMulRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realMulConst[], a], b];
 rLtRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], a], b];
 nLeRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
 andRST[p_, q_] := mkComb[
@@ -206,7 +207,17 @@ HOLTest`runTests["stdlib/Real/Seq: theorem objects",
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqTendstoEventuallyAwayFromZeroThm],
     "seqTendstoEventuallyAwayFromZeroThm is thm"];
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqTendstoEventuallyAwayFromZeroThm], {},
-    "seqTendstoEventuallyAwayFromZeroThm no hyps"]];
+    "seqTendstoEventuallyAwayFromZeroThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAbsMulThm], "realAbsMulThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAbsMulThm], {}, "realAbsMulThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqTendstoMulThm],
+    "seqTendstoMulThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqTendstoMulThm], {},
+    "seqTendstoMulThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqTendstoScalarMulThm],
+    "seqTendstoScalarMulThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqTendstoScalarMulThm], {},
+    "seqTendstoScalarMulThm no hyps"]];
 
 HOLTest`runTests["stdlib/Real/Seq: constant sequences",
   Module[{cV, th, expected},
@@ -317,3 +328,53 @@ HOLTest`runTests["stdlib/Real/Seq: eventually consequences of tendsto",
     th = HOL`Bool`MP[HOL`Bool`MP[inst, oneLim], HOL`Auto`RealArith`rnumNe[1, 0]];
     expected = HOL`Stdlib`Real`eventuallyAwayFromZeroTm[oneSeq];
     assertConclRST["constant eventually away from zero", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: multiplication prerequisites",
+  Module[{twoR, threeR, negTwoR, negThreeR, xV, yV, aV, bV, th, expected},
+    twoR = rnumRST[2]; threeR = rnumRST[3];
+    negTwoR = rNegRST[twoR]; negThreeR = rNegRST[threeR];
+
+    th = specAllRST[HOL`Stdlib`Real`realAbsMulThm, {twoR, threeR}];
+    expected = mkEq[rAbsRST[rMulRST[twoR, threeR]],
+      rMulRST[rAbsRST[twoR], rAbsRST[threeR]]];
+    assertConclRST["abs mul positive positive", th, expected];
+
+    th = specAllRST[HOL`Stdlib`Real`realAbsMulThm, {negTwoR, threeR}];
+    expected = mkEq[rAbsRST[rMulRST[negTwoR, threeR]],
+      rMulRST[rAbsRST[negTwoR], rAbsRST[threeR]]];
+    assertConclRST["abs mul negative positive", th, expected];
+
+    th = specAllRST[HOL`Stdlib`Real`realAbsMulThm, {negTwoR, negThreeR}];
+    expected = mkEq[rAbsRST[rMulRST[negTwoR, negThreeR]],
+      rMulRST[rAbsRST[negTwoR], rAbsRST[negThreeR]]];
+    assertConclRST["abs mul negative negative", th, expected];
+
+    xV = mkVar["xRST", realTyRST]; yV = mkVar["yRST", realTyRST];
+    aV = mkVar["aRST", realTyRST]; bV = mkVar["bRST", realTyRST];
+    th = specAllRST[HOL`Stdlib`Real`Private`mulSubMulThm, {xV, yV, aV, bV}];
+    expected = mkEq[rAddRST[rMulRST[xV, yV], rNegRST[rMulRST[aV, bV]]],
+      rAddRST[rMulRST[rAddRST[xV, rNegRST[aV]], yV],
+        rMulRST[aV, rAddRST[yV, rNegRST[bV]]]]];
+    assertConclRST["mul sub mul shape", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: multiplication limit laws on constants",
+  Module[{cV, dV, cSeq, dSeq, cLim, dLim, inst, th, expected},
+    cV = mkVar["cRST", realTyRST]; dV = mkVar["dRST", realTyRST];
+    cSeq = constSeqRST[cV]; dSeq = constSeqRST[dV];
+    cLim = HOL`Bool`SPEC[cV, HOL`Stdlib`Real`tendstoConstThm];
+    dLim = HOL`Bool`SPEC[dV, HOL`Stdlib`Real`tendstoConstThm];
+
+    inst = specAllRST[HOL`Stdlib`Real`seqTendstoMulThm, {cSeq, dSeq, cV, dV}];
+    th = betaCleanRST[HOL`Bool`MP[HOL`Bool`MP[inst, cLim], dLim]];
+    expected = HOL`Stdlib`Real`tendstoTm[constSeqRST[rMulRST[cV, dV]], rMulRST[cV, dV]];
+    assertConclRST["mul constants", th, expected];
+
+    inst = specAllRST[HOL`Stdlib`Real`seqTendstoMulThm, {cSeq, cSeq, cV, cV}];
+    th = betaCleanRST[HOL`Bool`MP[HOL`Bool`MP[inst, cLim], cLim]];
+    expected = HOL`Stdlib`Real`tendstoTm[constSeqRST[rMulRST[cV, cV]], rMulRST[cV, cV]];
+    assertConclRST["mul constant itself", th, expected];
+
+    inst = specAllRST[HOL`Stdlib`Real`seqTendstoScalarMulThm, {dSeq, dV, cV}];
+    th = betaCleanRST[HOL`Bool`MP[inst, dLim]];
+    expected = HOL`Stdlib`Real`tendstoTm[constSeqRST[rMulRST[cV, dV]], rMulRST[cV, dV]];
+    assertConclRST["scalar mul constants", th, expected]]];
