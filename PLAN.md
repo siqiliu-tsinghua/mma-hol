@@ -326,7 +326,7 @@ EndPackage[];
 
 ## 7. 开发路线图
 
-建议以 7 个 milestone 推进。每个 milestone 产出一个可以在 notebook 里跑的 demo。
+里程碑 M1–M8：M1–M6 基础设施（kernel / 派生规则 / tactic / parser）、M7 stdlib + 自动化 + ℝ-完备有序域、**M8 ℝ 序列 + 紧性 + 连通 + 拓扑 = stdlib 收官**。M1–M7 基本完成，M8 进行中（见各段）。（M9 / M10 已砍，见 M8 段末"已砍范围"。）
 
 ### M1：Types ✦ 第 1 周
 - [x] 数据构造 `tyVar`, `tyApp`
@@ -425,15 +425,15 @@ EndPackage[];
 
 `auto/`，先于一切数学层。否则后面每个小定理都要手工 `THEN`-chain，效率不可接受。
 
-- [ ] **M7-α / `auto/Meson.wl`** —— MESON：一阶 resolution + Skolemization + paramodulation + subsumption。capstone：propositional 与一阶定理一行 `MESON[]` prove
-- [ ] **M7-β / `auto/Simp.wl`** —— SIMP：双向改写 + 条件改写 + congruence rules + 终止策略；改写规则集用 `Dispatch` 编译
+- [x] **M7-α / `auto/Meson.wl` ✅** —— MESON：一阶 resolution + Skolemization + paramodulation + subsumption。capstone：propositional 与一阶定理一行 `MESON[]` prove
+- [x] **M7-β / `auto/Simp.wl` ✅** —— SIMP：双向改写 + 条件改写 + congruence rules + 终止策略；改写规则集用 `Dispatch` 编译
 
 **Phase 1 — 代数数据 + 集合记号** ~3 周
 
-- [ ] **M7-1 / `stdlib/Pair.wl`、`Sum.wl`、`Option.wl`** —— 三个代数类型，全部 `new_basic_type_definition`。投影 / 构造子 / recursion principle / `MAP` / `CASE`
-- [ ] **M7-2 / `stdlib/Set.wl`** —— 集合记号层，全是 `α → bool` 谓词上的 derived 记号：`IN` / `SUBSET` / `∪` / `∩` / `∖` / `∅` / `UNIV` / `POW` / 像 / 原象 / 有界量词 `∀x ∈ S` / 函数性质（单射 / 满射 / 双射 / 合成 / 恒等）
-- [ ] **M7-2-parser** —— Parser 扩展 set-builder `{x | P x}` 语法
-- [ ] **M7-γ / `auto/Set.wl`** —— SET 决策过程：集合代数恒等式专用 normalization + MESON 兜底。capstone：`S ∪ T = T ∪ S` 一行
+- [x] **M7-1 / `stdlib/Pair.wl`、`Sum.wl`、`Option.wl` ✅** —— 三个代数类型，全部 `new_basic_type_definition`。投影 / 构造子 / recursion principle / `MAP` / `CASE`
+- [x] **M7-2 / `stdlib/Set.wl` ✅** —— 集合记号层，全是 `α → bool` 谓词上的 derived 记号：`IN` / `SUBSET` / `∪` / `∩` / `∖` / `∅` / `UNIV` / `POW` / 像 / 原象 / 有界量词 `∀x ∈ S` / 函数性质（单射 / 满射 / 双射 / 合成 / 恒等）
+- [x] **M7-2-parser ✅** —— Parser 扩展 set-builder `{x | P x}` 语法
+- [x] **M7-γ / `auto/Set.wl` ✅** —— SET 决策过程：集合代数恒等式专用 normalization + MESON 兜底。capstone：`S ∪ T = T ∪ S` 一行
 
 **Phase 2 — 数构造** ~5–7 周
 
@@ -462,11 +462,11 @@ EndPackage[];
 - [x] **M7-δ / `auto/Arith.wl`** —— ℕ 上线性算术决策，**实现为 oracle（Fourier–Motzkin，精确有理）+ kernel verifier（Farkas 乘子拼 `+`/`≤` 单调性引理）**，非内部 Cooper QE（Cooper 线 2026-05-28 砍，-∞ 在 ℕ 上不成立）。∃-SAT 走见证搜索 + ground 验证；∀/UNSAT 走 Farkas。原子抽象处理非线性 `m*n`、`LENGTH l` 等。capstone：`∀m n p. m≤n ⇒ m+p≤n+p`
 - [x] **M7-5 / `stdlib/Int.wl`** —— **底层走典范代表路线**：`num × num` 上的 `λp. FST p = 0 ∨ SND p = 0` 谓词切 `int` 类型；操作（+, ×, -, |·|）做完 pair-运算后 canonicalize 回典范型；环结构 + 序 + `&_ℤ : num → int` 嵌入。**工作语言层派生 Grothendieck/双向归纳视角**：定义 `intSucc = (+1)`、`intNeg = (0-·)`，导出 `(intNeg ∘ intSucc)² = id` 等代数关系；导出双向归纳定理 `⊢ P 0 ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intSucc⁻¹ z)) ⇒ ∀z. P z`，作为后续用 ℤ 时的首选证明工具——后续证明在 ℤ 上看不到 pair 结构。**为什么不直接走 K_0 商类型**：HOL 无原生商，set-of-pair 切多一层；为什么不直接 Peano-style 公理化 ℤ（S/N + 双向归纳作公理）：bootstrap 后 `newAxiom` 锁死，必须构造模型，模型成本和典范代表一致或更高，且 ℤ-递归原理多一个"S 与 S⁻¹ 互逆"的一致性义务。
   **DONE 2026-05-31**（stages a–h + 消去律）：carve + `&ℤ` 嵌入 + neg/succ/pred + 加法 abelian 群（comm/assoc/identity/inverse）+ 交换环（comm/distrib/assoc）+ 无零因子 `intMulEqZeroThm` + 乘法消去 `intMulCancelThm` + 线序 `intLe`/`intLt`（refl/antisym/trans/total）+ 加法/取负/按非负乘单调 + `&ℤ` 环/序嵌入同态 + `intAbs` + 双向归纳 `intInductionThm`。Grothendieck 等价层（`canonEquiv`/`canonInj`/`canonRespects`）是 add-assoc/distrib/mul-assoc 良定义性的共用桥；dihedral `RSR=S⁻¹`（`intNegSuccThm`）恰好用于双向归纳的负向下降步。ARITH 经 FST/SND 原子抽象自动处理大量 num 重排。
-- [ ] **M7-6 / `stdlib/Rat.wl`**（1 周）—— `int × int*` 商；域结构、序、`&_ℚ : int → rat` 嵌入；ℚ 在自身稠密
+- [x] **M7-6 / `stdlib/Rat.wl` ✅ 完成（densely-ordered field）** —— `int × num` 上的**约分**典范分数；域结构、序（线性 + 相容 + 严格）、`&ℚ : int → rat` 环/序嵌入；稠密性 `ratDenseThm`
 
 **Phase 3 — 实数 + 序列收敛** ~7–9 周
 
-- [ ] **M7-7 / `stdlib/Real/` 主体**（**文件夹**，按 §8.1 新原则；3–4 周）—— Dedekind 分割：**单下集** `L : ℚ→bool`，谓词四条 **非空 ∧ 真（上有界）∧ 向下封闭（严格 <）∧ 无最大元（开）**；"无最大元"是 canonicalizer ⟹ 每实数唯一对应一个 L ⟹ **kernel `=` 即实数相等、无 setoid**（延续 Int/Rat 规范代表主线）。`new_basic_type_definition` 切 `real`；加法（cut 加）、**乘法（Rudin 附录 sign-case：正 cut 上先定义、按符号延拓）**、序（包含）；`&ℝ : rat→real` 嵌入（复合得 ℕ/ℤ ↪ ℝ）；**完备性（sup）构造直给**；Archimedean；ℚ 稠密；nth roots 存在；`√2∈ℝ`、`√2∉ℚ`。文件：`Cut.wl` / `RatAux.wl` / `Field.wl` / `Mul.wl` / `Complete.wl` / `Roots.wl`
+- [x] **M7-7 / `stdlib/Real/` 主体 ✅ 完成 + 已入快照**（**文件夹**，按 §8.1）—— Dedekind 分割：**单下集** `L : ℚ→bool`，谓词四条 **非空 ∧ 真（上有界）∧ 向下封闭（严格 <）∧ 无最大元（开）**；"无最大元"是 canonicalizer ⟹ 每实数唯一对应一个 L ⟹ **kernel `=` 即实数相等、无 setoid**（延续 Int/Rat 规范代表主线）。`new_basic_type_definition` 切 `real`；加法（cut 加）、**乘法（Rudin 附录 sign-case：正 cut 上先定义、按符号延拓）**、序（包含）；`&ℝ : rat→real` 嵌入（复合得 ℕ/ℤ ↪ ℝ）；**完备性（sup）**；Archimedean；ℚ 稠密。文件：`Cut.wl` / `RatAux.wl` / `Field.wl` / `Mul.wl` / `Inv.wl` / `Complete.wl`（+ M8-prep `Abs.wl` / `MinMax.wl`）。**`Roots.wl`（nth roots、`√2∈ℝ`）不在收窄后的脊线里——可选回补，不阻塞收官。**
   - **`realInv`（乘法逆）✅ 完成 2026-06-09（cold Strict run_all 2200/0）—— ℝ 是域** —— `Real/Inv.wl`，**无 Lean 蓝本**（sibling 项目从未做倒数），从零按 Rudin "Principles" Step 8 写。正核心 `invPos`（cut body `{p | ∃w. ¬REP_x w ∧ 0<w ∧ p·w<1}`）+ `invPosCutIsCutThm`（四条，`0<x` 下）+ `invPosNonnegThm`；硬定理 **`invPosMulThm`（`0<x⇒x·(1/x)=1`，~250 行，Archimedean/`cutStraddle` ⊇ 向，gap`<s₀(1−r)` 使边界比 `y/(y+gap)>r`，witness `(y, t∈(r/y,1/(y+gap)))`）**；符号封装 `realInv`=`COND(0<x)(invPos x)(−invPos(−x))` + `realMulInvThm`（`¬(x=0)⇒x·(1/x)=1`，用 `realMulNeg` 符号同态把 `x<0` 归约到 `0<−x` 核心）。用户定的次序是"先逆元再相容"。实现要点见 memory `project_real_construction`。
   - **有序域 ×/≤ 相容 ✅ 完成 2026-06-10（cold Strict run_all 2212/0）** —— 加法-序 `realLe/LtAddMonoThm`（`realLeAddMono` 是纯 cut 包含 `a⊆b⟹(a+c)⊆(b+c)`）+ 桥接 `realLeSubNonnegThm`（`a≤b⟺0≤b−a`）/`realLtSubPosThm`；乘法-序 `realLeMulMonoThm`（`0≤c⇒a≤b⇒c·a≤c·b`，经桥接归约到 `0≤c·(b−a)=c·b−c·a`，用 distrib+符号积）/`realLtMulMonoThm`。全部放 Mul.wl 末尾"有序域出口"区。
   - **Stage E `&ℝ` 环/序同态 ✅ 完成 2026-06-10（cold Strict run_all 2220/0）—— ℚ↪ℝ 子环/子序嵌入** —— `realOfRatAddThm`（成员级 `r<a+b⟺∃s.s<a∧r−s<b`，density 中点）+ `realOfRatNegThm`（加法逆唯一性消去）+ 非负核心 `realOfRatNnMulThm`（bwd `r<ab⟹∃p<a,q<b,…` 双重 density + ℚ 逆元消去）+ 带符号 `realOfRatMulThm`（4 符号情形 + 新 ℚ 乘-负引理 `ratMulNeg{R,L}`/`ratMulNegNeg`）；`realOfRatLeThm` 已在 Field。坑：`ratNegNegThm` 是 RatAux(Real) 符号不是 `HOL\`Stdlib\`Rat\``，错上下文 SPEC 返回未求值 →"concl: not a theorem"。
@@ -481,9 +481,9 @@ EndPackage[];
     - **该 Lean 项目为何被放弃（真正的教训，比"缺口在哪"更重要）：** 它是一次对写它的 agent 的能力测试，顺带替我们趟雷；乘法**能证完**，但**前期规划错误（零/正/负三分支 + 无统一 sign-case 消去器 + 有理代数全内联无 RatAux 窄接口）让后期工作量与 token 成本爆炸到超出预算而被弃**。所以本阶段的三层 + 二分 + `realMulSignCases` + 先抽 `RatAux.wl` 不是洁癖，是直接针对这个失败模式的对冲：把复杂度钉在非负核心、用二分把分支树从 3ⁿ 压到 2ⁿ、用 helper 消去重复框架、把有理序/乘法代数前置成稳定入口。
 - ~~**M7-7-Zorich**（Zorich 回切：is_nat/is_int/is_rat 谓词 + 归纳集刻画）~~ **砍掉 2026-06**：自底向上构造下 ℕ/ℤ/ℚ 已是类型、`&ℝ` 嵌入像即"ℝ 里的 ℕ/ℤ/ℚ"；归纳集刻画只在抽象范畴性里划算（已排除），且学生初学体会不到价值。两个具体构造等价所需的"嵌入在同构下相容"(`φ∘ι_D = ι_C`) 走一条 ~5 行抽象归纳即可，不碰构造内部、不需谓词。详见 §8.1 与 memory。
 - [x] **M7-ε / `auto/RealArith.wl` ✅ 完成 2026-06-11**（实际 1 天，3 个 Codex briefs 005–007 全程外包实现，Claude 架构+验收；冷 Strict run_all 2432/0，已 GRADUATED 进 bootstrap.mx）—— ℝ 线性算术决策：精确 Fourier–Motzkin oracle（严格性追踪 + 乘子证书，非 `Resolve`/`LinearProgramming`）+ Farkas kernel verifier，类比 ARITH。三层：rnum ground 字面量层（同态链上提）→ 证明性规范化（`realLinNormConv` 带符号标准型 + `realAtomNormConv` ×LCD 清分母 + 负部平衡 → 非负 ℕ 系数原子）→ intake/oracle/重放（`realArithProve` + `REALARITH[]` tactic；HOL Light 名 REAL_ARITH 含下划线非法 WL 符号）。**capstone 已证：`∀ a b : ℝ. a < b ⇒ a < (a + b) / 2`**（prover + tactic 双形态）。细节：PROGRESS.md M7-ε 节 + commits 5a988f6/1c2860a/61fa8a7。
-- [ ] **M7-8 / `Real/Seq.wl`**（2 周；放 `Real/` 内——螺旋式上升、不追 mathlib 泛化，以后 ℝⁿ / 函数空间各有自己的 seq）—— 序列 `ℕ → ℝ`；ε-N 极限；单调收敛（从 sup）；子列；Bolzano-Weierstrass；Cauchy 列 + **Cauchy 完备性（定理）**
-- [ ] **M7-7-cat / `Real/Cauchy.wl`** 〔支线，**非 M8 关键路径**，排在 Seq 之后〕—— 构造 ℝ_Cauchy（有理 Cauchy 列 mod 零列，**全塔第一次真·商 / setoid**——建可复用的"商掉等价"机器：等价类 / 良定义性 / 商上运算 lift）；证 `ℝ_Dedekind ≅ ℝ_Cauchy`（序域同构）；嵌入相容 `φ∘ι_D = ι_C`（~5 行归纳，不碰构造内部）。**Eudoxus（HOL Light 一步到位 ℝ，致敬）待定**：复用同一商机器则便宜、否则贵，届时按工作量定
-- [ ] **M7-9 / `Real/Decimal.wl`** 〔支线，教学，**非关键路径**，排在级数机器之后〕—— 数位抽取（floor/Archimedean）；任意底 `b ≥ 2` 展开存在 + 唯一（尾 `(b-1)` / 尾 `0` 二义 caveat）；**有理 ⟺ 最终循环（鸽笼）+ 等比级数（逆向）——零数论，不碰 Fermat/Euler**；**`0.999… = 1`**（等比级数，教学驱动）；（可选）Cantor 对角线 `|ℕ| < |ℝ|`
+- **M7-8 / `Real/Seq.wl`（序列）→ 已并入 M8.1**（见下方 M8 段；Stage 1–2 完成、Stage 3–5 进行中）。序列原属 M7 收尾，重定范围后归入 stdlib 收官里程碑 M8。
+- ~~**M7-7-cat / `Real/Cauchy.wl`**（ℝ_Cauchy 构造 + `ℝ_D≅ℝ_C` 同构）~~ **砍（2026-06-13）**：ℝ 只做 Dedekind 单一构造，不做多构造 / setoid 商 / 阀门切换。
+- ~~**M7-9 / `Real/Decimal.wl`**（无穷小数、`0.999…=1`、Cantor 对角线）~~ **砍（2026-06-13）**：无穷小数 / 基数比较移出范围。
 
 **M7 capstone**：
 - **大 capstone**：`⊢ ∀ S : real → bool. S ≠ ∅ ∧ (∃ b. ∀ x ∈ S. x ≤ b) ⇒ ∃ s. is_sup S s`（确界原理，`dedekindCompleteThm`，已完成）
@@ -558,35 +558,20 @@ HOL/
 │   ├── Arith.wl            (* ARITH_TAC *)
 │   └── RealArith.wl        (* REAL_ARITH / REAL_FIELD *)
 │
-├── stdlib/                 (* M7：基础数据与数系 *)
-│   ├── Pair.wl
-│   ├── Sum.wl
-│   ├── Option.wl
+├── stdlib/                 (* M7 数系 + M8 ℝ 分析脊线 *)
+│   ├── Pair.wl  Sum.wl  Option.wl
 │   ├── Set.wl              (* α→bool 编码 *)
-│   ├── Num.wl              (* 自然数 *)
-│   ├── Int.wl
-│   ├── Rat.wl
-│   ├── Real/               (* M7-7+：文件夹（§8.1）。Dedekind 构造主体 + Seq + Cauchy 等价支线 + Decimal 支线 *)
-│   │   ├── Cut.wl          (* 单下集切割 + 序（规范，无 setoid） *)
-│   │   ├── Field.wl        (* 加 / 乘（Rudin sign-case）/ &ℝ 嵌入 *)
-│   │   ├── Complete.wl     (* sup 完备性 / Archimedean / ℚ 稠密 *)
-│   │   ├── Roots.wl        (* nth roots / √2 *)
-│   │   ├── Seq.wl          (* 序列 ℕ→ℝ、极限、B-W、Cauchy 完备性 *)
-│   │   ├── Cauchy.wl       (* 支线：ℝ_Cauchy 商构造 + Dedekind≅Cauchy *)
-│   │   └── Decimal.wl      (* 支线：无穷小数 / 0.999…=1 / 鸽笼，零数论 *)
-│   ├── List.wl
-│   ├── Finite.wl           (* 有限集、∑ / ∏ 记号 *)
-│   └── Complex.wl          (* 可选 *)
-│
-│   └── Real/               (* M7 ℝ-完备有序域 + M8 序列 / 拓扑 / 紧性 / 连通 *)
-│       ├── Cut.wl  RatAux.wl  Field.wl  Mul.wl  Inv.wl   (* M7：ℝ 构造 *)
-│       ├── Complete.wl  Abs.wl  MinMax.wl              (* M7：完备性 / |·| / max-min *)
+│   ├── Num.wl  Int.wl  Rat.wl  FTA.wl   (* 数系 + ℕ 整除/唯一分解 *)
+│   ├── List.wl  Finite.wl  (* Complex.wl 可选 *)
+│   └── Real/               (* 文件夹（§8.1）：M7 ℝ-完备有序域 + M8 分析脊线 *)
+│       ├── Cut.wl  RatAux.wl  Field.wl  Mul.wl  Inv.wl   (* M7：ℝ 构造（Dedekind 单下集，无 setoid）*)
+│       ├── Complete.wl  Abs.wl  MinMax.wl              (* M7：sup 完备性 / |·| / max-min *)
 │       ├── Seq.wl         (* M8.1：tendsto、极限演算、单调收敛、子列、柯西 *)
 │       ├── Compact.wl     (* M8.2：列紧 / 聚点 / Heine–Borel（确界路线）/ 勒贝格数 *)
 │       ├── Connected.wl   (* M8.3：connected ⟺ 区间、介值 *)
 │       └── Topology.wl    (* M8.4：开 / 闭 / 闭包 / 内部 / 子空间（不依赖可数基）*)
-│       (* auto/RealArith.wl（M7-ε REAL_ARITH）在 auto/ 下，stdlib/Real 之后加载 *)
-│       (* 文件可随规模再细分子文件夹；analysis2/3 已砍，不再有 *)
+│       (* REAL_ARITH 在 auto/RealArith.wl，stdlib/Real 之后加载；Roots.wl 可选回补 *)
+│       (* Cauchy / Decimal 支线、analysis2/3 已砍 *)
 │
 ├── tests/
 │   ├── harness.wl
