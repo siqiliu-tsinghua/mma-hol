@@ -17,6 +17,21 @@ convergentDefThm::usage = "convergentDefThm - |- convergent = (lambda a. exists 
 convergentConst::usage = "convergentConst[] - convergent : (num -> real) -> bool.";
 convergentTm::usage = "convergentTm[a] - builds convergent a.";
 
+eventuallyDefThm::usage = "eventuallyDefThm - |- eventually = (lambda P. exists N. forall n. N <= n ==> P n).";
+eventuallyConst::usage = "eventuallyConst[] - eventually : (num -> bool) -> bool.";
+eventuallyTm::usage = "eventuallyTm[P] - builds eventually P.";
+unfoldEventually::usage = "unfoldEventually[P] - proves the beta-reduced eventually definition at P.";
+
+eventuallyBoundedDefThm::usage = "eventuallyBoundedDefThm - |- eventuallyBounded = (lambda u. exists B. 0 < B /\\ eventually (lambda n. realAbs (u n) < B)).";
+eventuallyBoundedConst::usage = "eventuallyBoundedConst[] - eventuallyBounded : (num -> real) -> bool.";
+eventuallyBoundedTm::usage = "eventuallyBoundedTm[u] - builds eventuallyBounded u.";
+unfoldEventuallyBounded::usage = "unfoldEventuallyBounded[u] - proves the beta-reduced eventuallyBounded definition at u.";
+
+eventuallyAwayFromZeroDefThm::usage = "eventuallyAwayFromZeroDefThm - |- eventuallyAwayFromZero = (lambda u. exists c. 0 < c /\\ eventually (lambda n. c < realAbs (u n))).";
+eventuallyAwayFromZeroConst::usage = "eventuallyAwayFromZeroConst[] - eventuallyAwayFromZero : (num -> real) -> bool.";
+eventuallyAwayFromZeroTm::usage = "eventuallyAwayFromZeroTm[u] - builds eventuallyAwayFromZero u.";
+unfoldEventuallyAwayFromZero::usage = "unfoldEventuallyAwayFromZero[u] - proves the beta-reduced eventuallyAwayFromZero definition at u.";
+
 tendstoConstThm::usage = "tendstoConstThm - |- forall c. tendsto (lambda n. c) c.";
 realNeAbsPosThm::usage = "realNeAbsPosThm - |- forall x. ~(x = 0) ==> 0 < realAbs x.";
 tendstoUniqueThm::usage = "tendstoUniqueThm - |- forall a L1 L2. tendsto a L1 ==> tendsto a L2 ==> L1 = L2.";
@@ -24,6 +39,12 @@ tendstoAddThm::usage = "tendstoAddThm - |- forall a b A B. tendsto a A ==> tends
 tendstoNegThm::usage = "tendstoNegThm - |- forall a A. tendsto a A ==> tendsto (lambda n. realNeg (a n)) (realNeg A).";
 tendstoSubThm::usage = "tendstoSubThm - |- forall a b A B. tendsto a A ==> tendsto b B ==> tendsto (lambda n. a n + realNeg (b n)) (A + realNeg B).";
 tendstoConvergentThm::usage = "tendstoConvergentThm - |- forall a L. tendsto a L ==> convergent a.";
+eventuallyOfForallThm::usage = "eventuallyOfForallThm - |- forall P. (forall n. P n) ==> eventually P.";
+eventuallyMonoThm::usage = "eventuallyMonoThm - |- forall P Q. (forall n. P n ==> Q n) ==> eventually P ==> eventually Q.";
+eventuallyAndThm::usage = "eventuallyAndThm - |- forall P Q. eventually P ==> eventually Q ==> eventually (lambda n. P n /\\ Q n).";
+tendstoEventuallyThm::usage = "tendstoEventuallyThm - |- forall a L e. tendsto a L ==> 0 < e ==> eventually (lambda n. realAbs (a n + realNeg L) < e).";
+seqTendstoEventuallyBoundedThm::usage = "seqTendstoEventuallyBoundedThm - |- forall a L. tendsto a L ==> eventuallyBounded a.";
+seqTendstoEventuallyAwayFromZeroThm::usage = "seqTendstoEventuallyAwayFromZeroThm - |- forall a L. tendsto a L ==> ~(L = 0) ==> eventuallyAwayFromZero a.";
 
 Begin["`Private`"];
 
@@ -42,6 +63,9 @@ seqHalf[eT_] := realMulTm[eT, seqRealInv[seqTwoReal[]]];
 
 seqSpecAll[th_, ts_List] :=
   Fold[Function[{acc, t}, HOL`Bool`SPEC[t, acc]], th, ts];
+
+seqBetaClean[th_] := HOL`Drule`CONVRULE[
+  HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[HOL`Equal`BETACONV]], th];
 
 seqForallList[vs_List, body_] :=
   Fold[Function[{acc, v}, forallTm[v, acc]], body, Reverse[vs]];
@@ -448,6 +472,328 @@ tendstoConvergentThm =
     convThm = EQMP[HOL`Equal`SYM[seqUnfoldConvergent[aV]], exThm];
     HOL`Bool`GEN[aV, HOL`Bool`GEN[lV,
       HOL`Bool`DISCH[tendstoTm[aV, lV], convThm]]]
+  ];
+
+eventuallyPredTy = tyFun[numTy, boolTy];
+eventuallyTy = tyFun[eventuallyPredTy, boolTy];
+eventuallyBoundedTy = tyFun[seqTy, boolTy];
+eventuallyAwayFromZeroTy = tyFun[seqTy, boolTy];
+
+seqOneNat[] := sucT[zeroN[]];
+seqOneReal[] := realOfRatTm[ratOfIntTm[intOfNumTm[seqOneNat[]]]];
+
+seqEventuallyAll[pT_, n0T_] :=
+  Module[{nV},
+    nV = mkVar["n", numTy];
+    forallTm[nV, impTm[seqNatLe[n0T, nV], mkComb[pT, nV]]]
+  ];
+
+seqEventuallyBody[pT_] :=
+  Module[{n0V},
+    n0V = mkVar["N", numTy];
+    existsTm[n0V, seqEventuallyAll[pT, n0V]]
+  ];
+
+seqBoundPred[uT_, bT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTy];
+    mkAbs[nV, realLtTm[seqRealAbs[mkComb[uT, nV]], bT]]
+  ];
+
+seqAwayPred[uT_, cT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTy];
+    mkAbs[nV, realLtTm[cT, seqRealAbs[mkComb[uT, nV]]]]
+  ];
+
+seqEventuallyBoundedBody[uT_] :=
+  Module[{bV},
+    bV = mkVar["B", realTy];
+    existsTm[bV, conjTm[realLtTm[zeroRealTm[], bV],
+      eventuallyTm[seqBoundPred[uT, bV]]]]
+  ];
+
+seqEventuallyAwayFromZeroBody[uT_] :=
+  Module[{cV},
+    cV = mkVar["c", realTy];
+    existsTm[cV, conjTm[realLtTm[zeroRealTm[], cV],
+      eventuallyTm[seqAwayPred[uT, cV]]]]
+  ];
+
+eventuallyDefThm =
+  Module[{pV, body},
+    pV = mkVar["P", eventuallyPredTy];
+    body = mkAbs[pV, seqEventuallyBody[pV]];
+    newDefinition[mkEq[mkVar["eventually", eventuallyTy], body]]
+  ];
+
+eventuallyConst[] := mkConst["eventually", eventuallyTy];
+eventuallyTm[pT_] := mkComb[eventuallyConst[], pT];
+
+unfoldEventually[pT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[eventuallyDefThm, pT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+eventuallyBoundedDefThm =
+  Module[{uV, body},
+    uV = mkVar["u", seqTy];
+    body = mkAbs[uV, seqEventuallyBoundedBody[uV]];
+    newDefinition[mkEq[mkVar["eventuallyBounded", eventuallyBoundedTy], body]]
+  ];
+
+eventuallyBoundedConst[] := mkConst["eventuallyBounded", eventuallyBoundedTy];
+eventuallyBoundedTm[uT_] := mkComb[eventuallyBoundedConst[], uT];
+
+unfoldEventuallyBounded[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[eventuallyBoundedDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+eventuallyAwayFromZeroDefThm =
+  Module[{uV, body},
+    uV = mkVar["u", seqTy];
+    body = mkAbs[uV, seqEventuallyAwayFromZeroBody[uV]];
+    newDefinition[mkEq[mkVar["eventuallyAwayFromZero", eventuallyAwayFromZeroTy], body]]
+  ];
+
+eventuallyAwayFromZeroConst[] := mkConst["eventuallyAwayFromZero", eventuallyAwayFromZeroTy];
+eventuallyAwayFromZeroTm[uT_] := mkComb[eventuallyAwayFromZeroConst[], uT];
+
+unfoldEventuallyAwayFromZero[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[eventuallyAwayFromZeroDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+seqArithSubAddCancelThm =
+  Module[{xV, yV},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{xV, yV},
+        mkEq[realAddTm[realAddTm[xV, realNegTm[yV]], yV], xV]]]
+  ];
+
+seqArithAddOnePosThm =
+  Module[{xV},
+    xV = mkVar["x", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      forallTm[xV, impTm[realLeTm[zeroRealTm[], xV],
+        realLtTm[zeroRealTm[], realAddTm[xV, seqOneReal[]]]]]]
+  ];
+
+seqArithBoundSumThm =
+  Module[{pV, qV},
+    pV = mkVar["p", realTy]; qV = mkVar["q", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{pV, qV},
+        impTm[realLtTm[pV, seqOneReal[]],
+          realLtTm[realAddTm[pV, qV], realAddTm[qV, seqOneReal[]]]]]]
+  ];
+
+seqArithHalfDoubleThm =
+  Module[{xV},
+    xV = mkVar["x", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      forallTm[xV, mkEq[realAddTm[seqHalf[xV], seqHalf[xV]], xV]]]
+  ];
+
+seqArithAwayThm =
+  Module[{xV, dV, uV, cV},
+    xV = mkVar["x", realTy]; dV = mkVar["d", realTy];
+    uV = mkVar["u", realTy]; cV = mkVar["c", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{xV, dV, uV, cV},
+        seqImpList[{mkEq[realAddTm[cV, cV], xV],
+          realLeTm[xV, realAddTm[dV, uV]], realLtTm[dV, cV]},
+          realLtTm[cV, uV]]]]
+  ];
+
+eventuallyOfForallThm =
+  Module[{pV, nV, hAll, pN, impN, allN, exThm, folded},
+    pV = mkVar["P", eventuallyPredTy]; nV = mkVar["n", numTy];
+    hAll = ASSUME[forallTm[nV, mkComb[pV, nV]]];
+    pN = HOL`Bool`SPEC[nV, hAll];
+    impN = HOL`Bool`DISCH[seqNatLe[zeroN[], nV], pN];
+    allN = HOL`Bool`GEN[nV, impN];
+    exThm = HOL`Bool`EXISTS[seqEventuallyBody[pV], zeroN[], allN];
+    folded = EQMP[HOL`Equal`SYM[unfoldEventually[pV]], exThm];
+    HOL`Bool`GEN[pV, HOL`Bool`DISCH[forallTm[nV, mkComb[pV, nV]], folded]]
+  ];
+
+eventuallyMonoThm =
+  Module[{pV, qV, nV, nW, hPQ, hEvP, exP, allPTm, hAllP, hLe, pN, qImp,
+          qN, impN, allQ, exQ, folded, chosen},
+    pV = mkVar["P", eventuallyPredTy]; qV = mkVar["Q", eventuallyPredTy];
+    nV = mkVar["n", numTy]; nW = mkVar["nW", numTy];
+    hPQ = ASSUME[forallTm[nV, impTm[mkComb[pV, nV], mkComb[qV, nV]]]];
+    hEvP = ASSUME[eventuallyTm[pV]];
+    exP = EQMP[unfoldEventually[pV], hEvP];
+    allPTm = seqEventuallyAll[pV, nW];
+    hAllP = ASSUME[allPTm];
+    hLe = ASSUME[seqNatLe[nW, nV]];
+    pN = HOL`Bool`MP[HOL`Bool`SPEC[nV, hAllP], hLe];
+    qImp = HOL`Bool`SPEC[nV, hPQ];
+    qN = HOL`Bool`MP[qImp, pN];
+    impN = HOL`Bool`DISCH[seqNatLe[nW, nV], qN];
+    allQ = HOL`Bool`GEN[nV, impN];
+    exQ = HOL`Bool`EXISTS[seqEventuallyBody[qV], nW, allQ];
+    folded = EQMP[HOL`Equal`SYM[unfoldEventually[qV]], exQ];
+    chosen = HOL`Bool`CHOOSE[nW, exP, folded];
+    HOL`Bool`GEN[pV, HOL`Bool`GEN[qV,
+      HOL`Bool`DISCH[forallTm[nV, impTm[mkComb[pV, nV], mkComb[qV, nV]]],
+        HOL`Bool`DISCH[eventuallyTm[pV], chosen]]]]
+  ];
+
+eventuallyAndThm =
+  Module[{pV, qV, nV, nW1, nW2, pred, hEvP, hEvQ, exP, exQ, allPTm, allQTm,
+          hAllP, hAllQ, nSum, hLe, leP0, leQ0, leP, leQ, pN, qN, conjN,
+          betaN, redexN, impN, allN, exN, folded, chosenQ, chosenP},
+    pV = mkVar["P", eventuallyPredTy]; qV = mkVar["Q", eventuallyPredTy];
+    nV = mkVar["n", numTy]; nW1 = mkVar["nW1", numTy]; nW2 = mkVar["nW2", numTy];
+    pred = mkAbs[nV, conjTm[mkComb[pV, nV], mkComb[qV, nV]]];
+    hEvP = ASSUME[eventuallyTm[pV]]; hEvQ = ASSUME[eventuallyTm[qV]];
+    exP = EQMP[unfoldEventually[pV], hEvP];
+    exQ = EQMP[unfoldEventually[qV], hEvQ];
+    allPTm = seqEventuallyAll[pV, nW1];
+    allQTm = seqEventuallyAll[qV, nW2];
+    hAllP = ASSUME[allPTm]; hAllQ = ASSUME[allQTm];
+    nSum = seqNatAdd[nW1, nW2];
+    hLe = ASSUME[seqNatLe[nSum, nV]];
+    leP0 = seqLeqToSumLeft[nW1, nW2];
+    leQ0 = seqLeqToSumRight[nW1, nW2];
+    leP = seqLeqTrans[leP0, hLe];
+    leQ = seqLeqTrans[leQ0, hLe];
+    pN = HOL`Bool`MP[HOL`Bool`SPEC[nV, hAllP], leP];
+    qN = HOL`Bool`MP[HOL`Bool`SPEC[nV, hAllQ], leQ];
+    conjN = HOL`Bool`CONJ[pN, qN];
+    betaN = HOL`Equal`BETACONV[mkComb[pred, nV]];
+    redexN = EQMP[HOL`Equal`SYM[betaN], conjN];
+    impN = HOL`Bool`DISCH[seqNatLe[nSum, nV], redexN];
+    allN = HOL`Bool`GEN[nV, impN];
+    exN = HOL`Bool`EXISTS[seqEventuallyBody[pred], nSum, allN];
+    folded = EQMP[HOL`Equal`SYM[unfoldEventually[pred]], exN];
+    chosenQ = HOL`Bool`CHOOSE[nW2, exQ, folded];
+    chosenP = HOL`Bool`CHOOSE[nW1, exP, chosenQ];
+    HOL`Bool`GEN[pV, HOL`Bool`GEN[qV,
+      HOL`Bool`DISCH[eventuallyTm[pV], HOL`Bool`DISCH[eventuallyTm[qV], chosenP]]]]
+  ];
+
+tendstoEventuallyThm =
+  Module[{aV, lV, eV, nV, nW, pred, hT, hE, unfolded, exRed, allTm, hAll,
+          hLe, closeN, betaN, redexN, impN, allN, exN, folded, chosen},
+    aV = mkVar["a", seqTy]; lV = mkVar["L", realTy]; eV = mkVar["e", realTy];
+    nV = mkVar["n", numTy]; nW = mkVar["nW", numTy];
+    pred = mkAbs[nV, seqLimitAtom[aV, lV, eV, nV]];
+    hT = ASSUME[tendstoTm[aV, lV]];
+    hE = ASSUME[realLtTm[zeroRealTm[], eV]];
+    unfolded = EQMP[unfoldTendsto[aV, lV], hT];
+    exRed = HOL`Bool`MP[HOL`Bool`SPEC[eV, unfolded], hE];
+    allTm = seqLimitAll[aV, lV, eV, nW];
+    hAll = ASSUME[allTm];
+    hLe = ASSUME[seqNatLe[nW, nV]];
+    closeN = HOL`Bool`MP[HOL`Bool`SPEC[nV, hAll], hLe];
+    betaN = HOL`Equal`BETACONV[mkComb[pred, nV]];
+    redexN = EQMP[HOL`Equal`SYM[betaN], closeN];
+    impN = HOL`Bool`DISCH[seqNatLe[nW, nV], redexN];
+    allN = HOL`Bool`GEN[nV, impN];
+    exN = HOL`Bool`EXISTS[seqEventuallyBody[pred], nW, allN];
+    folded = EQMP[HOL`Equal`SYM[unfoldEventually[pred]], exN];
+    chosen = HOL`Bool`CHOOSE[nW, exRed, folded];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[lV, HOL`Bool`GEN[eV,
+      HOL`Bool`DISCH[tendstoTm[aV, lV],
+        HOL`Bool`DISCH[realLtTm[zeroRealTm[], eV], chosen]]]]]
+  ];
+
+seqTendstoEventuallyBoundedThm =
+  Module[{aV, lV, nV, hT, oneR, bT, closePred, boundPred, absLNonneg, bPos,
+          closeEv, monoInst, hClose, an, diff, appAbs, subAdd, absEq, triRaw,
+          triLe, rhsLt, ltGoal, pointImp, pointAll, evBound, conjB, exB, folded},
+    aV = mkVar["a", seqTy]; lV = mkVar["L", realTy]; nV = mkVar["n", numTy];
+    hT = ASSUME[tendstoTm[aV, lV]];
+    oneR = seqOneReal[];
+    bT = realAddTm[seqRealAbs[lV], oneR];
+    closePred = mkAbs[nV, seqLimitAtom[aV, lV, oneR, nV]];
+    boundPred = seqBoundPred[aV, bT];
+    absLNonneg = HOL`Bool`SPEC[lV, realAbsNonnegThm];
+    bPos = HOL`Bool`MP[HOL`Bool`SPEC[seqRealAbs[lV], seqArithAddOnePosThm], absLNonneg];
+    closeEv = HOL`Bool`MP[
+      HOL`Bool`MP[seqSpecAll[tendstoEventuallyThm, {aV, lV, oneR}], hT],
+      HOL`Auto`RealArith`rnumPos[1]];
+    monoInst = seqBetaClean[seqSpecAll[eventuallyMonoThm, {closePred, boundPred}]];
+    hClose = ASSUME[seqLimitAtom[aV, lV, oneR, nV]];
+    an = mkComb[aV, nV];
+    diff = realAddTm[an, realNegTm[lV]];
+    appAbs = seqRealAbs[mkComb[aV, nV]];
+    subAdd = seqSpecAll[seqArithSubAddCancelThm, {an, lV}];
+    absEq = seqRealAbsCong[subAdd];
+    triRaw = seqSpecAll[realAbsTriangleThm, {diff, lV}];
+    triLe = EQMP[seqRealLeCong[absEq,
+      REFL[realAddTm[seqRealAbs[diff], seqRealAbs[lV]]]], triRaw];
+    rhsLt = HOL`Bool`MP[
+      seqSpecAll[seqArithBoundSumThm, {seqRealAbs[diff], seqRealAbs[lV]}], hClose];
+    ltGoal = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeLtTransThm,
+        {appAbs, realAddTm[seqRealAbs[diff], seqRealAbs[lV]], bT}], triLe], rhsLt];
+    pointImp = HOL`Bool`DISCH[seqLimitAtom[aV, lV, oneR, nV], ltGoal];
+    pointAll = HOL`Bool`GEN[nV, pointImp];
+    evBound = HOL`Bool`MP[HOL`Bool`MP[monoInst, pointAll], closeEv];
+    conjB = HOL`Bool`CONJ[bPos, evBound];
+    exB = HOL`Bool`EXISTS[seqEventuallyBoundedBody[aV], bT, conjB];
+    folded = EQMP[HOL`Equal`SYM[unfoldEventuallyBounded[aV]], exB];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[lV,
+      HOL`Bool`DISCH[tendstoTm[aV, lV], folded]]]
+  ];
+
+seqTendstoEventuallyAwayFromZeroThm =
+  Module[{aV, lV, nV, hT, hNe, absL, cT, closePred, awayPred, absLPos, cPos,
+          closeEv, monoInst, hClose, an, diffAL, diffLA, leftComm,
+          negNegL, leftNegNeg, negEq, diffNegEq, absDiffEq, closeLA, subAdd,
+          absEq, triRaw, triLe, halfDouble, awayLt, pointImp, pointAll, evAway,
+          conjC, exC, folded},
+    aV = mkVar["a", seqTy]; lV = mkVar["L", realTy]; nV = mkVar["n", numTy];
+    hT = ASSUME[tendstoTm[aV, lV]];
+    hNe = ASSUME[notTm[mkEq[lV, zeroRealTm[]]]];
+    absL = seqRealAbs[lV];
+    cT = seqHalf[absL];
+    closePred = mkAbs[nV, seqLimitAtom[aV, lV, cT, nV]];
+    awayPred = seqAwayPred[aV, cT];
+    absLPos = HOL`Bool`MP[HOL`Bool`SPEC[lV, realNeAbsPosThm], hNe];
+    cPos = HOL`Bool`MP[HOL`Bool`SPEC[absL, seqArithHalfPosThm], absLPos];
+    closeEv = HOL`Bool`MP[
+      HOL`Bool`MP[seqSpecAll[tendstoEventuallyThm, {aV, lV, cT}], hT], cPos];
+    monoInst = seqBetaClean[seqSpecAll[eventuallyMonoThm, {closePred, awayPred}]];
+    hClose = ASSUME[seqLimitAtom[aV, lV, cT, nV]];
+    an = mkComb[aV, nV];
+    diffAL = realAddTm[an, realNegTm[lV]];
+    diffLA = realAddTm[lV, realNegTm[an]];
+    leftComm = HOL`Bool`SPEC[realNegTm[an], HOL`Bool`SPEC[lV, realAddCommThm]];
+    negNegL = HOL`Bool`SPEC[lV, realNegNegThm];
+    leftNegNeg = seqRealAddCongRight[realNegTm[an], negNegL];
+    negEq = seqSpecAll[seqArithNegDiffThm, {an, lV}];
+    diffNegEq = TRANS[leftComm, TRANS[HOL`Equal`SYM[leftNegNeg], negEq]];
+    absDiffEq = TRANS[seqRealAbsCong[diffNegEq], HOL`Bool`SPEC[diffAL, realAbsNegThm]];
+    closeLA = EQMP[HOL`Equal`SYM[seqRealLtCong[absDiffEq, REFL[cT]]], hClose];
+    subAdd = seqSpecAll[seqArithSubAddCancelThm, {lV, an}];
+    absEq = seqRealAbsCong[subAdd];
+    triRaw = seqSpecAll[realAbsTriangleThm, {diffLA, an}];
+    triLe = EQMP[seqRealLeCong[absEq,
+      REFL[realAddTm[seqRealAbs[diffLA], seqRealAbs[an]]]], triRaw];
+    halfDouble = HOL`Bool`SPEC[absL, seqArithHalfDoubleThm];
+    awayLt = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqArithAwayThm, {absL, seqRealAbs[diffLA], seqRealAbs[an], cT}],
+      halfDouble], triLe], closeLA];
+    pointImp = HOL`Bool`DISCH[seqLimitAtom[aV, lV, cT, nV], awayLt];
+    pointAll = HOL`Bool`GEN[nV, pointImp];
+    evAway = HOL`Bool`MP[HOL`Bool`MP[monoInst, pointAll], closeEv];
+    conjC = HOL`Bool`CONJ[cPos, evAway];
+    exC = HOL`Bool`EXISTS[seqEventuallyAwayFromZeroBody[aV], cT, conjC];
+    folded = EQMP[HOL`Equal`SYM[unfoldEventuallyAwayFromZero[aV]], exC];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[lV,
+      HOL`Bool`DISCH[tendstoTm[aV, lV],
+        HOL`Bool`DISCH[notTm[mkEq[lV, zeroRealTm[]]], folded]]]]
   ];
 
 End[];

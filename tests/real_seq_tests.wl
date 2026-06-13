@@ -21,6 +21,7 @@ Needs["HOL`Auto`RealArith`"];
 numTyRST = mkType["num", {}];
 realTyRST = mkType["real", {}];
 seqTyRST = tyFun[numTyRST, realTyRST];
+eventuallyPredTyRST = tyFun[numTyRST, boolTy];
 
 natRST[n_Integer] := Nest[mkComb[HOL`Stdlib`Num`sucConst[], #] &,
   HOL`Stdlib`Num`zeroConst[], n];
@@ -35,6 +36,8 @@ rNegRST[a_] := mkComb[HOL`Stdlib`Real`realNegConst[], a];
 rAbsRST[a_] := mkComb[HOL`Stdlib`Real`realAbsConst[], a];
 rLtRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], a], b];
 nLeRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+andRST[p_, q_] := mkComb[
+  mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 impRST[p_, q_] := mkComb[
   mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 forallRST[v : var[_, ty_], body_] :=
@@ -67,6 +70,44 @@ tendstoBodyRST[aT_, lT_] :=
       existsRST[nV, limitAllRST[aT, lT, eV, nV]]]]
   ];
 
+eventuallyAllRST[pT_, n0T_] :=
+  Module[{nV},
+    nV = mkVar["n", numTyRST];
+    forallRST[nV, impRST[nLeRST[n0T, nV], mkComb[pT, nV]]]
+  ];
+
+eventuallyBodyRST[pT_] :=
+  Module[{nV},
+    nV = mkVar["N", numTyRST];
+    existsRST[nV, eventuallyAllRST[pT, nV]]
+  ];
+
+boundedPredRST[uT_, bT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTyRST];
+    mkAbs[nV, rLtRST[rAbsRST[mkComb[uT, nV]], bT]]
+  ];
+
+awayPredRST[uT_, cT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTyRST];
+    mkAbs[nV, rLtRST[cT, rAbsRST[mkComb[uT, nV]]]]
+  ];
+
+eventuallyBoundedBodyRST[uT_] :=
+  Module[{bV},
+    bV = mkVar["B", realTyRST];
+    existsRST[bV, andRST[rLtRST[zeroRealRST[], bV],
+      HOL`Stdlib`Real`eventuallyTm[boundedPredRST[uT, bV]]]]
+  ];
+
+eventuallyAwayBodyRST[uT_] :=
+  Module[{cV},
+    cV = mkVar["c", realTyRST];
+    existsRST[cV, andRST[rLtRST[zeroRealRST[], cV],
+      HOL`Stdlib`Real`eventuallyTm[awayPredRST[uT, cV]]]]
+  ];
+
 assertConclRST[name_String, th_, expected_] := (
   HOLTest`assertEq[hyp[th], {}, name <> " no hyps"];
   HOLTest`assertTrue[aconv[concl[th], expected], name <> " concl"]);
@@ -90,6 +131,41 @@ HOLTest`runTests["stdlib/Real/Seq: definitions and builders",
     HOLTest`assertEq[rhs[[1]], mkConst["∀", tyFun[tyFun[realTyRST, boolTy], boolTy]],
       "unfoldTendsto rhs starts forall"]]];
 
+HOLTest`runTests["stdlib/Real/Seq: eventually definitions and builders",
+  Module[{pV, uV, th, expected},
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`eventuallyDefThm], {}, "eventuallyDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`eventuallyDefThm], "eventuallyDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`eventuallyBoundedDefThm], {},
+      "eventuallyBoundedDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`eventuallyBoundedDefThm],
+      "eventuallyBoundedDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`eventuallyAwayFromZeroDefThm], {},
+      "eventuallyAwayDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`eventuallyAwayFromZeroDefThm],
+      "eventuallyAwayDef is thm"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`eventuallyConst[]],
+      tyFun[eventuallyPredTyRST, boolTy], "eventuallyConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`eventuallyBoundedConst[]],
+      tyFun[seqTyRST, boolTy], "eventuallyBoundedConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`eventuallyAwayFromZeroConst[]],
+      tyFun[seqTyRST, boolTy], "eventuallyAwayConst type"];
+
+    pV = mkVar["PRST", eventuallyPredTyRST];
+    th = HOL`Stdlib`Real`unfoldEventually[pV];
+    expected = mkEq[HOL`Stdlib`Real`eventuallyTm[pV], eventuallyBodyRST[pV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldEventually full body"];
+
+    uV = mkVar["uRST", seqTyRST];
+    th = HOL`Stdlib`Real`unfoldEventuallyBounded[uV];
+    expected = mkEq[HOL`Stdlib`Real`eventuallyBoundedTm[uV],
+      eventuallyBoundedBodyRST[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldEventuallyBounded body"];
+
+    th = HOL`Stdlib`Real`unfoldEventuallyAwayFromZero[uV];
+    expected = mkEq[HOL`Stdlib`Real`eventuallyAwayFromZeroTm[uV],
+      eventuallyAwayBodyRST[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldEventuallyAway body"]]];
+
 HOLTest`runTests["stdlib/Real/Seq: theorem objects",
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`tendstoConstThm], "tendstoConstThm is thm"];
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`tendstoConstThm], {}, "tendstoConstThm no hyps"];
@@ -106,7 +182,31 @@ HOLTest`runTests["stdlib/Real/Seq: theorem objects",
   HOLTest`assertTrue[isThm[HOL`Stdlib`Real`tendstoConvergentThm],
     "tendstoConvergentThm is thm"];
   HOLTest`assertEq[hyp[HOL`Stdlib`Real`tendstoConvergentThm], {},
-    "tendstoConvergentThm no hyps"]];
+    "tendstoConvergentThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`eventuallyOfForallThm],
+    "eventuallyOfForallThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`eventuallyOfForallThm], {},
+    "eventuallyOfForallThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`eventuallyMonoThm],
+    "eventuallyMonoThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`eventuallyMonoThm], {},
+    "eventuallyMonoThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`eventuallyAndThm],
+    "eventuallyAndThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`eventuallyAndThm], {},
+    "eventuallyAndThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`tendstoEventuallyThm],
+    "tendstoEventuallyThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`tendstoEventuallyThm], {},
+    "tendstoEventuallyThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqTendstoEventuallyBoundedThm],
+    "seqTendstoEventuallyBoundedThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqTendstoEventuallyBoundedThm], {},
+    "seqTendstoEventuallyBoundedThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqTendstoEventuallyAwayFromZeroThm],
+    "seqTendstoEventuallyAwayFromZeroThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqTendstoEventuallyAwayFromZeroThm], {},
+    "seqTendstoEventuallyAwayFromZeroThm no hyps"]];
 
 HOLTest`runTests["stdlib/Real/Seq: constant sequences",
   Module[{cV, th, expected},
@@ -158,3 +258,62 @@ HOLTest`runTests["stdlib/Real/Seq: uniqueness and calculus laws",
     th = HOL`Bool`MP[inst, cLim];
     expected = HOL`Stdlib`Real`convergentTm[cSeq];
     assertConclRST["constant convergent", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: eventually combinators",
+  Module[{nV, pPred, qPred, pAll, qAll, pEv, qEv, pqAll, inst, th, expected,
+          andPred},
+    nV = mkVar["n", numTyRST];
+    pPred = mkAbs[nV, rLtRST[zeroRealRST[], rnumRST[1]]];
+    qPred = mkAbs[nV, rLtRST[zeroRealRST[], rnumRST[2]]];
+    pAll = HOL`Bool`GEN[nV, HOL`Auto`RealArith`rnumPos[1]];
+    qAll = HOL`Bool`GEN[nV, HOL`Auto`RealArith`rnumPos[2]];
+
+    inst = betaCleanRST[HOL`Bool`SPEC[pPred, HOL`Stdlib`Real`eventuallyOfForallThm]];
+    pEv = HOL`Bool`MP[inst, pAll];
+    expected = HOL`Stdlib`Real`eventuallyTm[pPred];
+    assertConclRST["eventuallyOfForall concrete", pEv, expected];
+
+    pqAll = HOL`Bool`GEN[nV, HOL`Bool`DISCH[
+      rLtRST[zeroRealRST[], rnumRST[1]], HOL`Auto`RealArith`rnumPos[2]]];
+    inst = betaCleanRST[specAllRST[HOL`Stdlib`Real`eventuallyMonoThm,
+      {pPred, qPred}]];
+    qEv = HOL`Bool`MP[HOL`Bool`MP[inst, pqAll], pEv];
+    expected = HOL`Stdlib`Real`eventuallyTm[qPred];
+    assertConclRST["eventuallyMono concrete", qEv, expected];
+
+    inst = betaCleanRST[HOL`Bool`SPEC[qPred, HOL`Stdlib`Real`eventuallyOfForallThm]];
+    qEv = HOL`Bool`MP[inst, qAll];
+    inst = betaCleanRST[specAllRST[HOL`Stdlib`Real`eventuallyAndThm, {pPred, qPred}]];
+    th = HOL`Bool`MP[HOL`Bool`MP[inst, pEv], qEv];
+    andPred = mkAbs[nV, andRST[rLtRST[zeroRealRST[], rnumRST[1]],
+      rLtRST[zeroRealRST[], rnumRST[2]]]];
+    expected = HOL`Stdlib`Real`eventuallyTm[andPred];
+    assertConclRST["eventuallyAnd concrete", betaCleanRST[th], expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: eventually consequences of tendsto",
+  Module[{cV, oneR, cSeq, oneSeq, cLim, oneLim, inst, th, expected, nV},
+    cV = mkVar["cRST", realTyRST];
+    oneR = rnumRST[1];
+    cSeq = constSeqRST[cV];
+    oneSeq = constSeqRST[oneR];
+    cLim = HOL`Bool`SPEC[cV, HOL`Stdlib`Real`tendstoConstThm];
+    oneLim = HOL`Bool`SPEC[oneR, HOL`Stdlib`Real`tendstoConstThm];
+    nV = mkVar["n", numTyRST];
+
+    inst = specAllRST[HOL`Stdlib`Real`tendstoEventuallyThm, {cSeq, cV, oneR}];
+    th = betaCleanRST[HOL`Bool`MP[
+      HOL`Bool`MP[inst, cLim], HOL`Auto`RealArith`rnumPos[1]]];
+    expected = HOL`Stdlib`Real`eventuallyTm[
+      mkAbs[nV, rLtRST[rAbsRST[rAddRST[cV, rNegRST[cV]]], oneR]]];
+    assertConclRST["tendstoEventually constant", th, expected];
+
+    inst = specAllRST[HOL`Stdlib`Real`seqTendstoEventuallyBoundedThm, {cSeq, cV}];
+    th = HOL`Bool`MP[inst, cLim];
+    expected = HOL`Stdlib`Real`eventuallyBoundedTm[cSeq];
+    assertConclRST["constant eventually bounded", th, expected];
+
+    inst = specAllRST[HOL`Stdlib`Real`seqTendstoEventuallyAwayFromZeroThm,
+      {oneSeq, oneR}];
+    th = HOL`Bool`MP[HOL`Bool`MP[inst, oneLim], HOL`Auto`RealArith`rnumNe[1, 0]];
+    expected = HOL`Stdlib`Real`eventuallyAwayFromZeroTm[oneSeq];
+    assertConclRST["constant eventually away from zero", th, expected]]];
