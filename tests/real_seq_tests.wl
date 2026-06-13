@@ -16,6 +16,7 @@ Needs["HOL`Stdlib`Num`"];
 Needs["HOL`Stdlib`Int`"];
 Needs["HOL`Stdlib`Rat`"];
 Needs["HOL`Stdlib`Real`"];
+Needs["HOL`Auto`Arith`"];
 Needs["HOL`Auto`RealArith`"];
 
 numTyRST = mkType["num", {}];
@@ -39,10 +40,14 @@ rLeRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLeConst[], a], b];
 rLtRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], a], b];
 rSupRST[s_] := mkComb[HOL`Stdlib`Real`realSupConst[], s];
 nLeRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+nLtRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`ltConst[], a], b];
 andRST[p_, q_] := mkComb[
   mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
+orRST[p_, q_] := mkComb[
+  mkComb[mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 impRST[p_, q_] := mkComb[
   mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
+notRST[p_] := mkComb[mkConst["¬", tyFun[boolTy, boolTy]], p];
 forallRST[v : var[_, ty_], body_] :=
   mkComb[mkConst["∀", tyFun[tyFun[ty, boolTy], boolTy]], mkAbs[v, body]];
 existsRST[v : var[_, ty_], body_] :=
@@ -141,6 +146,43 @@ seqBddBelowBodyRST[uT_] :=
   Module[{bV, nV},
     bV = mkVar["B", realTyRST]; nV = mkVar["n", numTyRST];
     existsRST[bV, forallRST[nV, rLeRST[bV, mkComb[uT, nV]]]]
+  ];
+
+subseqIndexBodyRST[phiT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTyRST];
+    forallRST[nV, nLtRST[mkComb[phiT, nV],
+      mkComb[phiT, mkComb[HOL`Stdlib`Num`sucConst[], nV]]]]
+  ];
+
+subsequenceBodyRST[uT_, phiT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTyRST];
+    mkAbs[nV, mkComb[uT, mkComb[phiT, nV]]]
+  ];
+
+peakBodyRST[uT_, nT_] :=
+  Module[{mV},
+    mV = mkVar["m", numTyRST];
+    forallRST[mV, impRST[nLeRST[nT, mV],
+      rLeRST[mkComb[uT, mV], mkComb[uT, nT]]]]
+  ];
+
+monoSubseqGoalRST[uT_] :=
+  Module[{phiV, subSeq},
+    phiV = mkVar["phi", tyFun[numTyRST, numTyRST]];
+    subSeq = HOL`Stdlib`Real`subsequenceTm[uT, phiV];
+    existsRST[phiV, andRST[HOL`Stdlib`Real`subseqIndexTm[phiV],
+      orRST[HOL`Stdlib`Real`monoIncTm[subSeq], HOL`Stdlib`Real`monoDecTm[subSeq]]]]
+  ];
+
+constPeakRST[cT_, nT_] :=
+  Module[{mV, seq, clean, point, allM},
+    mV = mkVar["m", numTyRST]; seq = constSeqRST[cT];
+    clean = betaCleanRST[HOL`Stdlib`Real`unfoldPeak[seq, nT]];
+    point = HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realLeReflThm];
+    allM = HOL`Bool`GEN[mV, HOL`Bool`DISCH[nLeRST[nT, mV], point]];
+    EQMP[HOL`Equal`SYM[clean], allM]
   ];
 
 constMonoIncRST[cT_] :=
@@ -568,3 +610,103 @@ HOLTest`runTests["stdlib/Real/Seq: monotone convergence on constants",
     th = HOL`Bool`MP[HOL`Bool`MP[inst, monoDec], bddBelow];
     expected = existsRST[lV, HOL`Stdlib`Real`tendstoTm[cSeq, lV]];
     assertConclRST["constant monoConvergesDec", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: subsequence definitions and builders",
+  Module[{uV, phiV, nV, th, expected},
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`subseqIndexDefThm], {},
+      "subseqIndexDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`subseqIndexDefThm],
+      "subseqIndexDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`subsequenceDefThm], {},
+      "subsequenceDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`subsequenceDefThm],
+      "subsequenceDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`peakDefThm], {}, "peakDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`peakDefThm], "peakDef is thm"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`subseqIndexConst[]],
+      tyFun[tyFun[numTyRST, numTyRST], boolTy], "subseqIndexConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`subsequenceConst[]],
+      tyFun[seqTyRST, tyFun[tyFun[numTyRST, numTyRST], seqTyRST]],
+      "subsequenceConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`peakConst[]],
+      tyFun[seqTyRST, tyFun[numTyRST, boolTy]], "peakConst type"];
+
+    uV = mkVar["uSubRST", seqTyRST];
+    phiV = mkVar["phiSubRST", tyFun[numTyRST, numTyRST]];
+    nV = mkVar["nSubRST", numTyRST];
+    th = HOL`Stdlib`Real`unfoldSubseqIndex[phiV];
+    expected = mkEq[HOL`Stdlib`Real`subseqIndexTm[phiV], subseqIndexBodyRST[phiV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldSubseqIndex body"];
+
+    th = HOL`Stdlib`Real`unfoldSubsequence[uV, phiV];
+    expected = mkEq[HOL`Stdlib`Real`subsequenceTm[uV, phiV],
+      subsequenceBodyRST[uV, phiV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldSubsequence body"];
+
+    th = HOL`Stdlib`Real`unfoldPeak[uV, nV];
+    expected = mkEq[HOL`Stdlib`Real`peakTm[uV, nV], peakBodyRST[uV, nV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldPeak body"]]];
+
+HOLTest`runTests["stdlib/Real/Seq: subsequence theorem objects",
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`subseqIndexMonoThm],
+    "subseqIndexMonoThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`subseqIndexMonoThm], {},
+    "subseqIndexMonoThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`subseqIndexGeSelfThm],
+    "subseqIndexGeSelfThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`subseqIndexGeSelfThm], {},
+    "subseqIndexGeSelfThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`notPeakExistsLaterThm],
+    "notPeakExistsLaterThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`notPeakExistsLaterThm], {},
+    "notPeakExistsLaterThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`eventuallyNotPeakThm],
+    "eventuallyNotPeakThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`eventuallyNotPeakThm], {},
+    "eventuallyNotPeakThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`existsMonoSubseqThm],
+    "existsMonoSubseqThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`existsMonoSubseqThm], {},
+    "existsMonoSubseqThm no hyps"]];
+
+HOLTest`runTests["stdlib/Real/Seq: subsequence theorem shapes",
+  Module[{uV, nV, mV, th, expected},
+    uV = mkVar["uShapeRST", seqTyRST]; nV = mkVar["nShapeRST", numTyRST];
+    mV = mkVar["mW", numTyRST];
+    th = specAllRST[HOL`Stdlib`Real`notPeakExistsLaterThm, {uV, nV}];
+    expected = impRST[notRST[HOL`Stdlib`Real`peakTm[uV, nV]],
+      existsRST[mV, andRST[nLtRST[nV, mV],
+        rLeRST[mkComb[uV, nV], mkComb[uV, mV]]]]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "notPeakExistsLater instantiated shape"];
+
+    th = HOL`Bool`SPEC[uV, HOL`Stdlib`Real`existsMonoSubseqThm];
+    expected = monoSubseqGoalRST[uV];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "existsMonoSubseq instantiated shape"]]];
+
+HOLTest`runTests["stdlib/Real/Seq: constant peaks and identity index",
+  Module[{cV, nV, idPhi, idSub, twoN, oneN, geAll, geTwo, monoAll, mono12,
+          le12, expected},
+    cV = mkVar["cPeakRST", realTyRST]; nV = mkVar["nPeakRST", numTyRST];
+    assertConclRST["constant sequence peak", constPeakRST[cV, nV],
+      HOL`Stdlib`Real`peakTm[constSeqRST[cV], nV]];
+
+    nV = mkVar["nIdRST", numTyRST];
+    idPhi = mkAbs[nV, nV];
+    idSub = EQMP[HOL`Equal`SYM[betaCleanRST[
+      HOL`Stdlib`Real`unfoldSubseqIndex[idPhi]]], HOL`Stdlib`Num`ltSucThm];
+    twoN = natRST[2]; oneN = natRST[1];
+
+    geAll = HOL`Bool`MP[
+      HOL`Bool`SPEC[idPhi, HOL`Stdlib`Real`subseqIndexGeSelfThm], idSub];
+    geTwo = betaCleanRST[HOL`Bool`SPEC[twoN, geAll]];
+    expected = nLeRST[twoN, twoN];
+    assertConclRST["identity ge self at two", geTwo, expected];
+
+    monoAll = HOL`Bool`MP[
+      HOL`Bool`SPEC[idPhi, HOL`Stdlib`Real`subseqIndexMonoThm], idSub];
+    le12 = HOL`Auto`Arith`arithProve[nLeRST[oneN, twoN]];
+    mono12 = betaCleanRST[HOL`Bool`MP[specAllRST[monoAll, {oneN, twoN}], le12]];
+    expected = nLeRST[oneN, twoN];
+    assertConclRST["identity mono one two", mono12, expected]]];

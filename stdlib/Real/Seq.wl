@@ -3,7 +3,7 @@
 BeginPackage["HOL`Stdlib`Real`", {
   "HOL`Error`", "HOL`Types`", "HOL`Terms`", "HOL`Kernel`",
   "HOL`Bootstrap`", "HOL`Equal`", "HOL`Bool`", "HOL`Drule`",
-  "HOL`Auto`PropTaut`", "HOL`Auto`RealArith`",
+  "HOL`Auto`PropTaut`", "HOL`Auto`Arith`", "HOL`Auto`RealArith`",
   "HOL`Stdlib`Pair`", "HOL`Stdlib`Num`", "HOL`Stdlib`List`",
   "HOL`Stdlib`Int`", "HOL`Stdlib`Rat`"
 }];
@@ -70,6 +70,39 @@ realSupLtMemThm::usage = "realSupLtMemThm - |- forall S t. (exists a. S a) ==> (
 monoIncTendstoSupThm::usage = "monoIncTendstoSupThm - |- forall u. monoInc u ==> seqBddAbove u ==> tendsto u (realSup (lambda x. exists n. x = u n)).";
 monoConvergesIncThm::usage = "monoConvergesIncThm - |- forall u. monoInc u ==> seqBddAbove u ==> exists L. tendsto u L.";
 monoConvergesDecThm::usage = "monoConvergesDecThm - |- forall u. monoDec u ==> seqBddBelow u ==> exists L. tendsto u L.";
+
+subseqIndexDefThm::usage = "subseqIndexDefThm - |- subseqIndex = (lambda phi. forall n. phi n < phi (SUC n)).";
+subseqIndexConst::usage = "subseqIndexConst[] - subseqIndex : (num -> num) -> bool.";
+subseqIndexTm::usage = "subseqIndexTm[phi] - builds subseqIndex phi.";
+unfoldSubseqIndex::usage = "unfoldSubseqIndex[phi] - proves the beta-reduced subseqIndex definition at phi.";
+subsequenceDefThm::usage = "subsequenceDefThm - |- subsequence = (lambda u phi n. u (phi n)).";
+subsequenceConst::usage = "subsequenceConst[] - subsequence : (num -> real) -> (num -> num) -> num -> real.";
+subsequenceTm::usage = "subsequenceTm[u, phi] - builds subsequence u phi.";
+unfoldSubsequence::usage = "unfoldSubsequence[u, phi] - proves the beta-reduced subsequence definition at u and phi.";
+peakDefThm::usage = "peakDefThm - |- peak = (lambda u n. forall m. n <= m ==> realLe (u m) (u n)).";
+peakConst::usage = "peakConst[] - peak : (num -> real) -> num -> bool.";
+peakTm::usage = "peakTm[u, n] - builds peak u n.";
+unfoldPeak::usage = "unfoldPeak[u, n] - proves the beta-reduced peak definition at u and n.";
+peakIndexDefThm::usage = "peakIndexDefThm - epsilon-selected ITER recursion for the infinitely-many-peaks branch.";
+peakIndexConst::usage = "peakIndexConst[] - peakIndex : (num -> real) -> num -> num.";
+peakIndexTm::usage = "peakIndexTm[u] - builds the index function peakIndex u.";
+risingIndexDefThm::usage = "risingIndexDefThm - epsilon-selected ITER recursion for the eventually-no-peaks branch.";
+risingIndexConst::usage = "risingIndexConst[] - risingIndex : (num -> real) -> num -> num -> num.";
+risingIndexTm::usage = "risingIndexTm[u, N] - builds the index function risingIndex u N.";
+subseqIndexMonoThm::usage = "subseqIndexMonoThm - |- forall phi. subseqIndex phi ==> forall n m. n <= m ==> phi n <= phi m.";
+subseqIndexGeSelfThm::usage = "subseqIndexGeSelfThm - |- forall phi. subseqIndex phi ==> forall n. n <= phi n.";
+notPeakExistsLaterThm::usage = "notPeakExistsLaterThm - |- forall u n. ~(peak u n) ==> exists m. n < m /\\ realLe (u n) (u m).";
+eventuallyNotPeakThm::usage = "eventuallyNotPeakThm - |- forall u. ~(forall N. exists n. N <= n /\\ peak u n) ==> exists N. forall n. N <= n ==> ~(peak u n).";
+peakIndexPeakThm::usage = "peakIndexPeakThm - infinitely-many-peaks branch: every peakIndex value is a peak.";
+peakIndexStepThm::usage = "peakIndexStepThm - infinitely-many-peaks branch: peakIndex is strictly increasing.";
+peakIndexSubseqThm::usage = "peakIndexSubseqThm - infinitely-many-peaks branch: peakIndex is a subsequence index.";
+peakIndexDecreasingThm::usage = "peakIndexDecreasingThm - infinitely-many-peaks branch: the selected subsequence is decreasing.";
+risingIndexGeThm::usage = "risingIndexGeThm - eventually-no-peaks branch invariant: N <= risingIndex u N k.";
+risingIndexStepThm::usage = "risingIndexStepThm - eventually-no-peaks branch: risingIndex is strictly increasing.";
+risingIndexStepLeThm::usage = "risingIndexStepLeThm - eventually-no-peaks branch: consecutive selected values are realLe-increasing.";
+risingIndexSubseqThm::usage = "risingIndexSubseqThm - eventually-no-peaks branch: risingIndex is a subsequence index.";
+risingIndexIncreasingThm::usage = "risingIndexIncreasingThm - eventually-no-peaks branch: the selected subsequence is increasing.";
+existsMonoSubseqThm::usage = "existsMonoSubseqThm - |- forall u. exists phi. subseqIndex phi /\\ (monoInc (subsequence u phi) \\/ monoDec (subsequence u phi)).";
 
 Begin["`Private`"];
 
@@ -1608,6 +1641,694 @@ monoConvergesDecThm =
     chosenB = HOL`Bool`CHOOSE[bW, belowEx, chosenL];
     HOL`Bool`GEN[uV, HOL`Bool`DISCH[monoDecTm[uV],
       HOL`Bool`DISCH[seqBddBelowTm[uV], chosenB]]]
+  ];
+
+numFunTy = tyFun[numTy, numTy];
+subseqIndexTy = tyFun[numFunTy, boolTy];
+subsequenceTy = tyFun[seqTy, tyFun[numFunTy, seqTy]];
+peakTy = tyFun[seqTy, tyFun[numTy, boolTy]];
+peakIndexTy = tyFun[seqTy, numFunTy];
+risingIndexTy = tyFun[seqTy, tyFun[numTy, numFunTy]];
+
+seqNatLt[aT_, bT_] := mkComb[mkComb[HOL`Stdlib`Num`ltConst[], aT], bT];
+
+seqNatLtCong[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[HOL`Stdlib`Num`ltConst[], eqLeft], eqRight];
+
+seqSelectTm[ty_, predT_] := mkComb[mkConst["@", tyFun[tyFun[ty, boolTy], ty]], predT];
+
+seqSubseqIndexBody[phiT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTy];
+    forallTm[nV, seqNatLt[mkComb[phiT, nV], mkComb[phiT, sucT[nV]]]]
+  ];
+
+seqSubsequenceBody[uT_, phiT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTy];
+    mkAbs[nV, mkComb[uT, mkComb[phiT, nV]]]
+  ];
+
+seqPeakBody[uT_, nT_] :=
+  Module[{mV},
+    mV = mkVar["m", numTy];
+    forallTm[mV, impTm[seqNatLe[nT, mV], realLeTm[mkComb[uT, mV], mkComb[uT, nT]]]]
+  ];
+
+subseqIndexDefThm =
+  Module[{phiV},
+    phiV = mkVar["phi", numFunTy];
+    newDefinition[mkEq[mkVar["subseqIndex", subseqIndexTy],
+      mkAbs[phiV, seqSubseqIndexBody[phiV]]]]
+  ];
+
+subseqIndexConst[] := mkConst["subseqIndex", subseqIndexTy];
+subseqIndexTm[phiT_] := mkComb[subseqIndexConst[], phiT];
+
+unfoldSubseqIndex[phiT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[subseqIndexDefThm, phiT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+subsequenceDefThm =
+  Module[{uV, phiV},
+    uV = mkVar["u", seqTy]; phiV = mkVar["phi", numFunTy];
+    newDefinition[mkEq[mkVar["subsequence", subsequenceTy],
+      mkAbs[uV, mkAbs[phiV, seqSubsequenceBody[uV, phiV]]]]]
+  ];
+
+subsequenceConst[] := mkConst["subsequence", subsequenceTy];
+subsequenceTm[uT_, phiT_] := mkComb[mkComb[subsequenceConst[], uT], phiT];
+
+unfoldSubsequence[uT_, phiT_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[subsequenceDefThm, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, phiT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+seqSubsequenceAppEq[uT_, phiT_, nT_] :=
+  Module[{unf, app},
+    unf = unfoldSubsequence[uT, phiT];
+    app = HOL`Equal`APTHM[unf, nT];
+    TRANS[app, HOL`Equal`BETACONV[concl[app][[2]]]]
+  ];
+
+peakDefThm =
+  Module[{uV, nV},
+    uV = mkVar["u", seqTy]; nV = mkVar["n", numTy];
+    newDefinition[mkEq[mkVar["peak", peakTy],
+      mkAbs[uV, mkAbs[nV, seqPeakBody[uV, nV]]]]]
+  ];
+
+peakConst[] := mkConst["peak", peakTy];
+peakTm[uT_, nT_] := mkComb[mkComb[peakConst[], uT], nT];
+
+unfoldPeak[uT_, nT_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[peakDefThm, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, nT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+seqPeakSelectPred[uT_, lowerT_] :=
+  Module[{nPk},
+    nPk = mkVar["nPk", numTy];
+    mkAbs[nPk, conjTm[seqNatLe[lowerT, nPk], peakTm[uT, nPk]]]
+  ];
+
+seqPeakChoice[uT_, lowerT_] := seqSelectTm[numTy, seqPeakSelectPred[uT, lowerT]];
+
+seqPeakStepFun[uT_] :=
+  Module[{jStep},
+    jStep = mkVar["jStep", numTy];
+    mkAbs[jStep, seqPeakChoice[uT, sucT[jStep]]]
+  ];
+
+seqPeakIndexRecPred[uT_] :=
+  Module[{gRec, kPk, eT, fT},
+    gRec = mkVar["gRec", numFunTy]; kPk = mkVar["kPk", numTy];
+    eT = seqPeakChoice[uT, zeroN[]]; fT = seqPeakStepFun[uT];
+    mkAbs[gRec, conjTm[mkEq[mkComb[gRec, zeroN[]], eT],
+      forallTm[kPk, mkEq[mkComb[gRec, sucT[kPk]], mkComb[fT, mkComb[gRec, kPk]]]]]]
+  ];
+
+peakIndexDefThm =
+  Module[{uV},
+    uV = mkVar["u", seqTy];
+    newDefinition[mkEq[mkVar["peakIndex", peakIndexTy],
+      mkAbs[uV, seqSelectTm[numFunTy, seqPeakIndexRecPred[uV]]]]]
+  ];
+
+peakIndexConst[] := mkConst["peakIndex", peakIndexTy];
+peakIndexTm[uT_] := mkComb[peakIndexConst[], uT];
+
+unfoldPeakIndex[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[peakIndexDefThm, uT];
+    (* deep beta: the recursion predicate carries an inner f-redex; selectOfExists
+       reduces it, so unfold must too or the @-terms won't aconv-match for SUBS *)
+    seqBetaClean[TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]]
+  ];
+
+seqRisingSelectPred[uT_, jT_] :=
+  Module[{mRise},
+    mRise = mkVar["mRise", numTy];
+    mkAbs[mRise, conjTm[seqNatLt[jT, mRise],
+      realLeTm[mkComb[uT, jT], mkComb[uT, mRise]]]]
+  ];
+
+seqRisingChoice[uT_, jT_] := seqSelectTm[numTy, seqRisingSelectPred[uT, jT]];
+
+seqRisingStepFun[uT_] :=
+  Module[{jStep},
+    jStep = mkVar["jStep", numTy];
+    mkAbs[jStep, seqRisingChoice[uT, jStep]]
+  ];
+
+seqRisingIndexRecPred[uT_, n0T_] :=
+  Module[{gRec, kRise, fT},
+    gRec = mkVar["gRec", numFunTy]; kRise = mkVar["kRise", numTy];
+    fT = seqRisingStepFun[uT];
+    mkAbs[gRec, conjTm[mkEq[mkComb[gRec, zeroN[]], n0T],
+      forallTm[kRise, mkEq[mkComb[gRec, sucT[kRise]], mkComb[fT, mkComb[gRec, kRise]]]]]]
+  ];
+
+risingIndexDefThm =
+  Module[{uV, n0V},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy];
+    newDefinition[mkEq[mkVar["risingIndex", risingIndexTy],
+      mkAbs[uV, mkAbs[n0V, seqSelectTm[numFunTy, seqRisingIndexRecPred[uV, n0V]]]]]]
+  ];
+
+risingIndexConst[] := mkConst["risingIndex", risingIndexTy];
+risingIndexTm[uT_, n0T_] := mkComb[mkComb[risingIndexConst[], uT], n0T];
+
+unfoldRisingIndex[uT_, n0T_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[risingIndexDefThm, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, n0T];
+    seqBetaClean[TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]]
+  ];
+
+seqNumLeZeroEqThm =
+  Module[{nV},
+    nV = mkVar["n", numTy];
+    HOL`Auto`Arith`arithProve[forallTm[nV,
+      impTm[seqNatLe[nV, zeroN[]], mkEq[nV, zeroN[]]]]]
+  ];
+
+seqNumLeLtTransThm =
+  Module[{aV, bV, cV},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy]; cV = mkVar["c", numTy];
+    HOL`Auto`Arith`arithProve[seqForallList[{aV, bV, cV},
+      seqImpList[{seqNatLe[aV, bV], seqNatLt[bV, cV]}, seqNatLe[aV, cV]]]]
+  ];
+
+seqNumStepLeLtTransThm =
+  Module[{nV, aV, bV},
+    nV = mkVar["n", numTy]; aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    HOL`Auto`Arith`arithProve[seqForallList[{nV, aV, bV},
+      seqImpList[{seqNatLe[nV, aV], seqNatLt[aV, bV]}, seqNatLe[sucT[nV], bV]]]]
+  ];
+
+seqNumSucLeImpLtThm =
+  Module[{aV, bV},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    HOL`Auto`Arith`arithProve[seqForallList[{aV, bV},
+      impTm[seqNatLe[sucT[aV], bV], seqNatLt[aV, bV]]]]
+  ];
+
+seqNumLeNotLtEqThm =
+  Module[{aV, bV, hLe, hNotLt, bLeA, aEqB, bEqA},
+    aV = mkVar["a", numTy]; bV = mkVar["b", numTy];
+    hLe = ASSUME[seqNatLe[aV, bV]];
+    hNotLt = ASSUME[notTm[seqNatLt[aV, bV]]];
+    bLeA = EQMP[
+      HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`notLtEqLeqThm]],
+      hNotLt];
+    aEqB = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV, HOL`Stdlib`Num`leqAntisymThm]],
+      hLe], bLeA];
+    bEqA = HOL`Equal`SYM[aEqB];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[seqNatLe[aV, bV],
+        HOL`Bool`DISCH[notTm[seqNatLt[aV, bV]], bEqA]]]]
+  ];
+
+seqNumEqLeqReflLeft[eqTh_] :=
+  Module[{aT, bT, refl},
+    aT = concl[eqTh][[1, 2]]; bT = concl[eqTh][[2]];
+    refl = HOL`Bool`SPEC[bT, HOL`Stdlib`Num`leqReflThm];
+    EQMP[seqNatLeCong[HOL`Equal`SYM[eqTh], REFL[bT]], refl]
+  ];
+
+peakIndexRecSpecThm =
+  Module[{uV, iter, exIter, sat, folded},
+    uV = mkVar["u", seqTy];
+    iter = HOL`Kernel`INSTTYPE[{tyVar["A"] -> numTy}, HOL`Stdlib`Num`numIterationThm];
+    exIter = seqBetaClean[
+      HOL`Bool`SPEC[seqPeakStepFun[uV], HOL`Bool`SPEC[seqPeakChoice[uV, zeroN[]], iter]]];
+    sat = HOL`Stdlib`Num`selectOfExists[seqPeakIndexRecPred[uV], exIter];
+    folded = seqBetaClean[HOL`Drule`SUBS[{HOL`Equal`SYM[unfoldPeakIndex[uV]]}, sat]];
+    HOL`Bool`GEN[uV, folded]
+  ];
+
+seqPeakIndexZeroEq[uT_] := HOL`Bool`CONJUNCT1[HOL`Bool`SPEC[uT, peakIndexRecSpecThm]];
+
+seqPeakIndexSucEq[uT_, kT_] :=
+  seqBetaClean[HOL`Bool`SPEC[kT, HOL`Bool`CONJUNCT2[HOL`Bool`SPEC[uT, peakIndexRecSpecThm]]]];
+
+risingIndexRecSpecThm =
+  Module[{uV, n0V, iter, exIter, sat, folded},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy];
+    iter = HOL`Kernel`INSTTYPE[{tyVar["A"] -> numTy}, HOL`Stdlib`Num`numIterationThm];
+    exIter = seqBetaClean[
+      HOL`Bool`SPEC[seqRisingStepFun[uV], HOL`Bool`SPEC[n0V, iter]]];
+    sat = HOL`Stdlib`Num`selectOfExists[seqRisingIndexRecPred[uV, n0V], exIter];
+    folded = seqBetaClean[HOL`Drule`SUBS[{HOL`Equal`SYM[unfoldRisingIndex[uV, n0V]]}, sat]];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[n0V, folded]]
+  ];
+
+seqRisingIndexZeroEq[uT_, n0T_] :=
+  HOL`Bool`CONJUNCT1[HOL`Bool`SPEC[n0T, HOL`Bool`SPEC[uT, risingIndexRecSpecThm]]];
+
+seqRisingIndexSucEq[uT_, n0T_, kT_] :=
+  seqBetaClean[HOL`Bool`SPEC[kT,
+    HOL`Bool`CONJUNCT2[HOL`Bool`SPEC[n0T, HOL`Bool`SPEC[uT, risingIndexRecSpecThm]]]]];
+
+subseqIndexMonoThm =
+  Module[{phiV, nV, mV, hSubTm, hSub, hStepAll, pLam, mInd, nBase, hLeBase,
+          nEq0, baseGoal, base, ihTm, ih, nStep, hLeSuc, caseTh, hLeM,
+          ihLe, hLtM, branchA, hEqSuc, phiEq, branchB, stepPoint, stepAll,
+          indSpec, indAllM, hLe, finalPoint},
+    phiV = mkVar["phi", numFunTy]; nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    hSubTm = subseqIndexTm[phiV]; hSub = ASSUME[hSubTm];
+    hStepAll = EQMP[unfoldSubseqIndex[phiV], hSub];
+    pLam = Module[{mP, nP},
+      mP = mkVar["mP", numTy]; nP = mkVar["nP", numTy];
+      mkAbs[mP, forallTm[nP,
+        impTm[seqNatLe[nP, mP], seqNatLe[mkComb[phiV, nP], mkComb[phiV, mP]]]]]
+    ];
+
+    nBase = mkVar["nBase", numTy];
+    hLeBase = ASSUME[seqNatLe[nBase, zeroN[]]];
+    nEq0 = HOL`Bool`MP[HOL`Bool`SPEC[nBase, seqNumLeZeroEqThm], hLeBase];
+    baseGoal = seqNumEqLeqReflLeft[HOL`Equal`APTERM[phiV, nEq0]];
+    base = HOL`Bool`GEN[nBase, HOL`Bool`DISCH[seqNatLe[nBase, zeroN[]], baseGoal]];
+
+    mInd = mkVar["mInd", numTy];
+    ihTm = forallTm[nV, impTm[seqNatLe[nV, mInd],
+      seqNatLe[mkComb[phiV, nV], mkComb[phiV, mInd]]]];
+    ih = ASSUME[ihTm];
+    nStep = mkVar["nStep", numTy];
+    hLeSuc = ASSUME[seqNatLe[nStep, sucT[mInd]]];
+    caseTh = HOL`Bool`MP[
+      HOL`Bool`SPEC[mInd, HOL`Bool`SPEC[nStep, HOL`Stdlib`Num`leqSucCaseThm]],
+      hLeSuc];
+    hLeM = ASSUME[seqNatLe[nStep, mInd]];
+    ihLe = HOL`Bool`MP[HOL`Bool`SPEC[nStep, ih], hLeM];
+    hLtM = HOL`Bool`SPEC[mInd, hStepAll];
+    branchA = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqNumLeLtTransThm,
+        {mkComb[phiV, nStep], mkComb[phiV, mInd], mkComb[phiV, sucT[mInd]]}],
+      ihLe], hLtM];
+    hEqSuc = ASSUME[mkEq[nStep, sucT[mInd]]];
+    phiEq = HOL`Equal`APTERM[phiV, hEqSuc];
+    branchB = seqNumEqLeqReflLeft[phiEq];
+    stepPoint = HOL`Bool`DISJCASES[caseTh, branchA, branchB];
+    stepAll = HOL`Bool`GEN[mInd, HOL`Bool`DISCH[ihTm,
+      HOL`Bool`GEN[nStep, HOL`Bool`DISCH[seqNatLe[nStep, sucT[mInd]], stepPoint]]]];
+    indSpec = seqBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAllM = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+
+    hLe = ASSUME[seqNatLe[nV, mV]];
+    finalPoint = HOL`Bool`MP[HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, indAllM]], hLe];
+    HOL`Bool`GEN[phiV, HOL`Bool`DISCH[hSubTm,
+      HOL`Bool`GEN[nV, HOL`Bool`GEN[mV,
+        HOL`Bool`DISCH[seqNatLe[nV, mV], finalPoint]]]]]
+  ];
+
+subseqIndexGeSelfThm =
+  Module[{phiV, nV, hSubTm, hSub, hStepAll, pLam, base, nInd, ihTm, ih,
+          hLt, stepGoal, stepAll, indSpec, indAll, finalPoint},
+    phiV = mkVar["phi", numFunTy]; nV = mkVar["n", numTy];
+    hSubTm = subseqIndexTm[phiV]; hSub = ASSUME[hSubTm];
+    hStepAll = EQMP[unfoldSubseqIndex[phiV], hSub];
+    pLam = Module[{nP},
+      nP = mkVar["nP", numTy];
+      mkAbs[nP, seqNatLe[nP, mkComb[phiV, nP]]]
+    ];
+    base = HOL`Bool`SPEC[mkComb[phiV, zeroN[]], HOL`Stdlib`Num`leqZeroThm];
+    nInd = mkVar["nInd", numTy];
+    ihTm = seqNatLe[nInd, mkComb[phiV, nInd]];
+    ih = ASSUME[ihTm];
+    hLt = HOL`Bool`SPEC[nInd, hStepAll];
+    stepGoal = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqNumStepLeLtTransThm,
+        {nInd, mkComb[phiV, nInd], mkComb[phiV, sucT[nInd]]}],
+      ih], hLt];
+    stepAll = HOL`Bool`GEN[nInd, HOL`Bool`DISCH[ihTm, stepGoal]];
+    indSpec = seqBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAll = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+    finalPoint = HOL`Bool`SPEC[nV, indAll];
+    HOL`Bool`GEN[phiV, HOL`Bool`DISCH[hSubTm,
+      HOL`Bool`GEN[nV, finalPoint]]]
+  ];
+
+notPeakExistsLaterThm =
+  Module[{uV, nV, mW, exGoal, hNotPeakTm, hNotPeak, hNo, hLe, total,
+          hBack, branchBack, hForward, hLt, conjW, exW, ffW, notLt, mEqN,
+          uEq, refl, branchForward, peakAll, peakFolded, ffPeak, body},
+    uV = mkVar["u", seqTy]; nV = mkVar["n", numTy]; mW = mkVar["mW", numTy];
+    exGoal = existsTm[mW, conjTm[seqNatLt[nV, mW],
+      realLeTm[mkComb[uV, nV], mkComb[uV, mW]]]];
+    hNotPeakTm = notTm[peakTm[uV, nV]];
+    hNotPeak = ASSUME[hNotPeakTm];
+    hNo = ASSUME[notTm[exGoal]];
+
+    hLe = ASSUME[seqNatLe[nV, mW]];
+    total = HOL`Bool`SPEC[mkComb[uV, nV],
+      HOL`Bool`SPEC[mkComb[uV, mW], realLeTotalThm]];
+    hBack = ASSUME[realLeTm[mkComb[uV, mW], mkComb[uV, nV]]];
+    branchBack = hBack;
+
+    hForward = ASSUME[realLeTm[mkComb[uV, nV], mkComb[uV, mW]]];
+    hLt = ASSUME[seqNatLt[nV, mW]];
+    conjW = HOL`Bool`CONJ[hLt, hForward];
+    exW = HOL`Bool`EXISTS[exGoal, mW, conjW];
+    ffW = HOL`Bool`MP[HOL`Bool`NOTELIM[hNo], exW];
+    notLt = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[seqNatLt[nV, mW], ffW]];
+    mEqN = HOL`Bool`MP[HOL`Bool`MP[seqSpecAll[seqNumLeNotLtEqThm, {nV, mW}],
+      hLe], notLt];
+    uEq = HOL`Equal`APTERM[uV, mEqN];
+    refl = HOL`Bool`SPEC[mkComb[uV, nV], realLeReflThm];
+    branchForward = EQMP[seqRealLeCong[HOL`Equal`SYM[uEq], REFL[mkComb[uV, nV]]], refl];
+
+    peakAll = HOL`Bool`GEN[mW, HOL`Bool`DISCH[seqNatLe[nV, mW],
+      HOL`Bool`DISJCASES[total, branchBack, branchForward]]];
+    peakFolded = EQMP[HOL`Equal`SYM[unfoldPeak[uV, nV]], peakAll];
+    ffPeak = HOL`Bool`MP[HOL`Bool`NOTELIM[hNotPeak], peakFolded];
+    body = HOL`Bool`CCONTR[exGoal, ffPeak];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hNotPeakTm, body]]]
+  ];
+
+eventuallyNotPeakThm =
+  Module[{uV, n0V, nW, infTm, goalTm, hNotInfTm, hNotInf, hNoGoal,
+          exAtN, hNoEx, hLe, hPeak, conjN, exN, ffN, notPeakN, allNo,
+          exGoalN, ffGoal, exNByContr, infAll, ffInf, body},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy]; nW = mkVar["nW", numTy];
+    infTm = forallTm[n0V, existsTm[nW,
+      conjTm[seqNatLe[n0V, nW], peakTm[uV, nW]]]];
+    goalTm = existsTm[n0V, forallTm[nW,
+      impTm[seqNatLe[n0V, nW], notTm[peakTm[uV, nW]]]]];
+    hNotInfTm = notTm[infTm]; hNotInf = ASSUME[hNotInfTm];
+    hNoGoal = ASSUME[notTm[goalTm]];
+    exAtN = existsTm[nW, conjTm[seqNatLe[n0V, nW], peakTm[uV, nW]]];
+    hNoEx = ASSUME[notTm[exAtN]];
+    hLe = ASSUME[seqNatLe[n0V, nW]];
+    hPeak = ASSUME[peakTm[uV, nW]];
+    conjN = HOL`Bool`CONJ[hLe, hPeak];
+    exN = HOL`Bool`EXISTS[exAtN, nW, conjN];
+    ffN = HOL`Bool`MP[HOL`Bool`NOTELIM[hNoEx], exN];
+    notPeakN = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[peakTm[uV, nW], ffN]];
+    allNo = HOL`Bool`GEN[nW,
+      HOL`Bool`DISCH[seqNatLe[n0V, nW], notPeakN]];
+    exGoalN = HOL`Bool`EXISTS[goalTm, n0V, allNo];
+    ffGoal = HOL`Bool`MP[HOL`Bool`NOTELIM[hNoGoal], exGoalN];
+    exNByContr = HOL`Bool`CCONTR[exAtN, ffGoal];
+    infAll = HOL`Bool`GEN[n0V, exNByContr];
+    ffInf = HOL`Bool`MP[HOL`Bool`NOTELIM[hNotInf], infAll];
+    body = HOL`Bool`CCONTR[goalTm, ffInf];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[hNotInfTm, body]]
+  ];
+
+seqPeakSelectSpec[hInf_, uT_, lowerT_] :=
+  HOL`Stdlib`Num`selectOfExists[seqPeakSelectPred[uT, lowerT], HOL`Bool`SPEC[lowerT, hInf]];
+
+seqPeakIndexInfTm[uT_] :=
+  Module[{n0V, nPk},
+    n0V = mkVar["N", numTy]; nPk = mkVar["nPk", numTy];
+    forallTm[n0V, existsTm[nPk,
+      conjTm[seqNatLe[n0V, nPk], peakTm[uT, nPk]]]]
+  ];
+
+peakIndexPeakThm =
+  Module[{uV, kV, hInfTm, hInf, phi, peakU, pLam, spec0, basePeak, eq0,
+          base, kInd, ihTm, ih, lower, specSuc, stepPeak, eqSuc, stepGoal,
+          stepAll, indSpec, indAll},
+    uV = mkVar["u", seqTy]; kV = mkVar["k", numTy];
+    hInfTm = seqPeakIndexInfTm[uV]; hInf = ASSUME[hInfTm];
+    phi = peakIndexTm[uV]; peakU = mkComb[peakConst[], uV];
+    pLam = Module[{kP}, kP = mkVar["kP", numTy];
+      mkAbs[kP, peakTm[uV, mkComb[phi, kP]]]];
+
+    spec0 = seqPeakSelectSpec[hInf, uV, zeroN[]];
+    basePeak = HOL`Bool`CONJUNCT2[spec0];
+    eq0 = seqPeakIndexZeroEq[uV];
+    base = EQMP[HOL`Equal`APTERM[peakU, HOL`Equal`SYM[eq0]], basePeak];
+
+    kInd = mkVar["kInd", numTy];
+    ihTm = peakTm[uV, mkComb[phi, kInd]]; ih = ASSUME[ihTm];
+    lower = sucT[mkComb[phi, kInd]];
+    specSuc = seqPeakSelectSpec[hInf, uV, lower];
+    stepPeak = HOL`Bool`CONJUNCT2[specSuc];
+    eqSuc = seqPeakIndexSucEq[uV, kInd];
+    stepGoal = EQMP[HOL`Equal`APTERM[peakU, HOL`Equal`SYM[eqSuc]], stepPeak];
+    stepAll = HOL`Bool`GEN[kInd, HOL`Bool`DISCH[ihTm, stepGoal]];
+    indSpec = seqBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAll = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[hInfTm, indAll]]
+  ];
+
+peakIndexStepThm =
+  Module[{uV, kV, hInfTm, hInf, phi, lower, specK, leChoice, eqSuc, leIdx, ltIdx,
+          allK},
+    uV = mkVar["u", seqTy]; kV = mkVar["k", numTy];
+    hInfTm = seqPeakIndexInfTm[uV]; hInf = ASSUME[hInfTm];
+    phi = peakIndexTm[uV];
+    lower = sucT[mkComb[phi, kV]];
+    specK = seqPeakSelectSpec[hInf, uV, lower];
+    leChoice = HOL`Bool`CONJUNCT1[specK];
+    eqSuc = seqPeakIndexSucEq[uV, kV];
+    leIdx = EQMP[seqNatLeCong[REFL[lower], HOL`Equal`SYM[eqSuc]], leChoice];
+    ltIdx = HOL`Bool`MP[seqSpecAll[seqNumSucLeImpLtThm,
+      {mkComb[phi, kV], mkComb[phi, sucT[kV]]}], leIdx];
+    allK = HOL`Bool`GEN[kV, ltIdx];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[hInfTm, allK]]
+  ];
+
+peakIndexSubseqThm =
+  Module[{uV, hInfTm, hInf, phi, stepAll, folded},
+    uV = mkVar["u", seqTy]; hInfTm = seqPeakIndexInfTm[uV]; hInf = ASSUME[hInfTm];
+    phi = peakIndexTm[uV];
+    stepAll = HOL`Bool`MP[HOL`Bool`SPEC[uV, peakIndexStepThm], hInf];
+    folded = EQMP[HOL`Equal`SYM[unfoldSubseqIndex[phi]], stepAll];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[hInfTm, folded]]
+  ];
+
+peakIndexDecreasingThm =
+  Module[{uV, nV, mV, hInfTm, hInf, phi, subSeq, hLe, subIdx, monoPhi,
+          idxLe, peakAll, peakN, peakUnfolded, baseLe, appM, appN, point,
+          allM, allN, folded},
+    uV = mkVar["u", seqTy]; nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    hInfTm = seqPeakIndexInfTm[uV]; hInf = ASSUME[hInfTm];
+    phi = peakIndexTm[uV]; subSeq = subsequenceTm[uV, phi];
+    hLe = ASSUME[seqNatLe[nV, mV]];
+    subIdx = HOL`Bool`MP[HOL`Bool`SPEC[uV, peakIndexSubseqThm], hInf];
+    monoPhi = HOL`Bool`MP[HOL`Bool`SPEC[phi, subseqIndexMonoThm], subIdx];
+    idxLe = HOL`Bool`MP[seqSpecAll[monoPhi, {nV, mV}], hLe];
+    peakAll = HOL`Bool`MP[HOL`Bool`SPEC[uV, peakIndexPeakThm], hInf];
+    peakN = HOL`Bool`SPEC[nV, peakAll];
+    peakUnfolded = EQMP[unfoldPeak[uV, mkComb[phi, nV]], peakN];
+    baseLe = HOL`Bool`MP[HOL`Bool`SPEC[mkComb[phi, mV], peakUnfolded], idxLe];
+    appM = seqSubsequenceAppEq[uV, phi, mV];
+    appN = seqSubsequenceAppEq[uV, phi, nV];
+    point = EQMP[seqRealLeCong[HOL`Equal`SYM[appM], HOL`Equal`SYM[appN]], baseLe];
+    allM = HOL`Bool`GEN[mV, HOL`Bool`DISCH[seqNatLe[nV, mV], point]];
+    allN = HOL`Bool`GEN[nV, allM];
+    folded = EQMP[HOL`Equal`SYM[unfoldMonoDec[subSeq]], allN];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[hInfTm, folded]]
+  ];
+
+seqRisingSelectSpec[uT_, jT_, notPeakTh_] :=
+  HOL`Stdlib`Num`selectOfExists[seqRisingSelectPred[uT, jT],
+    HOL`Bool`MP[seqSpecAll[notPeakExistsLaterThm, {uT, jT}], notPeakTh]];
+
+seqRisingNoPeakTm[uT_, n0T_] :=
+  Module[{nNo},
+    nNo = mkVar["nNo", numTy];
+    forallTm[nNo, impTm[seqNatLe[n0T, nNo], notTm[peakTm[uT, nNo]]]]
+  ];
+
+risingIndexGeThm =
+  Module[{uV, n0V, kV, hNoTm, hNo, phi, pLam, eq0, baseRefl, base,
+          kInd, ihTm, ih, idxK, idxSuc, notPk, specK, hLtChoice, eqSuc,
+          hLtIdx, stepGoal, stepAll, indSpec, indAll},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy]; kV = mkVar["k", numTy];
+    hNoTm = seqRisingNoPeakTm[uV, n0V]; hNo = ASSUME[hNoTm];
+    phi = risingIndexTm[uV, n0V];
+    pLam = Module[{kP}, kP = mkVar["kP", numTy];
+      mkAbs[kP, seqNatLe[n0V, mkComb[phi, kP]]]];
+
+    eq0 = seqRisingIndexZeroEq[uV, n0V];
+    baseRefl = HOL`Bool`SPEC[n0V, HOL`Stdlib`Num`leqReflThm];
+    base = EQMP[seqNatLeCong[REFL[n0V], HOL`Equal`SYM[eq0]], baseRefl];
+
+    kInd = mkVar["kInd", numTy];
+    idxK = mkComb[phi, kInd]; idxSuc = mkComb[phi, sucT[kInd]];
+    ihTm = seqNatLe[n0V, idxK]; ih = ASSUME[ihTm];
+    notPk = HOL`Bool`MP[HOL`Bool`SPEC[idxK, hNo], ih];
+    specK = seqRisingSelectSpec[uV, idxK, notPk];
+    hLtChoice = HOL`Bool`CONJUNCT1[specK];
+    eqSuc = seqRisingIndexSucEq[uV, n0V, kInd];
+    hLtIdx = EQMP[seqNatLtCong[REFL[idxK], HOL`Equal`SYM[eqSuc]], hLtChoice];
+    stepGoal = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqNumLeLtTransThm, {n0V, idxK, idxSuc}], ih], hLtIdx];
+    stepAll = HOL`Bool`GEN[kInd, HOL`Bool`DISCH[ihTm, stepGoal]];
+    indSpec = seqBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAll = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[n0V, HOL`Bool`DISCH[hNoTm, indAll]]]
+  ];
+
+risingIndexStepThm =
+  Module[{uV, n0V, kV, hNoTm, hNo, phi, idxK, idxSuc, geAll, geK, notPk,
+          specK, hLtChoice, eqSuc, hLtIdx, allK},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy]; kV = mkVar["k", numTy];
+    hNoTm = seqRisingNoPeakTm[uV, n0V]; hNo = ASSUME[hNoTm];
+    phi = risingIndexTm[uV, n0V]; idxK = mkComb[phi, kV]; idxSuc = mkComb[phi, sucT[kV]];
+    geAll = HOL`Bool`MP[seqSpecAll[risingIndexGeThm, {uV, n0V}], hNo];
+    geK = HOL`Bool`SPEC[kV, geAll];
+    notPk = HOL`Bool`MP[HOL`Bool`SPEC[idxK, hNo], geK];
+    specK = seqRisingSelectSpec[uV, idxK, notPk];
+    hLtChoice = HOL`Bool`CONJUNCT1[specK];
+    eqSuc = seqRisingIndexSucEq[uV, n0V, kV];
+    hLtIdx = EQMP[seqNatLtCong[REFL[idxK], HOL`Equal`SYM[eqSuc]], hLtChoice];
+    allK = HOL`Bool`GEN[kV, hLtIdx];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[n0V, HOL`Bool`DISCH[hNoTm, allK]]]
+  ];
+
+risingIndexStepLeThm =
+  Module[{uV, n0V, kV, hNoTm, hNo, phi, idxK, idxSuc, geAll, geK, notPk,
+          specK, hLeChoice, eqSuc, uEq, hLeIdx, allK},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy]; kV = mkVar["k", numTy];
+    hNoTm = seqRisingNoPeakTm[uV, n0V]; hNo = ASSUME[hNoTm];
+    phi = risingIndexTm[uV, n0V]; idxK = mkComb[phi, kV]; idxSuc = mkComb[phi, sucT[kV]];
+    geAll = HOL`Bool`MP[seqSpecAll[risingIndexGeThm, {uV, n0V}], hNo];
+    geK = HOL`Bool`SPEC[kV, geAll];
+    notPk = HOL`Bool`MP[HOL`Bool`SPEC[idxK, hNo], geK];
+    specK = seqRisingSelectSpec[uV, idxK, notPk];
+    hLeChoice = HOL`Bool`CONJUNCT2[specK];
+    eqSuc = seqRisingIndexSucEq[uV, n0V, kV];
+    uEq = HOL`Equal`APTERM[uV, HOL`Equal`SYM[eqSuc]];
+    hLeIdx = EQMP[seqRealLeCong[REFL[mkComb[uV, idxK]], uEq], hLeChoice];
+    allK = HOL`Bool`GEN[kV, hLeIdx];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[n0V, HOL`Bool`DISCH[hNoTm, allK]]]
+  ];
+
+risingIndexSubseqThm =
+  Module[{uV, n0V, hNoTm, hNo, phi, stepAll, folded},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy];
+    hNoTm = seqRisingNoPeakTm[uV, n0V]; hNo = ASSUME[hNoTm];
+    phi = risingIndexTm[uV, n0V];
+    stepAll = HOL`Bool`MP[seqSpecAll[risingIndexStepThm, {uV, n0V}], hNo];
+    folded = EQMP[HOL`Equal`SYM[unfoldSubseqIndex[phi]], stepAll];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[n0V, HOL`Bool`DISCH[hNoTm, folded]]]
+  ];
+
+risingIndexIncreasingThm =
+  Module[{uV, n0V, nV, mV, hNoTm, hNo, phi, subSeq, pLam, nBase, hLeBase,
+          nEq0, seqEq0, baseRefl, base, mInd, ihTm, ih, nStep, hLeSuc,
+          caseTh, hLeM, ihLe, stepLeAll, stepLeMRaw, appM, appSuc, stepLeM,
+          branchA, hEqSuc, seqEqSuc, branchB, pointStep, stepAll, indSpec,
+          indAllM, hLe, finalPoint, allM, allN, folded},
+    uV = mkVar["u", seqTy]; n0V = mkVar["N", numTy];
+    nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    hNoTm = seqRisingNoPeakTm[uV, n0V]; hNo = ASSUME[hNoTm];
+    phi = risingIndexTm[uV, n0V]; subSeq = subsequenceTm[uV, phi];
+    pLam = Module[{mP, nP},
+      mP = mkVar["mP", numTy]; nP = mkVar["nP", numTy];
+      mkAbs[mP, forallTm[nP,
+        impTm[seqNatLe[nP, mP], realLeTm[mkComb[subSeq, nP], mkComb[subSeq, mP]]]]]
+    ];
+
+    nBase = mkVar["nBase", numTy];
+    hLeBase = ASSUME[seqNatLe[nBase, zeroN[]]];
+    nEq0 = HOL`Bool`MP[HOL`Bool`SPEC[nBase, seqNumLeZeroEqThm], hLeBase];
+    seqEq0 = HOL`Equal`APTERM[subSeq, nEq0];
+    baseRefl = HOL`Bool`SPEC[mkComb[subSeq, zeroN[]], realLeReflThm];
+    base = EQMP[seqRealLeCong[HOL`Equal`SYM[seqEq0], REFL[mkComb[subSeq, zeroN[]]]], baseRefl];
+    base = HOL`Bool`GEN[nBase, HOL`Bool`DISCH[seqNatLe[nBase, zeroN[]], base]];
+
+    mInd = mkVar["mInd", numTy];
+    ihTm = forallTm[nV, impTm[seqNatLe[nV, mInd],
+      realLeTm[mkComb[subSeq, nV], mkComb[subSeq, mInd]]]];
+    ih = ASSUME[ihTm];
+    nStep = mkVar["nStep", numTy];
+    hLeSuc = ASSUME[seqNatLe[nStep, sucT[mInd]]];
+    caseTh = HOL`Bool`MP[
+      HOL`Bool`SPEC[mInd, HOL`Bool`SPEC[nStep, HOL`Stdlib`Num`leqSucCaseThm]],
+      hLeSuc];
+    hLeM = ASSUME[seqNatLe[nStep, mInd]];
+    ihLe = HOL`Bool`MP[HOL`Bool`SPEC[nStep, ih], hLeM];
+    stepLeAll = HOL`Bool`MP[seqSpecAll[risingIndexStepLeThm, {uV, n0V}], hNo];
+    stepLeMRaw = HOL`Bool`SPEC[mInd, stepLeAll];
+    appM = seqSubsequenceAppEq[uV, phi, mInd];
+    appSuc = seqSubsequenceAppEq[uV, phi, sucT[mInd]];
+    stepLeM = EQMP[seqRealLeCong[HOL`Equal`SYM[appM], HOL`Equal`SYM[appSuc]], stepLeMRaw];
+    branchA = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeTransThm,
+        {mkComb[subSeq, nStep], mkComb[subSeq, mInd], mkComb[subSeq, sucT[mInd]]}],
+      ihLe], stepLeM];
+    hEqSuc = ASSUME[mkEq[nStep, sucT[mInd]]];
+    seqEqSuc = HOL`Equal`APTERM[subSeq, hEqSuc];
+    branchB = EQMP[seqRealLeCong[HOL`Equal`SYM[seqEqSuc],
+      REFL[mkComb[subSeq, sucT[mInd]]]],
+      HOL`Bool`SPEC[mkComb[subSeq, sucT[mInd]], realLeReflThm]];
+    pointStep = HOL`Bool`DISJCASES[caseTh, branchA, branchB];
+    stepAll = HOL`Bool`GEN[mInd, HOL`Bool`DISCH[ihTm,
+      HOL`Bool`GEN[nStep, HOL`Bool`DISCH[seqNatLe[nStep, sucT[mInd]], pointStep]]]];
+    indSpec = seqBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAllM = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+
+    hLe = ASSUME[seqNatLe[nV, mV]];
+    finalPoint = HOL`Bool`MP[HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, indAllM]], hLe];
+    allM = HOL`Bool`GEN[mV, HOL`Bool`DISCH[seqNatLe[nV, mV], finalPoint]];
+    allN = HOL`Bool`GEN[nV, allM];
+    folded = EQMP[HOL`Equal`SYM[unfoldMonoInc[subSeq]], allN];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[n0V, HOL`Bool`DISCH[hNoTm, folded]]]
+  ];
+
+seqOrTm[pT_, qT_] :=
+  mkComb[mkComb[mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]], pT], qT];
+
+seqMonoSubseqBody[uT_, phiT_] :=
+  Module[{subSeq},
+    subSeq = subsequenceTm[uT, phiT];
+    conjTm[subseqIndexTm[phiT], seqOrTm[monoIncTm[subSeq], monoDecTm[subSeq]]]
+  ];
+
+seqMonoSubseqGoal[uT_] :=
+  Module[{phiW},
+    phiW = mkVar["phi", numFunTy];
+    existsTm[phiW, seqMonoSubseqBody[uT, phiW]]
+  ];
+
+existsMonoSubseqThm =
+  Module[{uV, infTm, goalTm, em, hInf, phiPeak, subPeak, decPeak, disjPeak,
+          conjPeak, exPeak, hNotInf, exNo, nW, hNoTm, hNo, phiRise, subRise,
+          incRise, disjRise, conjRise, exRise, chosenRise, body},
+    uV = mkVar["u", seqTy];
+    infTm = seqPeakIndexInfTm[uV]; goalTm = seqMonoSubseqGoal[uV];
+    em = HOL`Bool`EXCLUDEDMIDDLE[infTm];
+
+    hInf = ASSUME[infTm];
+    phiPeak = peakIndexTm[uV];
+    subPeak = HOL`Bool`MP[HOL`Bool`SPEC[uV, peakIndexSubseqThm], hInf];
+    decPeak = HOL`Bool`MP[HOL`Bool`SPEC[uV, peakIndexDecreasingThm], hInf];
+    disjPeak = HOL`Bool`DISJ2[decPeak, monoIncTm[subsequenceTm[uV, phiPeak]]];
+    conjPeak = HOL`Bool`CONJ[subPeak, disjPeak];
+    exPeak = HOL`Bool`EXISTS[goalTm, phiPeak, conjPeak];
+
+    hNotInf = ASSUME[notTm[infTm]];
+    exNo = HOL`Bool`MP[HOL`Bool`SPEC[uV, eventuallyNotPeakThm], hNotInf];
+    nW = mkVar["nW", numTy];
+    hNoTm = seqRisingNoPeakTm[uV, nW]; hNo = ASSUME[hNoTm];
+    phiRise = risingIndexTm[uV, nW];
+    subRise = HOL`Bool`MP[seqSpecAll[risingIndexSubseqThm, {uV, nW}], hNo];
+    incRise = HOL`Bool`MP[seqSpecAll[risingIndexIncreasingThm, {uV, nW}], hNo];
+    disjRise = HOL`Bool`DISJ1[incRise, monoDecTm[subsequenceTm[uV, phiRise]]];
+    conjRise = HOL`Bool`CONJ[subRise, disjRise];
+    exRise = HOL`Bool`EXISTS[goalTm, phiRise, conjRise];
+    chosenRise = HOL`Bool`CHOOSE[nW, exNo, exRise];
+
+    body = HOL`Bool`DISJCASES[em, exPeak, chosenRise];
+    HOL`Bool`GEN[uV, body]
   ];
 
 End[];
