@@ -15,3 +15,6 @@ Thumbs.db
 
 # cross-team bug-report exchange (not part of the source tree)
 bug_report/
+
+# external Lean reference project (Tautology Dedekind ℝ rewrite, read-only blueprint)
+tautology-ref/
