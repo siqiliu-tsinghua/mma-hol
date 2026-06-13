@@ -1,6 +1,6 @@
 # mma-hol — operational notes
 
-Kernel-minimal higher-order logic theorem prover in Wolfram Language, LCF-style, modeled on HOL Light. **Phase-1 release target (scope tightened 2026-05): first-semester single-variable real analysis — M8, through the Lebesgue-null-set criterion for Riemann integrability; declare stage-complete, then publish to GitHub.** Multivariable → general Stokes (M9) and Fourier → Poisson summation / Radon inversion (M10) are deferred to future phases. All within the Riemann-integral + Lebesgue-null-set framework (no full Lebesgue measure).
+Kernel-minimal higher-order logic theorem prover in Wolfram Language, LCF-style, modeled on HOL Light. **stdlib release target (re-scoped 2026-06-13, much narrower): ℝ via Dedekind cuts + sequence theory + closed-interval compactness + connectedness + supporting point-set topology — all in `stdlib/Real/`, single construction, NO calculus. Finish this = declare stdlib complete, publish to GitHub.** Capstones: monotone convergence, Cauchy completeness, Bolzano–Weierstrass, Heine–Borel (closed interval), Lebesgue-number lemma, IVT/connectedness. **Why narrowed**: the original goal (validate WL `Module` encapsulation) is already met by the kernel + number tower + automation; the teaching-full-analysis goal moved to the sibling Lean project `tautology`; this lib's other role is checker for the sibling `rum` project, which needs a stable representative stdlib, not深度. Blueprint = `tautology`'s `RealTheory` spine (0-sorry, Lean Init only — see memory `reference-tautology-lean-blueprint`, on disk at `tautology-ref/`). **CUT**: old M8 calculus/Riemann/Lebesgue criterion, M9 multivariable/Stokes, M10 Fourier/Radon; and within RealTheory the spine-orthogonal parts — cardinality/Cantor–Bernstein, decimal expansion/`0.999…=1`, limsup/liminf, the countable-basis/Lindelöf route (Heine–Borel goes via the sup principle + Lebesgue-extension instead). See PLAN §1 + §7 M8.
 
 **Design document: `PLAN.md`** — authoritative for all architectural questions. This file is the session-startup summary only; per-milestone proof detail lives in git commit messages and code comments.
 
@@ -48,17 +48,16 @@ Hard rules:
 Kernel.wl  Basics.wl  Bool.wl  Equal.wl  Drule.wl  Tactics.wl  Parser.wl  Printer.wl
 auto/        — MESON / SIMP / SET / ARITH / REAL_ARITH
 stdlib/      — Pair, Sum, Option, Set, Num, Int, Rat, Real, List, Finite, (Complex)
-analysis1/   — M8: one-variable analysis → Lebesgue integrability criterion  [Phase-1 release target]
-analysis2/   — M9: multivariable, Jordan, forms, general Stokes  [deferred]
-analysis3/   — M10: function series, parametric integrals, Fourier  [deferred]
+stdlib/Real/ — M7 ℝ construction + M8 Seq.wl/Compact.wl/Connected.wl/Topology.wl  [stdlib release target]
+             (analysis1/2/3 — old calculus→Stokes→Fourier — CUT 2026-06-13)
 tests/  demos/
 ```
 
 ## Milestones (PLAN §7 has the detail)
 
-M1 Types · M2 Terms · M3 Kernel (10 rules + bootstrap) · M4 Derived rules · M5 Tactics · M6 Parser/Printer · M7 stdlib + 5 automation tactics (`MESON`/`SIMP`/`SET`/`ARITH`/`REAL_ARITH`) · **M8 one-var analysis [Phase-1 release target]** · M9 multivariable → Stokes [deferred] · M10 function series + parametric integrals → Fourier [deferred].
+M1 Types · M2 Terms · M3 Kernel (10 rules + bootstrap) · M4 Derived rules · M5 Tactics · M6 Parser/Printer · M7 stdlib + 5 automation tactics (`MESON`/`SIMP`/`SET`/`ARITH`/`REAL_ARITH`) + ℝ-complete-ordered-field · **M8 ℝ sequences + compactness + connectedness + topology [stdlib release target; `stdlib/Real/`, Dedekind only, NO calculus]**. M9 multivariable/Stokes + M10 Fourier/Radon — CUT 2026-06-13.
 
-Capstones: M3 `⊢ T`; **M8 Lebesgue criterion for Riemann integrability (Phase-1 release capstone)**; M9 general Stokes [deferred]; M10 Poisson summation + Radon transform [deferred].
+Capstones: M3 `⊢ T`; M7 `dedekindCompleteThm` (sup principle); **M8 set — monotone convergence + Cauchy completeness + Bolzano–Weierstrass + Heine–Borel + Lebesgue-number lemma + IVT (stdlib release capstones)**.
 
 ## Git
 

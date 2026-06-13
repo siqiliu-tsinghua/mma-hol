@@ -15,7 +15,7 @@
 3. **封装由语言机制承担**：`thm` 类型的不可伪造性由 `Module` 的 gensym 机制保证，而不是靠社会契约或约定。
 4. **notebook 可运行（非富前端；2026-05 降级）**：notebook 里 `Get` / `Needs` 顶层包即可证明并以文本输出结果，与 `wolframscript` 等价。原计划的证明状态可视化 / 项与类型排版（M6b）已砍——只保留 demo `.nb` 跑标志性定理。
 5. **脚本可检查**：kernel、派生规则、tactic 层不依赖 notebook；写好的证明脚本必须能通过 `wolframscript` 无交互跑通，成功退出码 0、失败非零。notebook 的可视化（MakeBoxes、goal 栈渲染）原本就是可选前端、不得进入可信核——现已整体砍掉（§7 M6b）。
-6. **面向本科分析课程的形式化库**：长期目标是把本科数学分析的主干内容机械化到可实用的程度——一元分析推进到黎曼积分的 Lebesgue 可积性判据；多元部分覆盖重积分换元法与欧氏空间带边子流形上的一般 Stokes 公式；Fourier 分析覆盖三类收敛定理（点态 / 一致 / 均方），以 **Poisson 求和公式**与 **Radon 变换反演**（CT 重建的数学原理）作为压轴应用。全程保持在**黎曼积分 + 零测集**框架内，不引入完整勒贝格测度。路线详见 §7 M7–M10。**当前发布范围（2026-05 收紧）**：以**第一期（M8 一元实分析，止于 Lebesgue 可积判据）**完成作为阶段性成果发布到 GitHub；多元 / Stokes（M9）与 Fourier / Radon（M10）降级为**未来阶段**，有余力再续。
+6. **以 ℝ 的实数构造 + 点集拓扑作为 stdlib 的收官目标（2026-06-13 大幅收窄）**：发布范围收窄到 **ℝ 经 Dedekind 分割构造 + 序列理论 + 闭区间紧性 + 连通性 + 配套点集拓扑**，做完即宣告 stdlib 完成并发布 GitHub。**不做微积分**（连续 / 微分 / 黎曼积分 / Lebesgue 判据全部移出范围）。**为什么收窄**：(a) 本项目最初目的——验证 WL 的 `Module` 封装机制——已由 kernel + 数塔(到 ℝ-完备有序域) + 5 个自动化 tactic 充分达成；(b) 面向教学的全套数学分析已由隔壁 Lean 项目 `tautology` 承担（tactic + 广度，载体更合适）；(c) 本库另一现实角色是隔壁 `rum` 项目的检验器，它要的是稳定、测试充分、有代表性的 stdlib 表面，不要数学深度。**蓝本**：`tautology` 的 `RealTheory` 脊线是 0-sorry、纯 Lean Init、与本项目自底向上哲学一致的完整参考，逐文件作为 Codex brief 的证明骨架（见 §7 M8 + memory `reference-tautology-lean-blueprint`）。**已砍**：旧 M8 的微积分 + Lebesgue 判据、M9 多元 / Stokes、M10 Fourier / Radon，以及 RealTheory 中与分析脊线正交的部分——基数比较 / Cantor-Bernstein（拽进整套集合论地基）、无穷小数展开 / `0.999…=1`（服务于基数，叶子）、上下极限 limsup/liminf（喂级数判别法，本库不做级数）。路线详见 §7 M8。
 
 参考系：HOL Light（John Harrison，OCaml）。它的 kernel 是已知最小、最清晰的 LCF 风格实现之一，Flyspeck 项目（Kepler 猜想形式化）就建立在它之上。
 
@@ -416,8 +416,8 @@ EndPackage[];
 **走向**：
 - **教学路线**：杂糅——HOL 类型在底，集合论记号（`∈ ⊆ ∪ ∩ {x|P x}` 等）在表面；只在乘积类型 / 商类型 / 函数空间这三处让"类型 vs 集合"短暂浮现并明讲
 - **数构造顺序**：ℕ → ℤ → ℚ → ℝ (**Dedekind 分割**)；序列在 ℝ 之后（Cauchy 序列要序列概念，序列又要 ℝ，所以 Cauchy 路线被教学顺序排除）
-- **范畴性（具体形式，支线）**：只证 `ℝ_Dedekind ≅ ℝ_Cauchy`（两个具体构造等价就够；Eudoxus 第三构造暂不做，待定）。嵌入相容性 `φ∘ι_D = ι_C` 走廉价归纳。**Zorich 内蕴-ℕ 回切已砍（2026-06）**。M7 主线只构造 Dedekind ℝ；此等价支线排在 M7-8（Cauchy 准则）之后，且不在 M8 关键路径上
-- **拓扑学**：**不在 M7 末尾打包引入**。开 / 闭 / 紧 / 连通按教学规律分散到 M8，作为解决数列 / 函数 / 极限问题的工具逐个出现（与 Rudin / Zorich 一致）
+- **范畴性 / 多构造（支线）已砍（2026-06-13）**：ℝ 只做 **Dedekind 单一构造**，不做 Cauchy / Eudoxus 与 `ℝ_D≅ℝ_C` 等价、不做阀门室切换（检验器 / 封装验证只需一个典范 ℝ）。**Zorich 内蕴-ℕ 回切此前已砍（2026-06）**。
+- **拓扑学**：**不在 M7 末尾打包引入**。开 / 闭 / 紧 / 连通在 M8 作为序列 / 极限工具逐个出现（与 Rudin / Zorich 一致）；全部走**确界 / 序列路线**，绕开可数性地基（见 M8）
 - **决策过程实现**：从头写，充分利用 WL 语言特性。oracle + verifier 模式（用 `Resolve` / `Reduce` / `LinearProgramming` 当搜索 oracle 找证据，再让 tactic 通过 10 条原始规则验证），改写表用 `Dispatch` 编译，term bank 用 Association 索引——全部不进信任边界
 - **Parser 扩展**：M7 一开始就在 parser 加 set-builder `{x | P x}` 语法（语义即 `λx. P x`，复用现有 binder 机器）。带表达式的 `{f x | P x}`（HOL Light 的 `GSPEC` 形式）等真用到时再补
 
@@ -460,7 +460,7 @@ EndPackage[];
   - **FTA 唯一分解** — 延后到 M7-4 之后（list / 有限重数函数表达分解需要 `stdlib/List.wl` 或 `Finite.wl` 才自然）
 - [x] **M7-4 / `stdlib/List.wl`、`Finite.wl`** — list 类型 + `HD` / `TL` / `CONS` / `APPEND` / `LENGTH` / `MAP` / `FILTER` / `FOLD`；`FINITE S ↔ ∃l. ∀x. x ∈ S ↔ MEM x l`；基数 `CARD`；有限和 `∑`
 - [x] **M7-δ / `auto/Arith.wl`** —— ℕ 上线性算术决策，**实现为 oracle（Fourier–Motzkin，精确有理）+ kernel verifier（Farkas 乘子拼 `+`/`≤` 单调性引理）**，非内部 Cooper QE（Cooper 线 2026-05-28 砍，-∞ 在 ℕ 上不成立）。∃-SAT 走见证搜索 + ground 验证；∀/UNSAT 走 Farkas。原子抽象处理非线性 `m*n`、`LENGTH l` 等。capstone：`∀m n p. m≤n ⇒ m+p≤n+p`
-- [x] **M7-5 / `stdlib/Int.wl`** —— **底层走典范代表路线**：`num × num` 上的 `λp. FST p = 0 ∨ SND p = 0` 谓词切 `int` 类型；操作（+, ×, -, |·|）做完 pair-运算后 canonicalize 回典范型；环结构 + 序 + `&_ℤ : num → int` 嵌入。**工作语言层派生 Grothendieck/双向归纳视角**：定义 `intSucc = (+1)`、`intNeg = (0-·)`，导出 `(intNeg ∘ intSucc)² = id` 等代数关系；导出双向归纳定理 `⊢ P 0 ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intSucc⁻¹ z)) ⇒ ∀z. P z`，作为 M9 / M10 用 ℤ 时的首选证明工具——后续证明在 ℤ 上看不到 pair 结构。**为什么不直接走 K_0 商类型**：HOL 无原生商，set-of-pair 切多一层；为什么不直接 Peano-style 公理化 ℤ（S/N + 双向归纳作公理）：bootstrap 后 `newAxiom` 锁死，必须构造模型，模型成本和典范代表一致或更高，且 ℤ-递归原理多一个"S 与 S⁻¹ 互逆"的一致性义务。
+- [x] **M7-5 / `stdlib/Int.wl`** —— **底层走典范代表路线**：`num × num` 上的 `λp. FST p = 0 ∨ SND p = 0` 谓词切 `int` 类型；操作（+, ×, -, |·|）做完 pair-运算后 canonicalize 回典范型；环结构 + 序 + `&_ℤ : num → int` 嵌入。**工作语言层派生 Grothendieck/双向归纳视角**：定义 `intSucc = (+1)`、`intNeg = (0-·)`，导出 `(intNeg ∘ intSucc)² = id` 等代数关系；导出双向归纳定理 `⊢ P 0 ∧ (∀z. P z ⇒ P (intSucc z) ∧ P (intSucc⁻¹ z)) ⇒ ∀z. P z`，作为后续用 ℤ 时的首选证明工具——后续证明在 ℤ 上看不到 pair 结构。**为什么不直接走 K_0 商类型**：HOL 无原生商，set-of-pair 切多一层；为什么不直接 Peano-style 公理化 ℤ（S/N + 双向归纳作公理）：bootstrap 后 `newAxiom` 锁死，必须构造模型，模型成本和典范代表一致或更高，且 ℤ-递归原理多一个"S 与 S⁻¹ 互逆"的一致性义务。
   **DONE 2026-05-31**（stages a–h + 消去律）：carve + `&ℤ` 嵌入 + neg/succ/pred + 加法 abelian 群（comm/assoc/identity/inverse）+ 交换环（comm/distrib/assoc）+ 无零因子 `intMulEqZeroThm` + 乘法消去 `intMulCancelThm` + 线序 `intLe`/`intLt`（refl/antisym/trans/total）+ 加法/取负/按非负乘单调 + `&ℤ` 环/序嵌入同态 + `intAbs` + 双向归纳 `intInductionThm`。Grothendieck 等价层（`canonEquiv`/`canonInj`/`canonRespects`）是 add-assoc/distrib/mul-assoc 良定义性的共用桥；dihedral `RSR=S⁻¹`（`intNegSuccThm`）恰好用于双向归纳的负向下降步。ARITH 经 FST/SND 原子抽象自动处理大量 num 重排。
 - [ ] **M7-6 / `stdlib/Rat.wl`**（1 周）—— `int × int*` 商；域结构、序、`&_ℚ : int → rat` 嵌入；ℚ 在自身稠密
 
@@ -485,106 +485,56 @@ EndPackage[];
 - [ ] **M7-7-cat / `Real/Cauchy.wl`** 〔支线，**非 M8 关键路径**，排在 Seq 之后〕—— 构造 ℝ_Cauchy（有理 Cauchy 列 mod 零列，**全塔第一次真·商 / setoid**——建可复用的"商掉等价"机器：等价类 / 良定义性 / 商上运算 lift）；证 `ℝ_Dedekind ≅ ℝ_Cauchy`（序域同构）；嵌入相容 `φ∘ι_D = ι_C`（~5 行归纳，不碰构造内部）。**Eudoxus（HOL Light 一步到位 ℝ，致敬）待定**：复用同一商机器则便宜、否则贵，届时按工作量定
 - [ ] **M7-9 / `Real/Decimal.wl`** 〔支线，教学，**非关键路径**，排在级数机器之后〕—— 数位抽取（floor/Archimedean）；任意底 `b ≥ 2` 展开存在 + 唯一（尾 `(b-1)` / 尾 `0` 二义 caveat）；**有理 ⟺ 最终循环（鸽笼）+ 等比级数（逆向）——零数论，不碰 Fermat/Euler**；**`0.999… = 1`**（等比级数，教学驱动）；（可选）Cantor 对角线 `|ℕ| < |ℝ|`
 
-**M7 capstone**（三件并列）：
-- **大 capstone**：`⊢ ∀ S : real → bool. S ≠ ∅ ∧ (∃ b. ∀ x ∈ S. x ≤ b) ⇒ ∃ s. is_sup S s`
-- **桥接 M8**：`⊢ ∀ a : ℕ → ℝ. Cauchy a ⇒ ∃ L. lim a = L`
-- **教学 capstone**：`⊢ ∀ b ≥ 2. ∀ x ∈ [0,1]. ∃!_{(b-1)/0 二义} d. x = ∑ d(i) · b^{-i-1}`
+**M7 capstone**：
+- **大 capstone**：`⊢ ∀ S : real → bool. S ≠ ∅ ∧ (∃ b. ∀ x ∈ S. x ≤ b) ⇒ ∃ s. is_sup S s`（确界原理，`dedekindCompleteThm`，已完成）
+- **桥接 M8**：`⊢ ∀ a : ℕ → ℝ. Cauchy a ⇒ ∃ L. tendsto a L`（柯西完备性，M8 序列 Stage 5；见下）
+- ~~教学 capstone（无穷小数展开唯一性）~~ **砍（2026-06-13）**：无穷小数移出范围（服务于已砍的基数比较）
 
 ---
 
-### M8：一元实分析 — 止于黎曼可积的 Lebesgue 判据
-**第一期目标 —— 本项目当前的阶段性发布目标（做完即宣告 Phase 1 完成并发布 GitHub；2026-05 范围收紧，M9 / M10 暂缓）**。从此处开始不再给周估计，以里程碑结算（理由见本节末尾）。
+### M8：ℝ 的序列理论 + 闭区间紧性 + 连通性 + 配套点集拓扑 —— stdlib 收官（2026-06-13 重定范围）
+**本项目当前且最终的 stdlib 发布目标（做完即宣告 stdlib 完成并发布 GitHub）。** 全程在 `stdlib/Real/` 文件夹内（与已完成的 ℝ-完备有序域共享 context），经 **Dedekind 分割**单一构造（不做 Cauchy / Eudoxus 多构造与阀门室切换），蓝本为 `tautology` 的 `RealTheory` 脊线（0-sorry，逐文件作为 Codex brief 骨架）。**不做微积分。** 不给周估计，以阶段结算。
 
-- [ ] **实数拓扑**：绝对值（**✅ 2026-06-11 提前完成**：`Real/Abs.wl` |·|+三角不等式、`Real/MinMax.wl` max/min+`|x|=max x (−x)`，Codex briefs 003/004 产出、已入快照）、开 / 闭 / 紧（Heine–Borel）、连通、可数稠密、完备性的等价刻画
-- [ ] **序列**：极限 `-->`、`limsup` / `liminf`、子序列、Bolzano–Weierstrass、Cauchy 准则
-- [ ] **级数**：部分和、绝对 / 条件收敛、比较 / 根值 / 比值 / Leibniz 判别、绝对收敛的重排定理
-- [ ] **函数极限与连续**：`continuous_on`、一致连续、介值 / 最值定理、Heine 定理
-- [ ] **微分**：导数、Rolle、Lagrange / Cauchy 中值定理、Taylor 带 Lagrange / 积分余项、L'Hôpital
-- [ ] **基本超越函数**：`exp` / `ln` / `sin` / `cos` 由幂级数定义 + 朴素性质（正性、单调、有界、奇偶、`cos(0) = 1` 等）；π 的形式化定义。**完整加法公式与三角恒等式套件需要函数项级数机制，延后到 M10 Part A 回填**
-- [ ] **黎曼积分**：`has_integral` 的 Darboux 刻画、线性性、区间加性、FTC I / II、分部积分、一元换元
-- [ ] **Lebesgue 零测集**：`negligible S ⟺ ∀ε>0. ∃ 可数区间列覆盖 S 且 ∑长度 < ε`；可数并零测、零测与连续的互动
-- [ ] **几乎处处**：`almost_everywhere` 谓词与基本演算
-- [ ] **Lebesgue 可积性判据**：`f ∈ R[a,b] ⟺ f 有界 ∧ f 在 [a,b] 上 a.e. 连续`
+**贯穿原则——绕开可数性地基。** 全部 capstone 都走 **确界原理 / 序列路线**，不碰 `CountableSet` / 第二可数 / Lindelöf。其直接后果：闭区间 Heine–Borel 走**确界原理 + 勒贝格延拓法**（`{x : [a,x] 可被有限覆盖}` 取确界、证确界 = b），**不走** 区间套 + 二分；并放弃"ℝ 不可数"与"`0.999…=1`"两个会拽进集合论地基的 capstone。
 
-**验收**：
-- 完整机械化 FTC 两半
-- 证出 Lebesgue 可积性判据（本里程碑的 capstone）
-- 例行计算：`∫_0^1 x^n dx = 1/(n+1)`、`∫ sin = -cos` 等
+#### M8.1 序列（`Real/Seq.wl`）—— 进行中
+- [x] `tendsto`（实 ε、关系式）+ 极限演算（常数 / 唯一 / 和 / 负 / 差）、`convergent`（Stage 1，brief-008）
+- [x] `eventually` 组合子 + 收敛 ⇒ 有界 + 远离零 + 绝对值乘法 + 乘积 / 数乘极限律（Stage 2，briefs 009/010）
+- [ ] **确界 ⇒ 单调收敛**（`dedekindCompleteThm` → 单调有界收敛；蓝本 `RealSequence/Principles/FromSupMonotone.lean`）（Stage 3）
+- [ ] **子列 + Bolzano–Weierstrass**（Peak / 上升指标 → 单调子列 → 单调收敛；蓝本 `RealSequence/Subsequence.lean`）（Stage 4）
+- [ ] **柯西准则**（Cauchy ⇒ 收敛，M7 桥接 capstone `⊢ ∀a. Cauchy a ⇒ ∃L. tendsto a L`；蓝本 `RealSequence/Principles/FromSupCauchy.lean`）（Stage 5）
+- 完成后 `Seq.wl` 毕业进 `bootstrap.mx`
 
----
+#### M8.2 闭区间紧性（确界原理路线）
+- [ ] 列紧性、聚点紧性（Bolzano–Weierstrass 的集合版）
+- [ ] **Heine–Borel**：`[a,b]` 的任意开覆盖有有限子覆盖（确界 + 勒贝格延拓法）
+- [ ] **勒贝格数引理**（紧覆盖的勒贝格数；与已砍的测度-Lebesgue 判据是拓扑表亲，同名不同物）
+- 蓝本 `RealCompactness/ClosedInterval/{Statements,FromSup*,SeqTo*,...}.lean`（取 `FromSup*` 路线，跳过 Lindelöf / 可数子覆盖文件）
 
-### M9：多元分析 — 止于一般 Stokes 公式
-**第二期目标（暂缓 —— 未来阶段，Phase 1 发布后有余力再推进）**。基于黎曼积分 + Jordan 容度，不引入完整勒贝格测度。
+#### M8.3 连通性（核心）
+- [ ] connected ⟺ 区间；介值定理味道的核心结论
+- 蓝本 `RealConnectedness/Connected.lean`（跳过 `OpenDecomposition` / `ConnectedComponents`——开集 = 可数区间并需要可数性）
 
-- [ ] **欧氏空间 `R^n`**：初期按 `num -> real` 的定长 tuple 实现；若后续需要类型级维度（HOL Light 的 `real^N`）再迁移
-- [ ] **线性代数**：线性映射、矩阵、行列式、迹、正交群、特征值（够用即止）
-- [ ] **`R^n` 拓扑**：范数等价、开闭紧、Heine–Borel、连通
-- [ ] **多元微分**：Fréchet 导数、偏导、Jacobi 矩阵、chain rule、Clairaut、多元中值定理
-- [ ] **逆映射 / 隐函数定理**
-- [ ] **Jordan 容度**：外 / 内容、可测性；与黎曼积分相容；Jordan 零容 ⇒ Lebesgue 零测
-- [ ] **多重黎曼积分**：Jordan 可测集上的积分、Fubini（Jordan 版）
-- [ ] **重积分换元法**：`φ: A → R^n` 为 `C^1` 微分同胚时，`∫_{φ(A)} f = ∫_A (f∘φ)·|det Dφ|`
-- [ ] **曲线 / 曲面积分**：弧长、面积的参数化定义
-- [ ] **微分形式**：外代数、`k-form`、外微分 `d`、楔积；`d² = 0`
-- [ ] **欧氏空间中的带边子流形**：嵌入定义（局部图 / 水平集 / 参数化）、定向、边界诱导定向
-- [ ] **形式在流形上的积分**：`∫_M ω` 通过单位分解定义
-- [ ] **一般 Stokes 公式**：`∫_M dω = ∫_∂M ω`（紧定向 `C^∞` 带边子流形）
-- [ ] Green、Gauss、经典 Stokes 作为推论
+#### M8.4 配套点集拓扑（供上面用的基础）
+- [ ] 开 / 闭 / 闭包 / 内部 / 子空间（`RealTopology/{Basic,Closed,Intervals,Subspace,...}.lean` 中**不依赖可数基**的部分；跳过 `RationalBasis` / `Lindelof`）
 
-**验收**：
-- 证出重积分换元法
-- 证出一般 Stokes（带边紧定向子流形版）
-- 从一般 Stokes 推出 Green / Gauss / 经典 Stokes
+**M8 capstone（一组够得着的经典定理，取代旧的遥远 Lebesgue 判据）：**
+- 单调有界收敛定理
+- **柯西完备性** `⊢ ∀a. Cauchy a ⇒ ∃L. tendsto a L`
+- **Bolzano–Weierstrass**
+- **Heine–Borel**（闭区间）+ 勒贝格数引理
+- 连通性 / 介值定理
+
+**验收 + 收官**：以上证出后，宣告 stdlib 完成，整理发布到 GitHub。
 
 ---
 
-### M10：函数项级数、含参积分与 Fourier 分析 — 仍在黎曼积分框架内
-**第三期目标（暂缓 —— 未来阶段，随 M9 之后）**。分前后两半：Part A 建立从 M8 通向 Fourier 的中间层——函数项级数与含参积分；Part B 才进入 Fourier。只依赖 M8 的黎曼积分 + 零测集 + a.e.，不引入 `L^p` 空间的完整勒贝格构造。
+### 已砍范围（2026-06-13 重定）
 
-#### Part A：函数项级数与含参积分
-
-- [ ] **函数序列的一致收敛**：`uniformly_on` 谓词；一致收敛保持连续；一致极限下交换积分与极限；一致收敛 + 导数一致收敛 ⇒ 可逐项求导；Dini 定理
-- [ ] **函数项级数**：Weierstrass M-判别、Abel / Dirichlet 判别；逐项求极限 / 积分 / 求导
-- [ ] **幂级数**：Cauchy–Hadamard 收敛半径、收敛区间内的一致收敛、逐项求导与积分、Abel 定理（端点行为）
-- [ ] **回填 M8 搁置的超越函数恒等式**：用绝对收敛级数的 Cauchy 乘积得到 `exp(x+y) = exp(x) exp(y)`；导出 sin / cos 的加法公式、三角恒等式全套、De Moivre；至此 `exp` / `ln` / `sin` / `cos` / π 的性质完整
-- [ ] **含参正常积分**：`F(y) = ∫_a^b f(x,y) dx` 的连续性、可微性（积分号下求导 / Leibniz 法则）、可积性（积分顺序交换——黎曼意义下的一维 Fubini）
-- [ ] **含参反常积分**：`∫_a^∞ f(x,y) dx` 与 `∫_a^b f(x,y) dx`（f 在区间内某点无界）关于参数的一致收敛；M-判别 / Abel / Dirichlet；一致收敛条件下的连续性 / 可微性 / 可积性
-- [ ] （可选）**Gamma / Beta 函数**：含参积分的典型应用；Γ 的函数方程 `Γ(x+1) = x·Γ(x)`、`B(p,q) = Γ(p)Γ(q)/Γ(p+q)`
-
-**Part A 验收**：
-- 一致收敛保持连续 / 可积 / 可微 三条经典定理机械化
-- `exp` / `sin` / `cos` 的加法公式与三角恒等式套件完整
-- 例行结果：`d/dy ∫_0^1 sin(xy) dx = ∫_0^1 x cos(xy) dx` 通过 Leibniz 法则一步证出
-- （可选）Γ 函数方程
-
-#### Part B：Fourier 级数与 Fourier 变换
-
-- [ ] 周期函数、三角多项式、Fourier 系数
-- [ ] Dirichlet 核、Fejér 核及其卷积性质
-- [ ] **点态收敛**：Dirichlet 定理（分段光滑函数的 Fourier 级数在连续点处点态收敛；跳跃点收敛到左右极限平均）
-- [ ] **一致收敛**：Weierstrass 三角逼近定理、Fejér 一致收敛定理
-- [ ] **均方收敛 / Parseval**：在黎曼可积函数的连续子类上（保证黎曼意义下均方收敛合法）
-- [ ] 卷积、近似单位
-- [ ] **Fourier 变换**：在 Schwartz 类 `𝒮(R)` 或 `C_c^∞` 上定义（使黎曼积分充分）；连续性 / 可微性 / 衰减性通过 Part A 的含参积分机制得到
-- [ ] **反演 / Plancherel / Parseval**：Schwartz 类上
-- [ ] **Poisson 求和公式**：Schwartz 类上 `∑_n f(n) = ∑_k \hat f(2π k)`；用 Fejér 求和或 Schwartz 衰减直接推导，绕开 `L^2` 完备性
-
-#### Part C：Radon 变换与 CT 重建的数学原理
-
-- [ ] **Radon 变换**：在 Schwartz 类 `𝒮(R^2)` 上定义 `R f(θ, s) = ∫_{x·θ = s} f`；基本线性性与连续性
-- [ ] **投影切片定理**（Fourier Slice Theorem）：`\hat{R f}(θ, σ) = \hat f(σ θ)`——一维 Fourier 变换与二维 Fourier 变换通过 Radon 串起来，这是整个 CT 数学框架的中心定理
-- [ ] **滤波反投影反演公式**：`f = (1/(4π)) R^* (Λ R f)`，其中 `Λ` 是 Riesz 势（在 Schwartz 类上用一维 Fourier 乘 `|σ|` 表达）
-- [ ] 连续性与误差估计：带宽受限近似、有限采样角度的误差界（能做到多少取决于工程进度）
-
-**Part B + C 验收**：
-- 完整机械化 Fejér 定理与 Schwartz 类 Fourier 反演
-- Poisson 求和公式在 Schwartz 类上证出
-- 投影切片定理机械化
-- Schwartz 类上的 Radon 反演（滤波反投影）作为 **M10 capstone** 给出完整证明脚本
-
----
-
-**关于 M8–M10 的时间维度**：不给周估计。参考点：HOL Light 的 Jordan / Riemann / 多元分析 / Stokes 是 Harrison 等人数年工作的成果，我们对标它的黎曼部分（避开勒贝格），工作量小一些但仍然是**多年级别**的工程。紧凑推进下，M8 在半年到一年可达；M9、M10 各自更久。中途可以（也应当）随工程进度调整范围和优先级。
+- ~~**M8 微积分**：连续 / 一致连续 / 微分 / 中值定理 / Taylor / 黎曼积分 / FTC / Lebesgue 零测 / 可积判据~~ —— 全部移出。黎曼积分 + 测度零集既遥远又无蓝本（tautology 也停在 RealTheory 前），不在收窄后的范围内。
+- ~~**M9 多元分析 → 一般 Stokes**~~ —— 整体砍。
+- ~~**M10 函数项级数 / 含参积分 / Fourier / Poisson 求和 / Radon 反演**~~ —— 整体砍。
+- **RealTheory 中与分析脊线正交的部分**：~~基数比较 / Cantor-Bernstein / 连续统~~（拽进 `Foundation/Cardinal` 整套集合论地基，~3000 行正交工程）、~~无穷小数展开 / `0.999…=1`~~（服务于基数，叶子）、~~limsup / liminf~~（喂级数判别法，本库不做级数）、~~开集 = 可数区间并 / Lindelöf / 第二可数~~（需可数性地基，Heine–Borel 改走确界路线绕开）。
 
 ---
 
@@ -628,73 +578,26 @@ HOL/
 │   ├── Finite.wl           (* 有限集、∑ / ∏ 记号 *)
 │   └── Complex.wl          (* 可选 *)
 │
-├── analysis1/              (* M8：一元实分析 *)
-│   ├── Topology.wl         (* R 上拓扑 *)
-│   ├── Limits.wl
-│   ├── Series.wl
-│   ├── Continuous.wl
-│   ├── Deriv.wl
-│   ├── Taylor.wl
-│   ├── Transc.wl           (* exp / ln / sin / cos / π *)
-│   ├── Riemann.wl
-│   ├── FTC.wl
-│   ├── Null.wl             (* Lebesgue 零测、a.e. *)
-│   └── LebesgueCriterion.wl
-│
-├── analysis2/              (* M9：多元分析 *)
-│   ├── Vectors.wl          (* R^n *)
-│   ├── LinAlg.wl
-│   ├── TopologyN.wl
-│   ├── DerivN.wl           (* Fréchet 导数 *)
-│   ├── InverseFn.wl
-│   ├── Jordan.wl           (* Jordan 容度 *)
-│   ├── MultiRiemann.wl
-│   ├── Fubini.wl
-│   ├── ChangeOfVar.wl
-│   ├── Forms.wl            (* 微分形式 *)
-│   ├── Manifold.wl         (* 带边子流形 *)
-│   └── Stokes.wl
-│
-├── analysis3/              (* M10：函数项级数、含参积分、Fourier、Radon *)
-│   │                       (* Part A：Fourier 所需的中间层 *)
-│   ├── UnifConv.wl         (* 函数序列 / 级数的一致收敛 *)
-│   ├── PowerSeries.wl      (* 幂级数、Cauchy–Hadamard、Abel *)
-│   ├── Transc2.wl          (* exp/sin/cos 完整恒等式回填 *)
-│   ├── ParamIntegral.wl    (* 含参正常 / 反常积分 *)
-│   ├── Gamma.wl            (* 可选 *)
-│   │                       (* Part B：Fourier *)
-│   ├── Periodic.wl
-│   ├── Kernels.wl          (* Dirichlet / Fejér *)
-│   ├── PointwiseConv.wl
-│   ├── FourierUnifConv.wl
-│   ├── Parseval.wl
-│   ├── Convolution.wl
-│   ├── FourierTransform.wl
-│   ├── PoissonSum.wl       (* Poisson 求和公式 *)
-│   │                       (* Part C：Radon 变换 / CT 重建 *)
-│   ├── Radon.wl            (* R 及其伴随 R^* *)
-│   ├── FourierSlice.wl     (* 投影切片定理 *)
-│   └── RadonInversion.wl   (* 滤波反投影反演 *)
+│   └── Real/               (* M7 ℝ-完备有序域 + M8 序列 / 拓扑 / 紧性 / 连通 *)
+│       ├── Cut.wl  RatAux.wl  Field.wl  Mul.wl  Inv.wl   (* M7：ℝ 构造 *)
+│       ├── Complete.wl  Abs.wl  MinMax.wl              (* M7：完备性 / |·| / max-min *)
+│       ├── Seq.wl         (* M8.1：tendsto、极限演算、单调收敛、子列、柯西 *)
+│       ├── Compact.wl     (* M8.2：列紧 / 聚点 / Heine–Borel（确界路线）/ 勒贝格数 *)
+│       ├── Connected.wl   (* M8.3：connected ⟺ 区间、介值 *)
+│       └── Topology.wl    (* M8.4：开 / 闭 / 闭包 / 内部 / 子空间（不依赖可数基）*)
+│       (* auto/RealArith.wl（M7-ε REAL_ARITH）在 auto/ 下，stdlib/Real 之后加载 *)
+│       (* 文件可随规模再细分子文件夹；analysis2/3 已砍，不再有 *)
 │
 ├── tests/
 │   ├── harness.wl
-│   ├── run_all.wls         (* wolframscript 入口：CI 回归整条线 *)
-│   ├── kernel_tests.wt
-│   ├── bool_tests.wt
-│   ├── real_tests.wt
-│   ├── riemann_tests.wt
-│   ├── stokes_tests.wt
-│   └── fourier_tests.wt
+│   ├── run_all.wls         (* cold Strict 全回归，权威门禁 *)
+│   ├── run_all_stable.wls  run_fast.wls  dev.wls  (extend|build)_snapshot.wls
+│   └── *_tests.wl          (* kernel / bool / real / real_seq / ... *)
 │
 └── demos/
     ├── 01-first-proof.nb
     ├── 02-bool-algebra.nb
-    ├── 03-nat-arithmetic.nb
-    ├── 04-epsilon-delta.nb      (* M8 *)
-    ├── 05-riemann-integral.nb   (* M8 *)
-    ├── 06-stokes.nb             (* M9 *)
-    ├── 07-fourier.nb            (* M10 Part B *)
-    └── 08-radon.nb              (* M10 Part C：CT 重建 *)
+    └── 03-nat-arithmetic.nb
 ```
 
 所有加载后，用户在 notebook 里：
@@ -891,28 +794,15 @@ M3 的端到端 demo 目标是 `⊢ T`（**不是** `⊢ ∀x. x = x`）。
 
 ➡️ 够写 blog / 小论文。
 
-### 第一档：一元分析（完成 M7–M8）
-- ✅ `real` 构造完成，完备有序域全部定理可被自动化证出
-- ✅ `REAL_ARITH` / `MESON_TAC` / `SIMP_TAC` / `SET_TAC` 均已可用
-- ✅ FTC 两半、Taylor 定理、主要超越函数恒等式全部机械化
-- ✅ 黎曼积分的 **Lebesgue 可积性判据** 作为 capstone 定理证出
-- ✅ 回归套件在 `wolframscript` 下数分钟内跑完
+### 第一档（最终发布档）：ℝ 序列 + 紧性 + 连通 + 拓扑（完成 M8 = stdlib 收官）
+- ✅ `real` 构造完成（Dedekind 单一构造），完备有序域全部定理可被自动化证出
+- ✅ `REALARITH` / `MESON` / `SIMP` / `SET` / `ARITH` 均已可用
+- [ ] 序列：单调有界收敛、柯西完备性、Bolzano–Weierstrass
+- [ ] 闭区间 Heine–Borel（确界 + 勒贝格延拓法）+ 勒贝格数引理
+- [ ] 连通 ⟺ 区间、介值定理
+- ✅ 回归套件在 `wolframscript` 下数分钟内（cold Strict）/ 秒级（dev / run_fast）跑完
 
-➡️ 够做一门"形式化数学分析"小课程的配套工具，或上 arXiv。
+➡️ 够做一门"形式化实分析基础"小课程的配套工具，或写 blog / 上 arXiv；也作为隔壁 `rum` 项目的检验器底座。**做完即宣告 stdlib 完成并发布 GitHub。**
 
-### 第二档：多元分析（完成 M9）
-- ✅ 重积分换元法机械化
-- ✅ **一般 Stokes 公式**（带边紧定向子流形版）机械化
-- ✅ Green / Gauss / 经典 Stokes 作为推论
-- ✅ 上述定理的 demo notebook 能让一位数学分析教师看懂并复现
-
-➡️ 这是非平凡的形式化成果——Mathematica 生态内前所未有。
-
-### 第三档：Fourier 分析 + Radon 变换（完成 M10）
-- ✅ 三类收敛（点态 / 一致 / 均方）在黎曼积分框架内各自一份完整证明
-- ✅ Schwartz 类上的 Fourier 反演公式机械化
-- ✅ Poisson 求和公式在 Schwartz 类上证出
-- ✅ 投影切片定理机械化
-- ✅ Schwartz 类上的 Radon 变换反演（滤波反投影）——CT 重建的数学原理机械化
-
-➡️ 到此为止，本项目已经是一个**可实用**的教学与研究级形式化工具，不再只是"Mathematica 复刻 LCF"的玩具演示。
+### ~~第二 / 三档：多元分析（M9）/ Fourier + Radon（M10）~~ —— 已砍（2026-06-13）
+教学全分析目标移交隔壁 Lean 项目 `tautology`；本项目不再追多元 / Stokes / Fourier / Radon。
