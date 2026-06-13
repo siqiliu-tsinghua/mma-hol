@@ -500,13 +500,13 @@ EndPackage[];
 #### M8.1 序列（`Real/Seq.wl`）—— 进行中
 - [x] `tendsto`（实 ε、关系式）+ 极限演算（常数 / 唯一 / 和 / 负 / 差）、`convergent`（Stage 1，brief-008）
 - [x] `eventually` 组合子 + 收敛 ⇒ 有界 + 远离零 + 绝对值乘法 + 乘积 / 数乘极限律（Stage 2，briefs 009/010）
-- [ ] **确界 ⇒ 单调收敛**（`dedekindCompleteThm` → 单调有界收敛；蓝本 `RealSequence/Principles/FromSupMonotone.lean`）（Stage 3）
-- [ ] **子列 + Bolzano–Weierstrass**（Peak / 上升指标 → 单调子列 → 单调收敛；蓝本 `RealSequence/Subsequence.lean`）（Stage 4）
-- [ ] **柯西准则**（Cauchy ⇒ 收敛，M7 桥接 capstone `⊢ ∀a. Cauchy a ⇒ ∃L. tendsto a L`；蓝本 `RealSequence/Principles/FromSupCauchy.lean`）（Stage 5）
+- [x] **确界 ⇒ 单调收敛**（`dedekindCompleteThm` → 单调有界收敛；蓝本 `RealSequence/Principles/FromSupMonotone.lean`）（Stage 3，brief-011，commit 00981cf）
+- [x] **子列基础设施 + 单调子列存在**（Peak / 上升指标递归 → `existsMonoSubseqThm`；蓝本 `RealSequence/Subsequence.lean`）（Stage 4，brief-012，commit 8d27504）。**注意:这一步只到「任意序列有单调子列」,属序列层基础设施;BW 本身(有界⇒收敛子列的组装)按蓝本分层放在 M8.2 紧性层,不在序列层做。**
+- [ ] **柯西准则**（Cauchy ⇒ 收敛,直接走确界,**不需要 BW**——`FromSupCauchy` 只依赖 Supremum；M7 桥接 capstone `⊢ ∀a. Cauchy a ⇒ ∃L. tendsto a L`；蓝本 `RealSequence/Principles/FromSupCauchy.lean`）（Stage 5）
 - 完成后 `Seq.wl` 毕业进 `bootstrap.mx`
 
 #### M8.2 闭区间紧性（确界原理路线）
-- [ ] 列紧性、聚点紧性（Bolzano–Weierstrass 的集合版）
+- [ ] **Bolzano–Weierstrass（序列版 + 集合版）、列紧性、聚点紧性**：序列版 BW（有界⇒收敛子列）= Stage 4 的 `existsMonoSubseqThm` + 子列继承有界 + Stage 3 单调收敛的组装（~3 步,极限来自 `realSup`,非区间套）；集合版列紧 + 聚点紧在其上
 - [ ] **Heine–Borel**：`[a,b]` 的任意开覆盖有有限子覆盖（确界 + 勒贝格延拓法）
 - [ ] **勒贝格数引理**（紧覆盖的勒贝格数；与已砍的测度-Lebesgue 判据是拓扑表亲，同名不同物）
 - 蓝本 `RealCompactness/ClosedInterval/{Statements,FromSup*,SeqTo*,...}.lean`（取 `FromSup*` 路线，跳过 Lindelöf / 可数子覆盖文件）
