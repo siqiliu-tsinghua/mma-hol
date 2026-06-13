@@ -49,6 +49,28 @@ realAbsMulThm::usage = "realAbsMulThm - |- forall x y. realAbs (realMul x y) = r
 seqTendstoMulThm::usage = "seqTendstoMulThm - |- forall a b A B. tendsto a A ==> tendsto b B ==> tendsto (lambda n. realMul (a n) (b n)) (realMul A B).";
 seqTendstoScalarMulThm::usage = "seqTendstoScalarMulThm - |- forall a A c. tendsto a A ==> tendsto (lambda n. realMul c (a n)) (realMul c A).";
 
+monoIncDefThm::usage = "monoIncDefThm - |- monoInc = (lambda u. forall n m. n <= m ==> realLe (u n) (u m)).";
+monoIncConst::usage = "monoIncConst[] - monoInc : (num -> real) -> bool.";
+monoIncTm::usage = "monoIncTm[u] - builds monoInc u.";
+unfoldMonoInc::usage = "unfoldMonoInc[u] - proves the beta-reduced monoInc definition at u.";
+monoDecDefThm::usage = "monoDecDefThm - |- monoDec = (lambda u. forall n m. n <= m ==> realLe (u m) (u n)).";
+monoDecConst::usage = "monoDecConst[] - monoDec : (num -> real) -> bool.";
+monoDecTm::usage = "monoDecTm[u] - builds monoDec u.";
+unfoldMonoDec::usage = "unfoldMonoDec[u] - proves the beta-reduced monoDec definition at u.";
+seqBddAboveDefThm::usage = "seqBddAboveDefThm - |- seqBddAbove = (lambda u. exists B. forall n. realLe (u n) B).";
+seqBddAboveConst::usage = "seqBddAboveConst[] - seqBddAbove : (num -> real) -> bool.";
+seqBddAboveTm::usage = "seqBddAboveTm[u] - builds seqBddAbove u.";
+unfoldSeqBddAbove::usage = "unfoldSeqBddAbove[u] - proves the beta-reduced seqBddAbove definition at u.";
+seqBddBelowDefThm::usage = "seqBddBelowDefThm - |- seqBddBelow = (lambda u. exists B. forall n. realLe B (u n)).";
+seqBddBelowConst::usage = "seqBddBelowConst[] - seqBddBelow : (num -> real) -> bool.";
+seqBddBelowTm::usage = "seqBddBelowTm[u] - builds seqBddBelow u.";
+unfoldSeqBddBelow::usage = "unfoldSeqBddBelow[u] - proves the beta-reduced seqBddBelow definition at u.";
+realAbsSubLtThm::usage = "realAbsSubLtThm - |- forall x a e. realLt (a + -e) x ==> realLt x (a + e) ==> realLt (realAbs (x + -a)) e.";
+realSupLtMemThm::usage = "realSupLtMemThm - |- forall S t. (exists a. S a) ==> (exists u. forall a. S a ==> realLe a u) ==> realLt t (realSup S) ==> exists a. S a /\\ realLt t a.";
+monoIncTendstoSupThm::usage = "monoIncTendstoSupThm - |- forall u. monoInc u ==> seqBddAbove u ==> tendsto u (realSup (lambda x. exists n. x = u n)).";
+monoConvergesIncThm::usage = "monoConvergesIncThm - |- forall u. monoInc u ==> seqBddAbove u ==> exists L. tendsto u L.";
+monoConvergesDecThm::usage = "monoConvergesDecThm - |- forall u. monoDec u ==> seqBddBelow u ==> exists L. tendsto u L.";
+
 Begin["`Private`"];
 
 seqTy = tyFun[numTy, realTy];
@@ -1223,6 +1245,369 @@ seqTendstoScalarMulThm =
     reshaped = EQMP[tendstoEq, cleanProd];
     HOL`Bool`GEN[aV, HOL`Bool`GEN[avV, HOL`Bool`GEN[cV,
       HOL`Bool`DISCH[tendstoTm[aV, avV], reshaped]]]]
+  ];
+
+monoPredTy = tyFun[seqTy, boolTy];
+seqBddTy = tyFun[seqTy, boolTy];
+seqSetTy = tyFun[realTy, boolTy];
+
+seqRealSup[sT_] := mkComb[realSupConst[], sT];
+
+seqRangeTm[uT_] :=
+  Module[{xR, nR},
+    xR = mkVar["xR", realTy]; nR = mkVar["nR", numTy];
+    mkAbs[xR, existsTm[nR, mkEq[xR, mkComb[uT, nR]]]]
+  ];
+
+seqRangeMemThm[rangeT_, uT_, nT_] :=
+  Module[{xT, beta, exThm},
+    xT = mkComb[uT, nT];
+    beta = HOL`Equal`BETACONV[mkComb[rangeT, xT]];
+    exThm = HOL`Bool`EXISTS[concl[beta][[2]], nT, REFL[xT]];
+    EQMP[HOL`Equal`SYM[beta], exThm]
+  ];
+
+seqRangeNonemptyThm[rangeT_, uT_] :=
+  Module[{aR, mem0},
+    aR = mkVar["aR", realTy];
+    mem0 = seqRangeMemThm[rangeT, uT, zeroN[]];
+    HOL`Bool`EXISTS[existsTm[aR, mkComb[rangeT, aR]], mkComb[uT, zeroN[]], mem0]
+  ];
+
+seqMonoIncBody[uT_] :=
+  Module[{nV, mV},
+    nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    forallTm[nV, forallTm[mV,
+      impTm[seqNatLe[nV, mV], realLeTm[mkComb[uT, nV], mkComb[uT, mV]]]]]
+  ];
+
+seqMonoDecBody[uT_] :=
+  Module[{nV, mV},
+    nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    forallTm[nV, forallTm[mV,
+      impTm[seqNatLe[nV, mV], realLeTm[mkComb[uT, mV], mkComb[uT, nV]]]]]
+  ];
+
+seqBddAboveBody[uT_] :=
+  Module[{bV, nV},
+    bV = mkVar["B", realTy]; nV = mkVar["n", numTy];
+    existsTm[bV, forallTm[nV, realLeTm[mkComb[uT, nV], bV]]]
+  ];
+
+seqBddBelowBody[uT_] :=
+  Module[{bV, nV},
+    bV = mkVar["B", realTy]; nV = mkVar["n", numTy];
+    existsTm[bV, forallTm[nV, realLeTm[bV, mkComb[uT, nV]]]]
+  ];
+
+monoIncDefThm =
+  Module[{uV},
+    uV = mkVar["u", seqTy];
+    newDefinition[mkEq[mkVar["monoInc", monoPredTy],
+      mkAbs[uV, seqMonoIncBody[uV]]]]
+  ];
+
+monoIncConst[] := mkConst["monoInc", monoPredTy];
+monoIncTm[uT_] := mkComb[monoIncConst[], uT];
+
+unfoldMonoInc[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[monoIncDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+monoDecDefThm =
+  Module[{uV},
+    uV = mkVar["u", seqTy];
+    newDefinition[mkEq[mkVar["monoDec", monoPredTy],
+      mkAbs[uV, seqMonoDecBody[uV]]]]
+  ];
+
+monoDecConst[] := mkConst["monoDec", monoPredTy];
+monoDecTm[uT_] := mkComb[monoDecConst[], uT];
+
+unfoldMonoDec[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[monoDecDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+seqBddAboveDefThm =
+  Module[{uV},
+    uV = mkVar["u", seqTy];
+    newDefinition[mkEq[mkVar["seqBddAbove", seqBddTy],
+      mkAbs[uV, seqBddAboveBody[uV]]]]
+  ];
+
+seqBddAboveConst[] := mkConst["seqBddAbove", seqBddTy];
+seqBddAboveTm[uT_] := mkComb[seqBddAboveConst[], uT];
+
+unfoldSeqBddAbove[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[seqBddAboveDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+seqBddBelowDefThm =
+  Module[{uV},
+    uV = mkVar["u", seqTy];
+    newDefinition[mkEq[mkVar["seqBddBelow", seqBddTy],
+      mkAbs[uV, seqBddBelowBody[uV]]]]
+  ];
+
+seqBddBelowConst[] := mkConst["seqBddBelow", seqBddTy];
+seqBddBelowTm[uT_] := mkComb[seqBddBelowConst[], uT];
+
+unfoldSeqBddBelow[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[seqBddBelowDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+seqArithAbsUpperThm =
+  Module[{xV, aV, eV},
+    xV = mkVar["x", realTy]; aV = mkVar["a", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{xV, aV, eV},
+        impTm[realLtTm[xV, realAddTm[aV, eV]],
+          realLtTm[realAddTm[xV, realNegTm[aV]], eV]]]]
+  ];
+
+seqArithAbsLowerThm =
+  Module[{xV, aV, eV},
+    xV = mkVar["x", realTy]; aV = mkVar["a", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{xV, aV, eV},
+        impTm[realLtTm[realAddTm[aV, realNegTm[eV]], xV],
+          realLtTm[realNegTm[realAddTm[xV, realNegTm[aV]]], eV]]]]
+  ];
+
+seqArithSubSelfLtThm =
+  Module[{sV, eV},
+    sV = mkVar["s", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{sV, eV},
+        impTm[realLtTm[zeroRealTm[], eV],
+          realLtTm[realAddTm[sV, realNegTm[eV]], sV]]]]
+  ];
+
+seqArithSelfLtAddThm =
+  Module[{sV, eV},
+    sV = mkVar["s", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{sV, eV},
+        impTm[realLtTm[zeroRealTm[], eV],
+          realLtTm[sV, realAddTm[sV, eV]]]]]
+  ];
+
+seqArithLtLeContrThm =
+  Module[{tV, sV},
+    tV = mkVar["t", realTy]; sV = mkVar["s", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{tV, sV},
+        seqImpList[{realLtTm[tV, sV], realLeTm[sV, tV]}, realLtTm[tV, tV]]]]
+  ];
+
+realAbsSubLtThm =
+  Module[{xV, aV, eV, diff, hLeft, hRight, body},
+    xV = mkVar["x", realTy]; aV = mkVar["a", realTy]; eV = mkVar["e", realTy];
+    diff = realAddTm[xV, realNegTm[aV]];
+    hLeft = ASSUME[realLtTm[realAddTm[aV, realNegTm[eV]], xV]];
+    hRight = ASSUME[realLtTm[xV, realAddTm[aV, eV]]];
+    body = HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[realLeTm[zeroRealTm[], diff]],
+      Module[{hNonneg, absEq, diffLt},
+        hNonneg = ASSUME[realLeTm[zeroRealTm[], diff]];
+        absEq = HOL`Bool`MP[HOL`Bool`SPEC[diff, realAbsPosThm], hNonneg];
+        diffLt = HOL`Bool`MP[seqSpecAll[seqArithAbsUpperThm, {xV, aV, eV}], hRight];
+        EQMP[seqRealLtCong[HOL`Equal`SYM[absEq], REFL[eV]], diffLt]
+      ],
+      Module[{hNotNonneg, notLeLt, diffLt0, diffLe0, absEq, negDiffLt},
+        hNotNonneg = ASSUME[notTm[realLeTm[zeroRealTm[], diff]]];
+        notLeLt = HOL`Bool`SPEC[diff,
+          HOL`Bool`SPEC[zeroRealTm[], HOL`Auto`RealArith`realNotLeLtThm]];
+        diffLt0 = EQMP[notLeLt, hNotNonneg];
+        diffLe0 = seqLtImpLeRule[diffLt0];
+        absEq = HOL`Bool`MP[HOL`Bool`SPEC[diff, realAbsNonposThm], diffLe0];
+        negDiffLt = HOL`Bool`MP[seqSpecAll[seqArithAbsLowerThm, {xV, aV, eV}], hLeft];
+        EQMP[seqRealLtCong[HOL`Equal`SYM[absEq], REFL[eV]], negDiffLt]
+      ]];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[aV, HOL`Bool`GEN[eV,
+      HOL`Bool`DISCH[realLtTm[realAddTm[aV, realNegTm[eV]], xV],
+        HOL`Bool`DISCH[realLtTm[xV, realAddTm[aV, eV]], body]]]]]
+  ];
+
+realSupLtMemThm =
+  Module[{sV, tV, aV, uB, hneTm, hbndTm, goalTm, hne, hbnd, hLt, hNotGoal,
+          aB, hSa, hNotLe, notLeLt, ltTa, conjA, exA, ffA, leAt, ubAll,
+          least, badLt, ff, body},
+    sV = mkVar["S", seqSetTy]; tV = mkVar["t", realTy];
+    aV = mkVar["a", realTy]; uB = mkVar["u", realTy]; aB = mkVar["aB", realTy];
+    hneTm = existsTm[aV, mkComb[sV, aV]];
+    hbndTm = existsTm[uB,
+      forallTm[aV, impTm[mkComb[sV, aV], realLeTm[aV, uB]]]];
+    goalTm = existsTm[aV, conjTm[mkComb[sV, aV], realLtTm[tV, aV]]];
+    hne = ASSUME[hneTm]; hbnd = ASSUME[hbndTm];
+    hLt = ASSUME[realLtTm[tV, seqRealSup[sV]]];
+    hNotGoal = ASSUME[notTm[goalTm]];
+    hSa = ASSUME[mkComb[sV, aB]];
+    hNotLe = ASSUME[notTm[realLeTm[aB, tV]]];
+    notLeLt = HOL`Bool`SPEC[tV,
+      HOL`Bool`SPEC[aB, HOL`Auto`RealArith`realNotLeLtThm]];
+    ltTa = EQMP[notLeLt, hNotLe];
+    conjA = HOL`Bool`CONJ[hSa, ltTa];
+    exA = HOL`Bool`EXISTS[goalTm, aB, conjA];
+    ffA = HOL`Bool`MP[HOL`Bool`NOTELIM[hNotGoal], exA];
+    leAt = HOL`Bool`CCONTR[realLeTm[aB, tV], ffA];
+    ubAll = HOL`Bool`GEN[aB, HOL`Bool`DISCH[mkComb[sV, aB], leAt]];
+    least = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realSupLeastThm, {sV, tV}], hne], hbnd], ubAll];
+    badLt = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqArithLtLeContrThm, {tV, seqRealSup[sV]}], hLt], least];
+    ff = HOL`Bool`MP[HOL`Bool`NOTELIM[
+      HOL`Bool`SPEC[tV, HOL`Auto`RealArith`realLtIrreflThm]], badLt];
+    body = HOL`Bool`CCONTR[goalTm, ff];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[tV,
+      HOL`Bool`DISCH[hneTm, HOL`Bool`DISCH[hbndTm,
+        HOL`Bool`DISCH[realLtTm[tV, seqRealSup[sV]], body]]]]]
+  ];
+
+monoIncTendstoSupThm =
+  Module[{uV, range, sup, hMono, hBdd, monoAll, bddEx, bW, hAllB,
+          nBdd, nonempty, bounded, supUpper, eV, hE, below, belowLtSup, memEx,
+          aW, hMemConj, hRangeA, hBelowA, betaRangeA, exRangeN, nW, hEqA,
+          hBelowUN, nV, hLeNn, monoStep, leUN, hLeft, hUNleSup, supLtPlus,
+          hRight, absClose, impN, allN, exN, chosenN, chosenA, epsBody,
+          tendBody, folded, chosenB},
+    uV = mkVar["u", seqTy];
+    range = seqRangeTm[uV]; sup = seqRealSup[range];
+    hMono = ASSUME[monoIncTm[uV]]; hBdd = ASSUME[seqBddAboveTm[uV]];
+    monoAll = EQMP[unfoldMonoInc[uV], hMono];
+    bddEx = EQMP[unfoldSeqBddAbove[uV], hBdd];
+    bW = mkVar["bW", realTy]; nBdd = mkVar["n", numTy];
+    hAllB = ASSUME[forallTm[nBdd, realLeTm[mkComb[uV, nBdd], bW]]];
+    nonempty = seqRangeNonemptyThm[range, uV];
+    bounded = Module[{aB, wB, hRange, exNRange, nB, hEq, boundN, leAB, impA, allA},
+      aB = mkVar["aB", realTy]; nB = mkVar["nB", numTy];
+      wB = mkVar["wB", realTy];
+      hRange = ASSUME[mkComb[range, aB]];
+      exNRange = EQMP[HOL`Equal`BETACONV[mkComb[range, aB]], hRange];
+      hEq = ASSUME[mkEq[aB, mkComb[uV, nB]]];
+      boundN = HOL`Bool`SPEC[nB, hAllB];
+      leAB = EQMP[HOL`Equal`SYM[seqRealLeCong[hEq, REFL[bW]]], boundN];
+      impA = HOL`Bool`DISCH[mkComb[range, aB], HOL`Bool`CHOOSE[nB, exNRange, leAB]];
+      allA = HOL`Bool`GEN[aB, impA];
+      HOL`Bool`EXISTS[existsTm[wB,
+        forallTm[aB, impTm[mkComb[range, aB], realLeTm[aB, wB]]]],
+        bW, allA]
+    ];
+    supUpper = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[range, realSupUpperThm],
+      nonempty], bounded];
+    eV = mkVar["e", realTy];
+    hE = ASSUME[realLtTm[zeroRealTm[], eV]];
+    below = realAddTm[sup, realNegTm[eV]];
+    belowLtSup = HOL`Bool`MP[seqSpecAll[seqArithSubSelfLtThm, {sup, eV}], hE];
+    memEx = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realSupLtMemThm, {range, below}], nonempty], bounded], belowLtSup];
+    aW = mkVar["aW", realTy]; nW = mkVar["nW", numTy]; nV = mkVar["n", numTy];
+    hMemConj = ASSUME[conjTm[mkComb[range, aW], realLtTm[below, aW]]];
+    hRangeA = HOL`Bool`CONJUNCT1[hMemConj];
+    hBelowA = HOL`Bool`CONJUNCT2[hMemConj];
+    betaRangeA = HOL`Equal`BETACONV[mkComb[range, aW]];
+    exRangeN = EQMP[betaRangeA, hRangeA];
+    hEqA = ASSUME[mkEq[aW, mkComb[uV, nW]]];
+    hBelowUN = EQMP[seqRealLtCong[REFL[below], hEqA], hBelowA];
+    hLeNn = ASSUME[seqNatLe[nW, nV]];
+    monoStep = HOL`Bool`MP[seqSpecAll[monoAll, {nW, nV}], hLeNn];
+    leUN = monoStep;
+    hLeft = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLtLeTransThm, {below, mkComb[uV, nW], mkComb[uV, nV]}],
+      hBelowUN], leUN];
+    hUNleSup = HOL`Bool`MP[HOL`Bool`SPEC[mkComb[uV, nV], supUpper],
+      seqRangeMemThm[range, uV, nV]];
+    supLtPlus = HOL`Bool`MP[seqSpecAll[seqArithSelfLtAddThm, {sup, eV}], hE];
+    hRight = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeLtTransThm, {mkComb[uV, nV], sup, realAddTm[sup, eV]}],
+      hUNleSup], supLtPlus];
+    absClose = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realAbsSubLtThm, {mkComb[uV, nV], sup, eV}], hLeft], hRight];
+    impN = HOL`Bool`DISCH[seqNatLe[nW, nV], absClose];
+    allN = HOL`Bool`GEN[nV, impN];
+    exN = HOL`Bool`EXISTS[existsTm[mkVar["N", numTy], seqLimitAll[uV, sup, eV, mkVar["N", numTy]]],
+      nW, allN];
+    chosenN = HOL`Bool`CHOOSE[nW, exRangeN, exN];
+    chosenA = HOL`Bool`CHOOSE[aW, memEx, chosenN];
+    epsBody = HOL`Bool`DISCH[realLtTm[zeroRealTm[], eV], chosenA];
+    tendBody = HOL`Bool`GEN[eV, epsBody];
+    folded = EQMP[HOL`Equal`SYM[unfoldTendsto[uV, sup]], tendBody];
+    chosenB = HOL`Bool`CHOOSE[bW, bddEx, folded];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[monoIncTm[uV],
+      HOL`Bool`DISCH[seqBddAboveTm[uV], chosenB]]]
+  ];
+
+monoConvergesIncThm =
+  Module[{uV, hMono, hBdd, range, sup, tend, exThm},
+    uV = mkVar["u", seqTy]; range = seqRangeTm[uV]; sup = seqRealSup[range];
+    hMono = ASSUME[monoIncTm[uV]]; hBdd = ASSUME[seqBddAboveTm[uV]];
+    tend = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[uV, monoIncTendstoSupThm],
+      hMono], hBdd];
+    exThm = HOL`Bool`EXISTS[existsTm[mkVar["L", realTy], tendstoTm[uV, mkVar["L", realTy]]],
+      sup, tend];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[monoIncTm[uV],
+      HOL`Bool`DISCH[seqBddAboveTm[uV], exThm]]]
+  ];
+
+monoConvergesDecThm =
+  Module[{uV, nV, vSeq, hDec, hBelow, decAll, monoV, belowEx, bW, hAllBelow,
+          nBelow, bddAboveV, incEx, lW, hTendV, negTend, seqLeft, betaL, negNeg,
+          pointEq, pointAll, seqEq, tendEq, tendU, exFinal, chosenL, chosenB},
+    uV = mkVar["u", seqTy]; nV = mkVar["n", numTy];
+    vSeq = mkAbs[nV, realNegTm[mkComb[uV, nV]]];
+    hDec = ASSUME[monoDecTm[uV]]; hBelow = ASSUME[seqBddBelowTm[uV]];
+    decAll = EQMP[unfoldMonoDec[uV], hDec];
+    monoV = Module[{nA, mA, hLe, decLe, negLe, impNM, allM, allN},
+      nA = mkVar["nA", numTy]; mA = mkVar["mA", numTy];
+      hLe = ASSUME[seqNatLe[nA, mA]];
+      decLe = HOL`Bool`MP[seqSpecAll[decAll, {nA, mA}], hLe];
+      negLe = HOL`Bool`MP[
+        seqSpecAll[realLeNegThm, {mkComb[uV, mA], mkComb[uV, nA]}], decLe];
+      impNM = HOL`Bool`DISCH[seqNatLe[nA, mA], negLe];
+      allM = HOL`Bool`GEN[mA, impNM];
+      allN = HOL`Bool`GEN[nA, allM];
+      EQMP[HOL`Equal`SYM[seqBetaClean[unfoldMonoInc[vSeq]]], allN]
+    ];
+    belowEx = EQMP[unfoldSeqBddBelow[uV], hBelow];
+    bW = mkVar["bW", realTy]; nBelow = mkVar["n", numTy];
+    hAllBelow = ASSUME[forallTm[nBelow, realLeTm[bW, mkComb[uV, nBelow]]]];
+    bddAboveV = Module[{nA, lower, negLe, allN, cleanUnfold, exB},
+      nA = mkVar["nA", numTy];
+      lower = HOL`Bool`SPEC[nA, hAllBelow];
+      negLe = HOL`Bool`MP[
+        seqSpecAll[realLeNegThm, {bW, mkComb[uV, nA]}], lower];
+      allN = HOL`Bool`GEN[nA, negLe];
+      cleanUnfold = seqBetaClean[unfoldSeqBddAbove[vSeq]];
+      exB = HOL`Bool`EXISTS[concl[cleanUnfold][[2]], realNegTm[bW], allN];
+      EQMP[HOL`Equal`SYM[cleanUnfold], exB]
+    ];
+    incEx = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[vSeq, monoConvergesIncThm],
+      monoV], bddAboveV];
+    lW = mkVar["lW", realTy];
+    hTendV = ASSUME[tendstoTm[vSeq, lW]];
+    negTend = seqBetaClean[HOL`Bool`MP[seqSpecAll[tendstoNegThm, {vSeq, lW}], hTendV]];
+    seqLeft = concl[negTend][[1, 2]];
+    betaL = HOL`Equal`BETACONV[mkComb[seqLeft, nV]];
+    negNeg = HOL`Bool`SPEC[mkComb[uV, nV], realNegNegThm];
+    pointEq = TRANS[betaL, negNeg];
+    pointAll = HOL`Bool`GEN[nV, pointEq];
+    seqEq = HOL`Stdlib`List`funcExtThm[seqLeft, uV, pointAll];
+    tendEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[tendstoConst[], seqEq],
+      REFL[realNegTm[lW]]];
+    tendU = EQMP[tendEq, negTend];
+    exFinal = HOL`Bool`EXISTS[existsTm[mkVar["L", realTy], tendstoTm[uV, mkVar["L", realTy]]],
+      realNegTm[lW], tendU];
+    chosenL = HOL`Bool`CHOOSE[lW, incEx, exFinal];
+    chosenB = HOL`Bool`CHOOSE[bW, belowEx, chosenL];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[monoDecTm[uV],
+      HOL`Bool`DISCH[seqBddBelowTm[uV], chosenB]]]
   ];
 
 End[];

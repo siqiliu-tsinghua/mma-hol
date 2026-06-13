@@ -35,7 +35,9 @@ rAddRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realAddConst[], a], b];
 rNegRST[a_] := mkComb[HOL`Stdlib`Real`realNegConst[], a];
 rAbsRST[a_] := mkComb[HOL`Stdlib`Real`realAbsConst[], a];
 rMulRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realMulConst[], a], b];
+rLeRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLeConst[], a], b];
 rLtRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], a], b];
+rSupRST[s_] := mkComb[HOL`Stdlib`Real`realSupConst[], s];
 nLeRST[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
 andRST[p_, q_] := mkComb[
   mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
@@ -107,6 +109,80 @@ eventuallyAwayBodyRST[uT_] :=
     cV = mkVar["c", realTyRST];
     existsRST[cV, andRST[rLtRST[zeroRealRST[], cV],
       HOL`Stdlib`Real`eventuallyTm[awayPredRST[uT, cV]]]]
+  ];
+
+rangeRST[uT_] :=
+  Module[{xV, nV},
+    xV = mkVar["xR", realTyRST]; nV = mkVar["nR", numTyRST];
+    mkAbs[xV, existsRST[nV, mkEq[xV, mkComb[uT, nV]]]]
+  ];
+
+monoIncBodyRST[uT_] :=
+  Module[{nV, mV},
+    nV = mkVar["n", numTyRST]; mV = mkVar["m", numTyRST];
+    forallRST[nV, forallRST[mV,
+      impRST[nLeRST[nV, mV], rLeRST[mkComb[uT, nV], mkComb[uT, mV]]]]]
+  ];
+
+monoDecBodyRST[uT_] :=
+  Module[{nV, mV},
+    nV = mkVar["n", numTyRST]; mV = mkVar["m", numTyRST];
+    forallRST[nV, forallRST[mV,
+      impRST[nLeRST[nV, mV], rLeRST[mkComb[uT, mV], mkComb[uT, nV]]]]]
+  ];
+
+seqBddAboveBodyRST[uT_] :=
+  Module[{bV, nV},
+    bV = mkVar["B", realTyRST]; nV = mkVar["n", numTyRST];
+    existsRST[bV, forallRST[nV, rLeRST[mkComb[uT, nV], bV]]]
+  ];
+
+seqBddBelowBodyRST[uT_] :=
+  Module[{bV, nV},
+    bV = mkVar["B", realTyRST]; nV = mkVar["n", numTyRST];
+    existsRST[bV, forallRST[nV, rLeRST[bV, mkComb[uT, nV]]]]
+  ];
+
+constMonoIncRST[cT_] :=
+  Module[{nV, mV, seq, clean, impN, allM, allN},
+    nV = mkVar["n", numTyRST]; mV = mkVar["m", numTyRST];
+    seq = constSeqRST[cT];
+    clean = betaCleanRST[HOL`Stdlib`Real`unfoldMonoInc[seq]];
+    impN = HOL`Bool`DISCH[nLeRST[nV, mV],
+      HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realLeReflThm]];
+    allM = HOL`Bool`GEN[mV, impN];
+    allN = HOL`Bool`GEN[nV, allM];
+    EQMP[HOL`Equal`SYM[clean], allN]
+  ];
+
+constMonoDecRST[cT_] :=
+  Module[{nV, mV, seq, clean, impN, allM, allN},
+    nV = mkVar["n", numTyRST]; mV = mkVar["m", numTyRST];
+    seq = constSeqRST[cT];
+    clean = betaCleanRST[HOL`Stdlib`Real`unfoldMonoDec[seq]];
+    impN = HOL`Bool`DISCH[nLeRST[nV, mV],
+      HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realLeReflThm]];
+    allM = HOL`Bool`GEN[mV, impN];
+    allN = HOL`Bool`GEN[nV, allM];
+    EQMP[HOL`Equal`SYM[clean], allN]
+  ];
+
+constBddAboveRST[cT_] :=
+  Module[{nV, seq, clean, allN, exB},
+    nV = mkVar["n", numTyRST]; seq = constSeqRST[cT];
+    clean = betaCleanRST[HOL`Stdlib`Real`unfoldSeqBddAbove[seq]];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realLeReflThm]];
+    exB = HOL`Bool`EXISTS[concl[clean][[2]], cT, allN];
+    EQMP[HOL`Equal`SYM[clean], exB]
+  ];
+
+constBddBelowRST[cT_] :=
+  Module[{nV, seq, clean, allN, exB},
+    nV = mkVar["n", numTyRST]; seq = constSeqRST[cT];
+    clean = betaCleanRST[HOL`Stdlib`Real`unfoldSeqBddBelow[seq]];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realLeReflThm]];
+    exB = HOL`Bool`EXISTS[concl[clean][[2]], cT, allN];
+    EQMP[HOL`Equal`SYM[clean], exB]
   ];
 
 assertConclRST[name_String, th_, expected_] := (
@@ -378,3 +454,117 @@ HOLTest`runTests["stdlib/Real/Seq: multiplication limit laws on constants",
     th = betaCleanRST[HOL`Bool`MP[inst, dLim]];
     expected = HOL`Stdlib`Real`tendstoTm[constSeqRST[rMulRST[cV, dV]], rMulRST[cV, dV]];
     assertConclRST["scalar mul constants", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: monotone definitions and builders",
+  Module[{uV, th, expected},
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`monoIncDefThm], {}, "monoIncDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`monoIncDefThm], "monoIncDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`monoDecDefThm], {}, "monoDecDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`monoDecDefThm], "monoDecDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqBddAboveDefThm], {},
+      "seqBddAboveDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqBddAboveDefThm],
+      "seqBddAboveDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqBddBelowDefThm], {},
+      "seqBddBelowDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqBddBelowDefThm],
+      "seqBddBelowDef is thm"];
+
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`monoIncConst[]],
+      tyFun[seqTyRST, boolTy], "monoIncConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`monoDecConst[]],
+      tyFun[seqTyRST, boolTy], "monoDecConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`seqBddAboveConst[]],
+      tyFun[seqTyRST, boolTy], "seqBddAboveConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`seqBddBelowConst[]],
+      tyFun[seqTyRST, boolTy], "seqBddBelowConst type"];
+
+    uV = mkVar["uMonoRST", seqTyRST];
+    th = HOL`Stdlib`Real`unfoldMonoInc[uV];
+    expected = mkEq[HOL`Stdlib`Real`monoIncTm[uV], monoIncBodyRST[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldMonoInc body"];
+
+    th = HOL`Stdlib`Real`unfoldMonoDec[uV];
+    expected = mkEq[HOL`Stdlib`Real`monoDecTm[uV], monoDecBodyRST[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldMonoDec body"];
+
+    th = HOL`Stdlib`Real`unfoldSeqBddAbove[uV];
+    expected = mkEq[HOL`Stdlib`Real`seqBddAboveTm[uV], seqBddAboveBodyRST[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldSeqBddAbove body"];
+
+    th = HOL`Stdlib`Real`unfoldSeqBddBelow[uV];
+    expected = mkEq[HOL`Stdlib`Real`seqBddBelowTm[uV], seqBddBelowBodyRST[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldSeqBddBelow body"]]];
+
+HOLTest`runTests["stdlib/Real/Seq: monotone theorem objects",
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAbsSubLtThm],
+    "realAbsSubLtThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAbsSubLtThm], {},
+    "realAbsSubLtThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realSupLtMemThm],
+    "realSupLtMemThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realSupLtMemThm], {},
+    "realSupLtMemThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`monoIncTendstoSupThm],
+    "monoIncTendstoSupThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`monoIncTendstoSupThm], {},
+    "monoIncTendstoSupThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`monoConvergesIncThm],
+    "monoConvergesIncThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`monoConvergesIncThm], {},
+    "monoConvergesIncThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`monoConvergesDecThm],
+    "monoConvergesDecThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`monoConvergesDecThm], {},
+    "monoConvergesDecThm no hyps"]];
+
+HOLTest`runTests["stdlib/Real/Seq: abs bounds and sup member shape",
+  Module[{oneR, sV, tV, aV, uB, hLeft, hRight, inst, th, expected},
+    oneR = rnumRST[1];
+    hLeft = HOL`Auto`RealArith`realArithProve[
+      rLtRST[rAddRST[oneR, rNegRST[oneR]], oneR]];
+    hRight = HOL`Auto`RealArith`realArithProve[
+      rLtRST[oneR, rAddRST[oneR, oneR]]];
+    inst = specAllRST[HOL`Stdlib`Real`realAbsSubLtThm, {oneR, oneR, oneR}];
+    th = HOL`Bool`MP[HOL`Bool`MP[inst, hLeft], hRight];
+    expected = rLtRST[rAbsRST[rAddRST[oneR, rNegRST[oneR]]], oneR];
+    assertConclRST["realAbsSubLt concrete", th, expected];
+
+    sV = mkVar["SRST", tyFun[realTyRST, boolTy]];
+    tV = mkVar["tRST", realTyRST];
+    aV = mkVar["a", realTyRST]; uB = mkVar["u", realTyRST];
+    th = specAllRST[HOL`Stdlib`Real`realSupLtMemThm, {sV, tV}];
+    expected = impRST[existsRST[aV, mkComb[sV, aV]],
+      impRST[existsRST[uB, forallRST[aV, impRST[mkComb[sV, aV], rLeRST[aV, uB]]]],
+        impRST[rLtRST[tV, rSupRST[sV]],
+          existsRST[aV, andRST[mkComb[sV, aV], rLtRST[tV, aV]]]]]];
+    assertConclRST["realSupLtMem instantiated shape", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: monotone convergence on constants",
+  Module[{cV, cSeq, monoInc, monoDec, bddAbove, bddBelow, inst, th, expected, lV},
+    cV = mkVar["cMonoRST", realTyRST];
+    cSeq = constSeqRST[cV];
+    lV = mkVar["L", realTyRST];
+    monoInc = constMonoIncRST[cV];
+    monoDec = constMonoDecRST[cV];
+    bddAbove = constBddAboveRST[cV];
+    bddBelow = constBddBelowRST[cV];
+
+    expected = HOL`Stdlib`Real`monoIncTm[cSeq];
+    assertConclRST["constant monoInc", monoInc, expected];
+    expected = HOL`Stdlib`Real`monoDecTm[cSeq];
+    assertConclRST["constant monoDec", monoDec, expected];
+    expected = HOL`Stdlib`Real`seqBddAboveTm[cSeq];
+    assertConclRST["constant bddAbove", bddAbove, expected];
+    expected = HOL`Stdlib`Real`seqBddBelowTm[cSeq];
+    assertConclRST["constant bddBelow", bddBelow, expected];
+
+    inst = HOL`Bool`SPEC[cSeq, HOL`Stdlib`Real`monoConvergesIncThm];
+    th = HOL`Bool`MP[HOL`Bool`MP[inst, monoInc], bddAbove];
+    expected = existsRST[lV, HOL`Stdlib`Real`tendstoTm[cSeq, lV]];
+    assertConclRST["constant monoConvergesInc", th, expected];
+
+    inst = HOL`Bool`SPEC[cSeq, HOL`Stdlib`Real`monoConvergesDecThm];
+    th = HOL`Bool`MP[HOL`Bool`MP[inst, monoDec], bddBelow];
+    expected = existsRST[lV, HOL`Stdlib`Real`tendstoTm[cSeq, lV]];
+    assertConclRST["constant monoConvergesDec", th, expected]]];
