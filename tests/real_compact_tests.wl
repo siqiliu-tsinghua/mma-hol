@@ -23,18 +23,35 @@ numTyRCT = mkType["num", {}];
 realTyRCT = mkType["real", {}];
 seqTyRCT = tyFun[numTyRCT, realTyRCT];
 numFunTyRCT = tyFun[numTyRCT, numTyRCT];
+realListTyRCT = HOL`Stdlib`List`listTy[realTyRCT];
+setTyRCT = tyFun[realTyRCT, boolTy];
 
+zeroNumRCT[] := HOL`Stdlib`Num`zeroConst[];
+sucNumRCT[n_] := mkComb[HOL`Stdlib`Num`sucConst[], n];
+zeroRealRCT[] := mkComb[HOL`Stdlib`Real`realOfRatConst[],
+  mkComb[HOL`Stdlib`Rat`ratOfIntConst[],
+    mkComb[HOL`Stdlib`Int`intOfNumConst[], zeroNumRCT[]]]];
+realAddRCT[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realAddConst[], x], y];
+realNegRCT[x_] := mkComb[HOL`Stdlib`Real`realNegConst[], x];
+realAbsRCT[x_] := mkComb[HOL`Stdlib`Real`realAbsConst[], x];
 rLeRCT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLeConst[], a], b];
+rLtRCT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], a], b];
 andRCT[p_, q_] := mkComb[
   mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 orRCT[p_, q_] := mkComb[
   mkComb[mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 impRCT[p_, q_] := mkComb[
   mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
+notRCT[p_] := mkComb[mkConst["¬", tyFun[boolTy, boolTy]], p];
 forallRCT[v : var[_, ty_], body_] :=
   mkComb[mkConst["∀", tyFun[tyFun[ty, boolTy], boolTy]], mkAbs[v, body]];
 existsRCT[v : var[_, ty_], body_] :=
   mkComb[mkConst["∃", tyFun[tyFun[ty, boolTy], boolTy]], mkAbs[v, body]];
+memRCT[x_, xs_] := mkComb[
+  mkComb[mkConst["MEM", tyFun[realTyRCT, tyFun[realListTyRCT, boolTy]]], x], xs];
+nilRealRCT[] := mkConst["NIL", realListTyRCT];
+consRealRCT[] := mkConst["CONS", tyFun[realTyRCT,
+  tyFun[realListTyRCT, realListTyRCT]]];
 
 specAllRCT[th_, ts_List] :=
   Fold[Function[{acc, t}, HOL`Bool`SPEC[t, acc]], th, ts];
@@ -86,6 +103,72 @@ monoSubseqBodyRCT[uT_, phiT_] :=
     subSeq = HOL`Stdlib`Real`subsequenceTm[uT, phiT];
     andRCT[HOL`Stdlib`Real`subseqIndexTm[phiT],
       orRCT[HOL`Stdlib`Real`monoIncTm[subSeq], HOL`Stdlib`Real`monoDecTm[subSeq]]]
+  ];
+
+listInfiniteBodyRCT[sT_] :=
+  Module[{xsV, xV},
+    xsV = mkVar["xs", realListTyRCT]; xV = mkVar["x", realTyRCT];
+    forallRCT[xsV, existsRCT[xV, andRCT[mkComb[sT, xV], notRCT[memRCT[xV, xsV]]]]]
+  ];
+
+setBoundedBodyRCT[sT_] :=
+  Module[{loV, hiV, xV},
+    loV = mkVar["lo", realTyRCT]; hiV = mkVar["hi", realTyRCT];
+    xV = mkVar["x", realTyRCT];
+    existsRCT[loV, existsRCT[hiV, forallRCT[xV,
+      impRCT[mkComb[sT, xV], andRCT[rLeRCT[loV, xV], rLeRCT[xV, hiV]]]]]]
+  ];
+
+distBodyRCT[yT_, xT_] :=
+  realAbsRCT[realAddRCT[yT, realNegRCT[xT]]];
+
+accumulationBodyRCT[sT_, xT_] :=
+  Module[{epsV, yV},
+    epsV = mkVar["eps", realTyRCT]; yV = mkVar["y", realTyRCT];
+    forallRCT[epsV, impRCT[rLtRCT[zeroRealRCT[], epsV],
+      existsRCT[yV, andRCT[mkComb[sT, yV],
+        andRCT[notRCT[mkEq[yV, xT]],
+          rLtRCT[HOL`Stdlib`Real`distTm[yV, xT], epsV]]]]]]
+  ];
+
+freshListRecBodyRCT[sT_] :=
+  Module[{nV, fl, fs},
+    nV = mkVar["n", numTyRCT];
+    fl = HOL`Stdlib`Real`freshListTm[sT]; fs = HOL`Stdlib`Real`freshSeqTm[sT];
+    andRCT[mkEq[mkComb[fl, zeroNumRCT[]], nilRealRCT[]],
+      forallRCT[nV, mkEq[mkComb[fl, sucNumRCT[nV]],
+        mkComb[mkComb[consRealRCT[], mkComb[fs, nV]], mkComb[fl, nV]]]]]
+  ];
+
+freshSeqMemBodyRCT[sT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTyRCT];
+    forallRCT[nV, mkComb[sT, mkComb[HOL`Stdlib`Real`freshSeqTm[sT], nV]]]
+  ];
+
+freshSeqNeBodyRCT[sT_] :=
+  Module[{mV, nV, fs},
+    mV = mkVar["m", numTyRCT]; nV = mkVar["n", numTyRCT];
+    fs = HOL`Stdlib`Real`freshSeqTm[sT];
+    forallRCT[mV, forallRCT[nV, impRCT[
+      mkComb[mkComb[HOL`Stdlib`Num`ltConst[], mV], nV],
+      notRCT[mkEq[mkComb[fs, nV], mkComb[fs, mV]]]]]]
+  ];
+
+freshLimitShapeRCT[sT_, phiT_, lT_] :=
+  Module[{fs, subSeq},
+    fs = HOL`Stdlib`Real`freshSeqTm[sT];
+    subSeq = HOL`Stdlib`Real`subsequenceTm[fs, phiT];
+    impRCT[HOL`Stdlib`Real`listInfiniteTm[sT],
+      impRCT[HOL`Stdlib`Real`subseqIndexTm[phiT],
+        impRCT[HOL`Stdlib`Real`tendstoTm[subSeq, lT],
+          HOL`Stdlib`Real`accumulationPointTm[sT, lT]]]]
+  ];
+
+accumulationGoalRCT[sT_] :=
+  Module[{xV},
+    xV = mkVar["x", realTyRCT];
+    existsRCT[xV, HOL`Stdlib`Real`accumulationPointTm[sT, xV]]
   ];
 
 constSeqBoundedRCT[cT_] :=
@@ -177,6 +260,93 @@ HOLTest`runTests["stdlib/Real/Compact: constant sequence boundedness",
     th = HOL`Bool`MP[inst, bounded];
     expected = bwGoalRCT[cSeq];
     assertConclRCT["constant bwSequential", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Compact: accumulation definitions",
+  Module[{sV, xV, yV, th, expected},
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`listInfiniteConst[]],
+      tyFun[setTyRCT, boolTy], "listInfiniteConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`setBoundedConst[]],
+      tyFun[setTyRCT, boolTy], "setBoundedConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`distConst[]],
+      tyFun[realTyRCT, tyFun[realTyRCT, realTyRCT]], "distConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`accumulationPointConst[]],
+      tyFun[setTyRCT, tyFun[realTyRCT, boolTy]], "accumulationPointConst type"];
+
+    sV = mkVar["SAccumDefRCT", setTyRCT];
+    xV = mkVar["xAccumDefRCT", realTyRCT];
+    yV = mkVar["yAccumDefRCT", realTyRCT];
+
+    th = HOL`Stdlib`Real`unfoldListInfinite[sV];
+    expected = mkEq[HOL`Stdlib`Real`listInfiniteTm[sV], listInfiniteBodyRCT[sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldListInfinite body"];
+
+    th = HOL`Stdlib`Real`unfoldSetBounded[sV];
+    expected = mkEq[HOL`Stdlib`Real`setBoundedTm[sV], setBoundedBodyRCT[sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldSetBounded body"];
+
+    th = HOL`Stdlib`Real`unfoldDist[yV, xV];
+    expected = mkEq[HOL`Stdlib`Real`distTm[yV, xV], distBodyRCT[yV, xV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldDist body"];
+
+    th = HOL`Stdlib`Real`unfoldAccumulationPoint[sV, xV];
+    expected = mkEq[HOL`Stdlib`Real`accumulationPointTm[sV, xV],
+      accumulationBodyRCT[sV, xV]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "unfoldAccumulationPoint body"]]];
+
+HOLTest`runTests["stdlib/Real/Compact: fresh theorem objects",
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`freshListRecSpecThm],
+    "freshListRecSpecThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`freshListRecSpecThm], {},
+    "freshListRecSpecThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`freshSeqMemThm],
+    "freshSeqMemThm is thm"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`freshSeqNotMemThm],
+    "freshSeqNotMemThm is thm"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`freshSeqMemFreshListOfLtThm],
+    "freshSeqMemFreshListOfLtThm is thm"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`freshSeqNeOfLtThm],
+    "freshSeqNeOfLtThm is thm"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`freshSeqBoundedThm],
+    "freshSeqBoundedThm is thm"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`freshLimitIsAccumThm],
+    "freshLimitIsAccumThm is thm"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`accumulationPrincipleThm],
+    "accumulationPrincipleThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`accumulationPrincipleThm], {},
+    "accumulationPrincipleThm no hyps"]];
+
+HOLTest`runTests["stdlib/Real/Compact: fresh theorem shapes",
+  Module[{sV, phiV, lV, th, expected},
+    sV = mkVar["SAccumShapeRCT", setTyRCT];
+    phiV = mkVar["phiAccumShapeRCT", numFunTyRCT];
+    lV = mkVar["lAccumShapeRCT", realTyRCT];
+
+    th = HOL`Bool`SPEC[sV, HOL`Stdlib`Real`freshListRecSpecThm];
+    expected = freshListRecBodyRCT[sV];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "freshListRecSpec instantiated shape"];
+
+    th = HOL`Bool`SPEC[sV, HOL`Stdlib`Real`freshSeqMemThm];
+    expected = impRCT[HOL`Stdlib`Real`listInfiniteTm[sV], freshSeqMemBodyRCT[sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "freshSeqMem instantiated shape"];
+
+    th = HOL`Bool`SPEC[sV, HOL`Stdlib`Real`freshSeqNeOfLtThm];
+    expected = impRCT[HOL`Stdlib`Real`listInfiniteTm[sV], freshSeqNeBodyRCT[sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "freshSeqNe instantiated shape"];
+
+    th = specAllRCT[HOL`Stdlib`Real`freshLimitIsAccumThm, {sV, phiV, lV}];
+    expected = freshLimitShapeRCT[sV, phiV, lV];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "freshLimitIsAccum instantiated shape"];
+
+    th = HOL`Bool`SPEC[sV, HOL`Stdlib`Real`accumulationPrincipleThm];
+    expected = impRCT[HOL`Stdlib`Real`setBoundedTm[sV],
+      impRCT[HOL`Stdlib`Real`listInfiniteTm[sV], accumulationGoalRCT[sV]]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "accumulationPrinciple instantiated shape"]]];
 
 (* NOTE: no testExit[] here — the runners (run_all/run_fast/dev) call it once
    centrally; a per-file testExit[] would Exit[] the process and truncate
