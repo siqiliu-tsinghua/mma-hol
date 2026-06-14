@@ -96,8 +96,13 @@ wolframscript -file tests/dev.wls <the/frontier/file.wl> <test-pattern>
 ```
 
 e.g. `wolframscript -file tests/dev.wls stdlib/Real/Seq.wl real_seq`. It
-restores the snapshot, loads your frontier file on top, and runs the matching
-`tests/*_tests.wl`. **Loop: edit → run dev.wls → read the failure → fix →
+restores the snapshot, loads your frontier file(s) on top, and runs the
+matching `tests/*_tests.wl`. **The brief gives you the EXACT command — it must
+name EVERY un-graduated frontier file (any committed `.wl` not yet in
+`bootstrap.mx`, in dependency order), or dev.wls hits its staleness guard
+("snapshot is older than these NON-frontier sources: …") and refuses to run.
+If that happens, STOP and report it — do NOT rebuild the snapshot; the brief's
+command was incomplete.** **Loop: edit → run dev.wls → read the failure → fix →
 re-run, until the tail prints `failed: 0`.** Paste that final
 `passed: N  failed: 0` line into your report verbatim.
 
