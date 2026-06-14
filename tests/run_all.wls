@@ -76,7 +76,7 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   Get[FileNameJoin[{repoRoot, "auto", "RealArith.wl"}]];
 
   (* Seq consumes realArithProve at load time, so it loads after RealArith
-     (frontier: not yet in build_snapshot.wls while M7-8 stages continue) *)
+     (graduated into build_snapshot.wls 2026-06-14 after Seq Stages 1-6) *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Seq.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
