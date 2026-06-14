@@ -104,6 +104,24 @@ risingIndexSubseqThm::usage = "risingIndexSubseqThm - eventually-no-peaks branch
 risingIndexIncreasingThm::usage = "risingIndexIncreasingThm - eventually-no-peaks branch: the selected subsequence is increasing.";
 existsMonoSubseqThm::usage = "existsMonoSubseqThm - |- forall u. exists phi. subseqIndex phi /\\ (monoInc (subsequence u phi) \\/ monoDec (subsequence u phi)).";
 
+seqCauchyDefThm::usage = "seqCauchyDefThm - |- seqCauchy = (lambda u. forall e. realLt 0 e ==> exists N. forall n m. N <= n ==> N <= m ==> realAbs (u n + realNeg (u m)) < e).";
+seqCauchyConst::usage = "seqCauchyConst[] - seqCauchy : (num -> real) -> bool.";
+seqCauchyTm::usage = "seqCauchyTm[u] - builds seqCauchy u.";
+unfoldSeqCauchy::usage = "unfoldSeqCauchy[u] - proves the beta-reduced seqCauchy definition at u.";
+elbDefThm::usage = "elbDefThm - |- elb = (lambda u x. exists N. forall n. N <= n ==> realLe x (u n)).";
+elbConst::usage = "elbConst[] - elb : (num -> real) -> real -> bool.";
+elbTm::usage = "elbTm[u, x] - builds elb u x.";
+unfoldElb::usage = "unfoldElb[u, x] - proves the beta-reduced elb definition at u and x.";
+realAbsSubLtLeftThm::usage = "realAbsSubLtLeftThm - |- forall a b e. realLt (realAbs (realAdd a (realNeg b))) e ==> realLt (realAdd b (realNeg e)) a.";
+realAbsSubLtRightThm::usage = "realAbsSubLtRightThm - |- forall a b e. realLt (realAbs (realAdd a (realNeg b))) e ==> realLt a (realAdd b e).";
+cauchyTailLowerThm::usage = "cauchyTailLowerThm - Cauchy tail lower bound at the chosen center.";
+cauchyTailUpperThm::usage = "cauchyTailUpperThm - Cauchy tail upper bound at the chosen center.";
+elbNonemptyThm::usage = "elbNonemptyThm - |- forall u. seqCauchy u ==> exists x. elb u x.";
+elbBddAboveThm::usage = "elbBddAboveThm - |- forall u. seqCauchy u ==> exists w. forall x. elb u x ==> realLe x w.";
+tailLowerMemThm::usage = "tailLowerMemThm - Cauchy tail lower center is an eventual lower bound.";
+tailUpperBoundThm::usage = "tailUpperBoundThm - Cauchy tail upper center is an upper bound for eventual lower bounds.";
+cauchyConvergesThm::usage = "cauchyConvergesThm - |- forall u. seqCauchy u ==> exists L. tendsto u L.";
+
 Begin["`Private`"];
 
 seqTy = tyFun[numTy, realTy];
@@ -2329,6 +2347,328 @@ existsMonoSubseqThm =
 
     body = HOL`Bool`DISJCASES[em, exPeak, chosenRise];
     HOL`Bool`GEN[uV, body]
+  ];
+
+seqCauchyTy = tyFun[seqTy, boolTy];
+elbTy = tyFun[seqTy, tyFun[realTy, boolTy]];
+
+seqCauchyCloseAtom[uT_, eT_, nT_, mT_] :=
+  realLtTm[seqRealAbs[realAddTm[mkComb[uT, nT], realNegTm[mkComb[uT, mT]]]], eT];
+
+seqCauchyTailAll[uT_, eT_, n0T_] :=
+  Module[{nC, mC},
+    nC = mkVar["nC", numTy]; mC = mkVar["mC", numTy];
+    forallTm[nC, forallTm[mC,
+      impTm[seqNatLe[n0T, nC],
+        impTm[seqNatLe[n0T, mC], seqCauchyCloseAtom[uT, eT, nC, mC]]]]]
+  ];
+
+seqCauchyBody[uT_] :=
+  Module[{eC, nC},
+    eC = mkVar["e", realTy]; nC = mkVar["N", numTy];
+    forallTm[eC, impTm[realLtTm[zeroRealTm[], eC],
+      existsTm[nC, seqCauchyTailAll[uT, eC, nC]]]]
+  ];
+
+seqElbAll[uT_, xT_, n0T_] :=
+  Module[{nE},
+    nE = mkVar["nE", numTy];
+    forallTm[nE, impTm[seqNatLe[n0T, nE], realLeTm[xT, mkComb[uT, nE]]]]
+  ];
+
+seqElbBody[uT_, xT_] :=
+  Module[{nE},
+    nE = mkVar["NE", numTy];
+    existsTm[nE, seqElbAll[uT, xT, nE]]
+  ];
+
+seqCauchyDefThm =
+  Module[{uV},
+    uV = mkVar["u", seqTy];
+    newDefinition[mkEq[mkVar["seqCauchy", seqCauchyTy],
+      mkAbs[uV, seqCauchyBody[uV]]]]
+  ];
+
+seqCauchyConst[] := mkConst["seqCauchy", seqCauchyTy];
+seqCauchyTm[uT_] := mkComb[seqCauchyConst[], uT];
+
+unfoldSeqCauchy[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[seqCauchyDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+elbDefThm =
+  Module[{uV, xV},
+    uV = mkVar["u", seqTy]; xV = mkVar["x", realTy];
+    newDefinition[mkEq[mkVar["elb", elbTy],
+      mkAbs[uV, mkAbs[xV, seqElbBody[uV, xV]]]]]
+  ];
+
+elbConst[] := mkConst["elb", elbTy];
+elbTm[uT_, xT_] := mkComb[mkComb[elbConst[], uT], xT];
+
+unfoldElb[uT_, xT_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[elbDefThm, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, xT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+seqArithAbsSubLeftConvThm =
+  Module[{aV, bV, eV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{aV, bV, eV},
+        impTm[realLtTm[realNegTm[realAddTm[aV, realNegTm[bV]]], eV],
+          realLtTm[realAddTm[bV, realNegTm[eV]], aV]]]]
+  ];
+
+seqArithAbsSubRightConvThm =
+  Module[{aV, bV, eV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{aV, bV, eV},
+        impTm[realLtTm[realAddTm[aV, realNegTm[bV]], eV],
+          realLtTm[aV, realAddTm[bV, eV]]]]]
+  ];
+
+seqArithCauchyLeftBoundThm =
+  Module[{sV, cV, xV, eV},
+    sV = mkVar["s", realTy]; cV = mkVar["c", realTy];
+    xV = mkVar["x", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{sV, cV, xV, eV},
+        seqImpList[{realLeTm[sV, realAddTm[cV, seqHalf[eV]]],
+          realLtTm[cV, realAddTm[xV, seqHalf[eV]]]},
+          realLtTm[realAddTm[sV, realNegTm[eV]], xV]]]]
+  ];
+
+seqArithCauchyRightBoundThm =
+  Module[{sV, cV, xV, eV},
+    sV = mkVar["s", realTy]; cV = mkVar["c", realTy];
+    xV = mkVar["x", realTy]; eV = mkVar["e", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{sV, cV, xV, eV},
+        seqImpList[{realLtTm[xV, realAddTm[cV, seqHalf[eV]]],
+          realLeTm[realAddTm[cV, realNegTm[seqHalf[eV]]], sV]},
+          realLtTm[xV, realAddTm[sV, eV]]]]]
+  ];
+
+realAbsSubLtLeftThm =
+  Module[{aV, bV, eV, diff, hAbsTm, hAbs, negLe, negLt, body},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; eV = mkVar["e", realTy];
+    diff = realAddTm[aV, realNegTm[bV]];
+    hAbsTm = realLtTm[seqRealAbs[diff], eV];
+    hAbs = ASSUME[hAbsTm];
+    negLe = HOL`Bool`SPEC[diff, realNegLeAbsThm];
+    negLt = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeLtTransThm, {realNegTm[diff], seqRealAbs[diff], eV}],
+      negLe], hAbs];
+    body = HOL`Bool`MP[seqSpecAll[seqArithAbsSubLeftConvThm, {aV, bV, eV}], negLt];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[eV,
+      HOL`Bool`DISCH[hAbsTm, body]]]]
+  ];
+
+realAbsSubLtRightThm =
+  Module[{aV, bV, eV, diff, hAbsTm, hAbs, diffLe, diffLt, body},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; eV = mkVar["e", realTy];
+    diff = realAddTm[aV, realNegTm[bV]];
+    hAbsTm = realLtTm[seqRealAbs[diff], eV];
+    hAbs = ASSUME[hAbsTm];
+    diffLe = HOL`Bool`SPEC[diff, realLeAbsSelfThm];
+    diffLt = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeLtTransThm, {diff, seqRealAbs[diff], eV}],
+      diffLe], hAbs];
+    body = HOL`Bool`MP[seqSpecAll[seqArithAbsSubRightConvThm, {aV, bV, eV}], diffLt];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[eV,
+      HOL`Bool`DISCH[hAbsTm, body]]]]
+  ];
+
+cauchyTailLowerThm =
+  Module[{uV, eV, n0V, nV, hTailTm, hTail, hLeTm, hLe, reflN, close, body},
+    uV = mkVar["u", seqTy]; eV = mkVar["e", realTy];
+    n0V = mkVar["N", numTy]; nV = mkVar["n", numTy];
+    hTailTm = seqCauchyTailAll[uV, eV, n0V]; hTail = ASSUME[hTailTm];
+    hLeTm = seqNatLe[n0V, nV]; hLe = ASSUME[hLeTm];
+    reflN = HOL`Bool`SPEC[n0V, HOL`Stdlib`Num`leqReflThm];
+    close = HOL`Bool`MP[HOL`Bool`MP[seqSpecAll[hTail, {nV, n0V}], hLe], reflN];
+    body = HOL`Bool`MP[
+      seqSpecAll[realAbsSubLtLeftThm, {mkComb[uV, nV], mkComb[uV, n0V], eV}],
+      close];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[eV, HOL`Bool`GEN[n0V, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hTailTm, HOL`Bool`DISCH[hLeTm, body]]]]]]
+  ];
+
+cauchyTailUpperThm =
+  Module[{uV, eV, n0V, nV, hTailTm, hTail, hLeTm, hLe, reflN, close, body},
+    uV = mkVar["u", seqTy]; eV = mkVar["e", realTy];
+    n0V = mkVar["N", numTy]; nV = mkVar["n", numTy];
+    hTailTm = seqCauchyTailAll[uV, eV, n0V]; hTail = ASSUME[hTailTm];
+    hLeTm = seqNatLe[n0V, nV]; hLe = ASSUME[hLeTm];
+    reflN = HOL`Bool`SPEC[n0V, HOL`Stdlib`Num`leqReflThm];
+    close = HOL`Bool`MP[HOL`Bool`MP[seqSpecAll[hTail, {nV, n0V}], hLe], reflN];
+    body = HOL`Bool`MP[
+      seqSpecAll[realAbsSubLtRightThm, {mkComb[uV, nV], mkComb[uV, n0V], eV}],
+      close];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[eV, HOL`Bool`GEN[n0V, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hTailTm, HOL`Bool`DISCH[hLeTm, body]]]]]]
+  ];
+
+tailLowerMemThm =
+  Module[{uV, eV, n0V, nV, hTailTm, hTail, hLeTm, hLe, lower, ltN, leN,
+          allN, exN, folded},
+    uV = mkVar["u", seqTy]; eV = mkVar["e", realTy]; n0V = mkVar["N", numTy];
+    nV = mkVar["nELB", numTy];
+    hTailTm = seqCauchyTailAll[uV, eV, n0V]; hTail = ASSUME[hTailTm];
+    lower = realAddTm[mkComb[uV, n0V], realNegTm[eV]];
+    hLeTm = seqNatLe[n0V, nV]; hLe = ASSUME[hLeTm];
+    ltN = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[cauchyTailLowerThm, {uV, eV, n0V, nV}], hTail], hLe];
+    leN = seqLtImpLeRule[ltN];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`DISCH[hLeTm, leN]];
+    exN = HOL`Bool`EXISTS[seqElbBody[uV, lower], n0V, allN];
+    folded = EQMP[HOL`Equal`SYM[unfoldElb[uV, lower]], exN];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[eV, HOL`Bool`GEN[n0V,
+      HOL`Bool`DISCH[hTailTm, folded]]]]
+  ];
+
+tailUpperBoundThm =
+  Module[{uV, eV, n0V, xV, mW, hTailTm, hTail, hElbTm, hElb, exM, hAllM,
+          kT, leN, leM, xLeK, kLtUpper, kLeUpper, xLeUpper, xImp, allX},
+    uV = mkVar["u", seqTy]; eV = mkVar["e", realTy]; n0V = mkVar["N", numTy];
+    xV = mkVar["xUB", realTy]; mW = mkVar["MW", numTy];
+    hTailTm = seqCauchyTailAll[uV, eV, n0V]; hTail = ASSUME[hTailTm];
+    hElbTm = elbTm[uV, xV]; hElb = ASSUME[hElbTm];
+    exM = EQMP[unfoldElb[uV, xV], hElb];
+    hAllM = ASSUME[seqElbAll[uV, xV, mW]];
+    kT = seqNatAdd[n0V, mW];
+    leN = seqLeqToSumLeft[n0V, mW];
+    leM = seqLeqToSumRight[n0V, mW];
+    xLeK = HOL`Bool`MP[HOL`Bool`SPEC[kT, hAllM], leM];
+    kLtUpper = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[cauchyTailUpperThm, {uV, eV, n0V, kT}], hTail], leN];
+    kLeUpper = seqLtImpLeRule[kLtUpper];
+    xLeUpper = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeTransThm, {xV, mkComb[uV, kT],
+        realAddTm[mkComb[uV, n0V], eV]}], xLeK], kLeUpper];
+    xImp = HOL`Bool`DISCH[hElbTm, HOL`Bool`CHOOSE[mW, exM, xLeUpper]];
+    allX = HOL`Bool`GEN[xV, xImp];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[eV, HOL`Bool`GEN[n0V,
+      HOL`Bool`DISCH[hTailTm, allX]]]]
+  ];
+
+elbNonemptyThm =
+  Module[{uV, nW, nV, xW, hC, cauchyUnfolded, exN, hTail, hLeTm, hLe,
+          lower, ltN, leN, allN, elbProof, exX, chosen},
+    uV = mkVar["u", seqTy]; nW = mkVar["NW", numTy]; nV = mkVar["nNE", numTy];
+    xW = mkVar["xW", realTy];
+    hC = ASSUME[seqCauchyTm[uV]];
+    cauchyUnfolded = EQMP[unfoldSeqCauchy[uV], hC];
+    exN = HOL`Bool`MP[HOL`Bool`SPEC[seqOneReal[], cauchyUnfolded],
+      HOL`Auto`RealArith`rnumPos[1]];
+    hTail = ASSUME[seqCauchyTailAll[uV, seqOneReal[], nW]];
+    lower = realAddTm[mkComb[uV, nW], realNegTm[seqOneReal[]]];
+    hLeTm = seqNatLe[nW, nV]; hLe = ASSUME[hLeTm];
+    ltN = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[cauchyTailLowerThm, {uV, seqOneReal[], nW, nV}], hTail], hLe];
+    leN = seqLtImpLeRule[ltN];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`DISCH[hLeTm, leN]];
+    elbProof = EQMP[HOL`Equal`SYM[unfoldElb[uV, lower]],
+      HOL`Bool`EXISTS[seqElbBody[uV, lower], nW, allN]];
+    exX = HOL`Bool`EXISTS[existsTm[xW, elbTm[uV, xW]], lower, elbProof];
+    chosen = HOL`Bool`CHOOSE[nW, exN, exX];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[seqCauchyTm[uV], chosen]]
+  ];
+
+elbBddAboveThm =
+  Module[{uV, nW, xV, mW, wW, hC, cauchyUnfolded, exN, hTail, upper, hElbTm,
+          hElb, exM, hAllM, kT, leN, leM, xLeK, kLtUpper, kLeUpper, xLeUpper,
+          xImp, allX, exW, chosen},
+    uV = mkVar["u", seqTy]; nW = mkVar["NW", numTy];
+    xV = mkVar["xBA", realTy]; mW = mkVar["MW", numTy]; wW = mkVar["wW", realTy];
+    hC = ASSUME[seqCauchyTm[uV]];
+    cauchyUnfolded = EQMP[unfoldSeqCauchy[uV], hC];
+    exN = HOL`Bool`MP[HOL`Bool`SPEC[seqOneReal[], cauchyUnfolded],
+      HOL`Auto`RealArith`rnumPos[1]];
+    hTail = ASSUME[seqCauchyTailAll[uV, seqOneReal[], nW]];
+    upper = realAddTm[mkComb[uV, nW], seqOneReal[]];
+    hElbTm = elbTm[uV, xV]; hElb = ASSUME[hElbTm];
+    exM = EQMP[unfoldElb[uV, xV], hElb];
+    hAllM = ASSUME[seqElbAll[uV, xV, mW]];
+    kT = seqNatAdd[nW, mW];
+    leN = seqLeqToSumLeft[nW, mW];
+    leM = seqLeqToSumRight[nW, mW];
+    xLeK = HOL`Bool`MP[HOL`Bool`SPEC[kT, hAllM], leM];
+    kLtUpper = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[cauchyTailUpperThm, {uV, seqOneReal[], nW, kT}], hTail], leN];
+    kLeUpper = seqLtImpLeRule[kLtUpper];
+    xLeUpper = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeTransThm, {xV, mkComb[uV, kT], upper}], xLeK], kLeUpper];
+    xImp = HOL`Bool`DISCH[hElbTm, HOL`Bool`CHOOSE[mW, exM, xLeUpper]];
+    allX = HOL`Bool`GEN[xV, xImp];
+    exW = HOL`Bool`EXISTS[existsTm[wW,
+      forallTm[xV, impTm[elbTm[uV, xV], realLeTm[xV, wW]]]], upper, allX];
+    chosen = HOL`Bool`CHOOSE[nW, exN, exW];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[seqCauchyTm[uV], chosen]]
+  ];
+
+cauchyConvergesThm =
+  Module[{uV, eV, nV, nW, lW, hC, sSet, sT, nonempty, bounded, hE, dT,
+          dPos, cauchyUnfolded, exN, hTail, hLeTm, hLe, lower, upper,
+          lowerMem, supUpperAll, lowerLeS, upperBound, supLeUpper, reflN,
+          closeCenter, centerLtNAdd, nLtUpper, hLeft, hRight, absClose, impN,
+          allN, exNTend, chosenN, epsBody, tendBody, foldedTend, exL},
+    uV = mkVar["u", seqTy]; eV = mkVar["e", realTy]; nV = mkVar["n", numTy];
+    nW = mkVar["NW", numTy]; lW = mkVar["L", realTy];
+    hC = ASSUME[seqCauchyTm[uV]];
+    sSet = mkComb[elbConst[], uV];
+    sT = seqRealSup[sSet];
+    nonempty = HOL`Bool`MP[HOL`Bool`SPEC[uV, elbNonemptyThm], hC];
+    bounded = HOL`Bool`MP[HOL`Bool`SPEC[uV, elbBddAboveThm], hC];
+    hE = ASSUME[realLtTm[zeroRealTm[], eV]];
+    dT = seqHalf[eV];
+    dPos = HOL`Bool`MP[HOL`Bool`SPEC[eV, seqArithHalfPosThm], hE];
+    cauchyUnfolded = EQMP[unfoldSeqCauchy[uV], hC];
+    exN = HOL`Bool`MP[HOL`Bool`SPEC[dT, cauchyUnfolded], dPos];
+    hTail = ASSUME[seqCauchyTailAll[uV, dT, nW]];
+    hLeTm = seqNatLe[nW, nV]; hLe = ASSUME[hLeTm];
+    lower = realAddTm[mkComb[uV, nW], realNegTm[dT]];
+    upper = realAddTm[mkComb[uV, nW], dT];
+    lowerMem = HOL`Bool`MP[seqSpecAll[tailLowerMemThm, {uV, dT, nW}], hTail];
+    supUpperAll = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[sSet, realSupUpperThm],
+      nonempty], bounded];
+    lowerLeS = HOL`Bool`MP[HOL`Bool`SPEC[lower, supUpperAll], lowerMem];
+    upperBound = HOL`Bool`MP[seqSpecAll[tailUpperBoundThm, {uV, dT, nW}], hTail];
+    supLeUpper = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realSupLeastThm, {sSet, upper}], nonempty], bounded], upperBound];
+    reflN = HOL`Bool`SPEC[nW, HOL`Stdlib`Num`leqReflThm];
+    closeCenter = HOL`Bool`MP[HOL`Bool`MP[seqSpecAll[hTail, {nW, nV}],
+      reflN], hLe];
+    centerLtNAdd = HOL`Bool`MP[
+      seqSpecAll[realAbsSubLtRightThm, {mkComb[uV, nW], mkComb[uV, nV], dT}],
+      closeCenter];
+    nLtUpper = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[cauchyTailUpperThm, {uV, dT, nW, nV}], hTail], hLe];
+    hLeft = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqArithCauchyLeftBoundThm, {sT, mkComb[uV, nW], mkComb[uV, nV], eV}],
+      supLeUpper], centerLtNAdd];
+    hRight = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqArithCauchyRightBoundThm, {sT, mkComb[uV, nW], mkComb[uV, nV], eV}],
+      nLtUpper], lowerLeS];
+    absClose = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realAbsSubLtThm, {mkComb[uV, nV], sT, eV}], hLeft], hRight];
+    impN = HOL`Bool`DISCH[hLeTm, absClose];
+    allN = HOL`Bool`GEN[nV, impN];
+    exNTend = HOL`Bool`EXISTS[existsTm[mkVar["N", numTy],
+      seqLimitAll[uV, sT, eV, mkVar["N", numTy]]], nW, allN];
+    chosenN = HOL`Bool`CHOOSE[nW, exN, exNTend];
+    epsBody = HOL`Bool`DISCH[realLtTm[zeroRealTm[], eV], chosenN];
+    tendBody = HOL`Bool`GEN[eV, epsBody];
+    foldedTend = EQMP[HOL`Equal`SYM[unfoldTendsto[uV, sT]], tendBody];
+    exL = HOL`Bool`EXISTS[existsTm[lW, tendstoTm[uV, lW]], sT, foldedTend];
+    HOL`Bool`GEN[uV, HOL`Bool`DISCH[seqCauchyTm[uV], exL]]
   ];
 
 End[];

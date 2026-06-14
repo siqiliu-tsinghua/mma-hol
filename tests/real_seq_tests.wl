@@ -78,6 +78,47 @@ tendstoBodyRST[aT_, lT_] :=
       existsRST[nV, limitAllRST[aT, lT, eV, nV]]]]
   ];
 
+rAddCongLeftRST[eq_, cT_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[HOL`Stdlib`Real`realAddConst[], eq], REFL[cT]];
+
+rAddCongRightRST[cT_, eq_] :=
+  HOL`Equal`APTERM[mkComb[HOL`Stdlib`Real`realAddConst[], cT], eq];
+
+rAbsCongRST[eq_] := HOL`Equal`APTERM[HOL`Stdlib`Real`realAbsConst[], eq];
+
+rLtCongRST[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[HOL`Stdlib`Real`realLtConst[], eqLeft], eqRight];
+
+cauchyCloseRST[uT_, eT_, nT_, mT_] :=
+  rLtRST[rAbsRST[rAddRST[mkComb[uT, nT], rNegRST[mkComb[uT, mT]]]], eT];
+
+cauchyTailAllRST[uT_, eT_, n0T_] :=
+  Module[{nV, mV},
+    nV = mkVar["nC", numTyRST]; mV = mkVar["mC", numTyRST];
+    forallRST[nV, forallRST[mV,
+      impRST[nLeRST[n0T, nV], impRST[nLeRST[n0T, mV],
+        cauchyCloseRST[uT, eT, nV, mV]]]]]
+  ];
+
+seqCauchyBodyRST[uT_] :=
+  Module[{eV, nV},
+    eV = mkVar["e", realTyRST]; nV = mkVar["N", numTyRST];
+    forallRST[eV, impRST[rLtRST[zeroRealRST[], eV],
+      existsRST[nV, cauchyTailAllRST[uT, eV, nV]]]]
+  ];
+
+elbAllRST[uT_, xT_, n0T_] :=
+  Module[{nV},
+    nV = mkVar["nE", numTyRST];
+    forallRST[nV, impRST[nLeRST[n0T, nV], rLeRST[xT, mkComb[uT, nV]]]]
+  ];
+
+elbBodyRST[uT_, xT_] :=
+  Module[{nV},
+    nV = mkVar["NE", numTyRST];
+    existsRST[nV, elbAllRST[uT, xT, nV]]
+  ];
+
 eventuallyAllRST[pT_, n0T_] :=
   Module[{nV},
     nV = mkVar["n", numTyRST];
@@ -227,6 +268,32 @@ constBddBelowRST[cT_] :=
     EQMP[HOL`Equal`SYM[clean], exB]
   ];
 
+constCauchyRST[cT_] :=
+  Module[{eV, nV, mV, n0V, seq, hE, appN, appM, leftEq, negEq, argEq, zeroEq,
+          absEq, ltGoal, impM, impN, allM, allN, exN, body, folded},
+    eV = mkVar["e", realTyRST]; nV = mkVar["n", numTyRST];
+    mV = mkVar["m", numTyRST]; n0V = mkVar["N", numTyRST];
+    seq = constSeqRST[cT];
+    hE = ASSUME[rLtRST[zeroRealRST[], eV]];
+    appN = HOL`Equal`BETACONV[mkComb[seq, nV]];
+    appM = HOL`Equal`BETACONV[mkComb[seq, mV]];
+    leftEq = rAddCongLeftRST[appN, rNegRST[mkComb[seq, mV]]];
+    negEq = HOL`Equal`APTERM[HOL`Stdlib`Real`realNegConst[], appM];
+    argEq = TRANS[leftEq, rAddCongRightRST[cT, negEq]];
+    zeroEq = TRANS[argEq, HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realAddNegThm]];
+    absEq = TRANS[rAbsCongRST[zeroEq], HOL`Stdlib`Real`realAbsZeroThm];
+    ltGoal = EQMP[rLtCongRST[HOL`Equal`SYM[absEq], REFL[eV]], hE];
+    impM = HOL`Bool`DISCH[nLeRST[HOL`Stdlib`Num`zeroConst[], mV], ltGoal];
+    impN = HOL`Bool`DISCH[nLeRST[HOL`Stdlib`Num`zeroConst[], nV], impM];
+    allM = HOL`Bool`GEN[mV, impN];
+    allN = HOL`Bool`GEN[nV, allM];
+    exN = HOL`Bool`EXISTS[existsRST[n0V, cauchyTailAllRST[seq, eV, n0V]],
+      HOL`Stdlib`Num`zeroConst[], allN];
+    body = HOL`Bool`GEN[eV, HOL`Bool`DISCH[rLtRST[zeroRealRST[], eV], exN]];
+    folded = EQMP[HOL`Equal`SYM[HOL`Stdlib`Real`unfoldSeqCauchy[seq]], body];
+    folded
+  ];
+
 assertConclRST[name_String, th_, expected_] := (
   HOLTest`assertEq[hyp[th], {}, name <> " no hyps"];
   HOLTest`assertTrue[aconv[concl[th], expected], name <> " concl"]);
@@ -249,6 +316,28 @@ HOLTest`runTests["stdlib/Real/Seq: definitions and builders",
     rhs = concl[th][[2]];
     HOLTest`assertEq[rhs[[1]], mkConst["∀", tyFun[tyFun[realTyRST, boolTy], boolTy]],
       "unfoldTendsto rhs starts forall"]]];
+
+HOLTest`runTests["stdlib/Real/Seq: cauchy definitions and builders",
+  Module[{uV, xV, th, expected},
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`seqCauchyDefThm], {},
+      "seqCauchyDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`seqCauchyDefThm],
+      "seqCauchyDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`elbDefThm], {}, "elbDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`elbDefThm], "elbDef is thm"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`seqCauchyConst[]],
+      tyFun[seqTyRST, boolTy], "seqCauchyConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`elbConst[]],
+      tyFun[seqTyRST, tyFun[realTyRST, boolTy]], "elbConst type"];
+
+    uV = mkVar["uCauchyRST", seqTyRST]; xV = mkVar["xElbRST", realTyRST];
+    th = HOL`Stdlib`Real`unfoldSeqCauchy[uV];
+    expected = mkEq[HOL`Stdlib`Real`seqCauchyTm[uV], seqCauchyBodyRST[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldSeqCauchy body"];
+
+    th = HOL`Stdlib`Real`unfoldElb[uV, xV];
+    expected = mkEq[HOL`Stdlib`Real`elbTm[uV, xV], elbBodyRST[uV, xV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldElb body"]]];
 
 HOLTest`runTests["stdlib/Real/Seq: eventually definitions and builders",
   Module[{pV, uV, th, expected},
@@ -684,6 +773,81 @@ HOLTest`runTests["stdlib/Real/Seq: subsequence theorem shapes",
     expected = monoSubseqGoalRST[uV];
     HOLTest`assertTrue[aconv[concl[th], expected],
       "existsMonoSubseq instantiated shape"]]];
+
+HOLTest`runTests["stdlib/Real/Seq: cauchy theorem objects",
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAbsSubLtLeftThm],
+    "realAbsSubLtLeftThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAbsSubLtLeftThm], {},
+    "realAbsSubLtLeftThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`realAbsSubLtRightThm],
+    "realAbsSubLtRightThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`realAbsSubLtRightThm], {},
+    "realAbsSubLtRightThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`cauchyTailLowerThm],
+    "cauchyTailLowerThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`cauchyTailLowerThm], {},
+    "cauchyTailLowerThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`cauchyTailUpperThm],
+    "cauchyTailUpperThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`cauchyTailUpperThm], {},
+    "cauchyTailUpperThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`elbNonemptyThm],
+    "elbNonemptyThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`elbNonemptyThm], {},
+    "elbNonemptyThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`elbBddAboveThm],
+    "elbBddAboveThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`elbBddAboveThm], {},
+    "elbBddAboveThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`tailLowerMemThm],
+    "tailLowerMemThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`tailLowerMemThm], {},
+    "tailLowerMemThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`tailUpperBoundThm],
+    "tailUpperBoundThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`tailUpperBoundThm], {},
+    "tailUpperBoundThm no hyps"];
+  HOLTest`assertTrue[isThm[HOL`Stdlib`Real`cauchyConvergesThm],
+    "cauchyConvergesThm is thm"];
+  HOLTest`assertEq[hyp[HOL`Stdlib`Real`cauchyConvergesThm], {},
+    "cauchyConvergesThm no hyps"]];
+
+HOLTest`runTests["stdlib/Real/Seq: cauchy abs directions and capstone shape",
+  Module[{oneR, sumZero, absEq, hAbs, inst, th, expected, uV, lV},
+    oneR = rnumRST[1];
+    sumZero = HOL`Bool`SPEC[oneR, HOL`Stdlib`Real`realAddNegThm];
+    absEq = TRANS[rAbsCongRST[sumZero], HOL`Stdlib`Real`realAbsZeroThm];
+    hAbs = EQMP[rLtCongRST[HOL`Equal`SYM[absEq], REFL[oneR]],
+      HOL`Auto`RealArith`rnumPos[1]];
+
+    inst = specAllRST[HOL`Stdlib`Real`realAbsSubLtLeftThm, {oneR, oneR, oneR}];
+    th = HOL`Bool`MP[inst, hAbs];
+    expected = rLtRST[rAddRST[oneR, rNegRST[oneR]], oneR];
+    assertConclRST["realAbsSubLtLeft concrete", th, expected];
+
+    inst = specAllRST[HOL`Stdlib`Real`realAbsSubLtRightThm, {oneR, oneR, oneR}];
+    th = HOL`Bool`MP[inst, hAbs];
+    expected = rLtRST[oneR, rAddRST[oneR, oneR]];
+    assertConclRST["realAbsSubLtRight concrete", th, expected];
+
+    uV = mkVar["uCapRST", seqTyRST]; lV = mkVar["L", realTyRST];
+    th = HOL`Bool`SPEC[uV, HOL`Stdlib`Real`cauchyConvergesThm];
+    expected = impRST[HOL`Stdlib`Real`seqCauchyTm[uV],
+      existsRST[lV, HOL`Stdlib`Real`tendstoTm[uV, lV]]];
+    assertConclRST["cauchyConverges instantiated shape", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: cauchy convergence on constants",
+  Module[{cV, cSeq, cCauchy, inst, th, expected, lV},
+    cV = mkVar["cCauchyRST", realTyRST];
+    cSeq = constSeqRST[cV];
+    cCauchy = constCauchyRST[cV];
+    assertConclRST["constant seqCauchy", cCauchy, HOL`Stdlib`Real`seqCauchyTm[cSeq]];
+
+    inst = HOL`Bool`SPEC[cSeq, HOL`Stdlib`Real`cauchyConvergesThm];
+    th = HOL`Bool`MP[inst, cCauchy];
+    lV = mkVar["L", realTyRST];
+    expected = existsRST[lV, HOL`Stdlib`Real`tendstoTm[cSeq, lV]];
+    assertConclRST["constant cauchy converges", th, expected]]];
 
 HOLTest`runTests["stdlib/Real/Seq: constant peaks and identity index",
   Module[{cV, nV, idPhi, idSub, twoN, oneN, geAll, geTwo, monoAll, mono12,
