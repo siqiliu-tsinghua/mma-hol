@@ -122,6 +122,17 @@ tailLowerMemThm::usage = "tailLowerMemThm - Cauchy tail lower center is an event
 tailUpperBoundThm::usage = "tailUpperBoundThm - Cauchy tail upper center is an upper bound for eventual lower bounds.";
 cauchyConvergesThm::usage = "cauchyConvergesThm - |- forall u. seqCauchy u ==> exists L. tendsto u L.";
 
+nestedIntervalsDefThm::usage = "nestedIntervalsDefThm - |- nestedIntervals = (lambda a b. (forall n. realLe (a n) (b n)) /\\ (forall n m. n <= m ==> realLe (a n) (a m)) /\\ (forall n m. n <= m ==> realLe (b m) (b n))).";
+nestedIntervalsConst::usage = "nestedIntervalsConst[] - nestedIntervals : (num -> real) -> (num -> real) -> bool.";
+nestedIntervalsTm::usage = "nestedIntervalsTm[a, b] - builds nestedIntervals a b.";
+unfoldNestedIntervals::usage = "unfoldNestedIntervals[a, b] - proves the beta-reduced nestedIntervals definition at a and b.";
+intervalLengthsToZeroDefThm::usage = "intervalLengthsToZeroDefThm - |- intervalLengthsToZero = (lambda a b. tendsto (lambda n. realAdd (b n) (realNeg (a n))) 0).";
+intervalLengthsToZeroConst::usage = "intervalLengthsToZeroConst[] - intervalLengthsToZero : (num -> real) -> (num -> real) -> bool.";
+intervalLengthsToZeroTm::usage = "intervalLengthsToZeroTm[a, b] - builds intervalLengthsToZero a b.";
+unfoldIntervalLengthsToZero::usage = "unfoldIntervalLengthsToZero[a, b] - proves the beta-reduced intervalLengthsToZero definition at a and b.";
+nestedExistsPointThm::usage = "nestedExistsPointThm - |- forall a b. nestedIntervals a b ==> exists x. forall n. realLe (a n) x /\\ realLe x (b n).";
+nestedUniquePointThm::usage = "nestedUniquePointThm - |- forall a b. nestedIntervals a b ==> intervalLengthsToZero a b ==> exists x. (forall n. realLe (a n) x /\\ realLe x (b n)) /\\ forall y. (forall n. realLe (a n) y /\\ realLe y (b n)) ==> y = x.";
+
 Begin["`Private`"];
 
 seqTy = tyFun[numTy, realTy];
@@ -2669,6 +2680,321 @@ cauchyConvergesThm =
     foldedTend = EQMP[HOL`Equal`SYM[unfoldTendsto[uV, sT]], tendBody];
     exL = HOL`Bool`EXISTS[existsTm[lW, tendstoTm[uV, lW]], sT, foldedTend];
     HOL`Bool`GEN[uV, HOL`Bool`DISCH[seqCauchyTm[uV], exL]]
+  ];
+
+nestedIntervalsTy = tyFun[seqTy, tyFun[seqTy, boolTy]];
+intervalLengthsToZeroTy = tyFun[seqTy, tyFun[seqTy, boolTy]];
+
+seqLengthTerm[aT_, bT_, nT_] :=
+  realAddTm[mkComb[bT, nT], realNegTm[mkComb[aT, nT]]];
+
+seqLengthSeq[aT_, bT_] :=
+  Module[{nLen},
+    nLen = mkVar["nLen", numTy];
+    mkAbs[nLen, seqLengthTerm[aT, bT, nLen]]
+  ];
+
+seqNestedIntervalsBody[aT_, bT_] :=
+  Module[{nIv, mIv},
+    nIv = mkVar["n", numTy]; mIv = mkVar["m", numTy];
+    conjTm[
+      forallTm[nIv, realLeTm[mkComb[aT, nIv], mkComb[bT, nIv]]],
+      conjTm[
+        forallTm[nIv, forallTm[mIv,
+          impTm[seqNatLe[nIv, mIv],
+            realLeTm[mkComb[aT, nIv], mkComb[aT, mIv]]]]],
+        forallTm[nIv, forallTm[mIv,
+          impTm[seqNatLe[nIv, mIv],
+            realLeTm[mkComb[bT, mIv], mkComb[bT, nIv]]]]]]]
+  ];
+
+seqIntervalLengthsToZeroBody[aT_, bT_] :=
+  tendstoTm[seqLengthSeq[aT, bT], zeroRealTm[]];
+
+seqCommonPointBody[aT_, bT_, xT_] :=
+  Module[{nCp},
+    nCp = mkVar["n", numTy];
+    forallTm[nCp, conjTm[
+      realLeTm[mkComb[aT, nCp], xT],
+      realLeTm[xT, mkComb[bT, nCp]]]]
+  ];
+
+seqNestedExistsBody[aT_, bT_] :=
+  Module[{xPt},
+    xPt = mkVar["x", realTy];
+    existsTm[xPt, seqCommonPointBody[aT, bT, xPt]]
+  ];
+
+seqNestedUniqueBody[aT_, bT_] :=
+  Module[{xPt, yPt},
+    xPt = mkVar["x", realTy]; yPt = mkVar["y", realTy];
+    existsTm[xPt, conjTm[seqCommonPointBody[aT, bT, xPt],
+      forallTm[yPt, impTm[seqCommonPointBody[aT, bT, yPt], mkEq[yPt, xPt]]]]]
+  ];
+
+seqLengthCloseAtom[aT_, bT_, eT_, nT_] :=
+  realLtTm[seqRealAbs[realAddTm[seqLengthTerm[aT, bT, nT], realNegTm[zeroRealTm[]]]], eT];
+
+seqLengthCloseAll[aT_, bT_, eT_, n0T_] :=
+  Module[{nLc},
+    nLc = mkVar["n", numTy];
+    forallTm[nLc, impTm[seqNatLe[n0T, nLc], seqLengthCloseAtom[aT, bT, eT, nLc]]]
+  ];
+
+nestedIntervalsDefThm =
+  Module[{aV, bV},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    newDefinition[mkEq[mkVar["nestedIntervals", nestedIntervalsTy],
+      mkAbs[aV, mkAbs[bV, seqNestedIntervalsBody[aV, bV]]]]]
+  ];
+
+nestedIntervalsConst[] := mkConst["nestedIntervals", nestedIntervalsTy];
+nestedIntervalsTm[aT_, bT_] := mkComb[mkComb[nestedIntervalsConst[], aT], bT];
+
+unfoldNestedIntervals[aT_, bT_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[nestedIntervalsDefThm, aT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, bT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+intervalLengthsToZeroDefThm =
+  Module[{aV, bV},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    newDefinition[mkEq[mkVar["intervalLengthsToZero", intervalLengthsToZeroTy],
+      mkAbs[aV, mkAbs[bV, seqIntervalLengthsToZeroBody[aV, bV]]]]]
+  ];
+
+intervalLengthsToZeroConst[] := mkConst["intervalLengthsToZero", intervalLengthsToZeroTy];
+intervalLengthsToZeroTm[aT_, bT_] := mkComb[mkComb[intervalLengthsToZeroConst[], aT], bT];
+
+unfoldIntervalLengthsToZero[aT_, bT_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[intervalLengthsToZeroDefThm, aT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, bT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+seqArithGapLeLengthThm =
+  Module[{anV, bnV, xV, yV},
+    anV = mkVar["an", realTy]; bnV = mkVar["bn", realTy];
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{anV, bnV, xV, yV},
+        seqImpList[{realLeTm[xV, bnV], realLeTm[anV, yV]},
+          realLeTm[realAddTm[xV, realNegTm[yV]], realAddTm[bnV, realNegTm[anV]]]]]]
+  ];
+
+seqArithGapPosThm =
+  Module[{xV, yV},
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqForallList[{xV, yV},
+        impTm[realLtTm[yV, xV], realLtTm[zeroRealTm[], realAddTm[xV, realNegTm[yV]]]]]]
+  ];
+
+seqArithAddNegZeroThm =
+  Module[{zV},
+    zV = mkVar["z", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      forallTm[zV, mkEq[realAddTm[zV, realNegTm[zeroRealTm[]]], zV]]]
+  ];
+
+upperEndpointUBThm =
+  Module[{aV, bV, nV, xV, mW, range, hNestTm, hNest, nestUnfolded,
+          leftAll, incAll, decAll, hRangeTm, hRange, betaRangeX, exRangeM,
+          hEq, bN, total, hMleN, incMN, leNB, transA, branchM, hNleM, leMB,
+          decNM, transB, branchN, bodyCases, chosenM, impX, allX, dischNest},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    nV = mkVar["n", numTy]; xV = mkVar["xUB", realTy]; mW = mkVar["mUB", numTy];
+    range = seqRangeTm[aV]; bN = mkComb[bV, nV];
+    hNestTm = nestedIntervalsTm[aV, bV]; hNest = ASSUME[hNestTm];
+    nestUnfolded = EQMP[unfoldNestedIntervals[aV, bV], hNest];
+    leftAll = HOL`Bool`CONJUNCT1[nestUnfolded];
+    incAll = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[nestUnfolded]];
+    decAll = HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[nestUnfolded]];
+    hRangeTm = mkComb[range, xV]; hRange = ASSUME[hRangeTm];
+    betaRangeX = HOL`Equal`BETACONV[mkComb[range, xV]];
+    exRangeM = EQMP[betaRangeX, hRange];
+    hEq = ASSUME[mkEq[xV, mkComb[aV, mW]]];
+    total = HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mW, HOL`Stdlib`Num`leqTotalThm]];
+
+    hMleN = ASSUME[seqNatLe[mW, nV]];
+    incMN = HOL`Bool`MP[seqSpecAll[incAll, {mW, nV}], hMleN];
+    leNB = HOL`Bool`SPEC[nV, leftAll];
+    transA = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeTransThm, {mkComb[aV, mW], mkComb[aV, nV], bN}],
+      incMN], leNB];
+    branchM = EQMP[HOL`Equal`SYM[seqRealLeCong[hEq, REFL[bN]]], transA];
+
+    hNleM = ASSUME[seqNatLe[nV, mW]];
+    leMB = HOL`Bool`SPEC[mW, leftAll];
+    decNM = HOL`Bool`MP[seqSpecAll[decAll, {nV, mW}], hNleM];
+    transB = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeTransThm, {mkComb[aV, mW], mkComb[bV, mW], bN}],
+      leMB], decNM];
+    branchN = EQMP[HOL`Equal`SYM[seqRealLeCong[hEq, REFL[bN]]], transB];
+
+    bodyCases = HOL`Bool`DISJCASES[total, branchM, branchN];
+    chosenM = HOL`Bool`CHOOSE[mW, exRangeM, bodyCases];
+    impX = HOL`Bool`DISCH[hRangeTm, chosenM];
+    allX = HOL`Bool`GEN[xV, impX];
+    dischNest = HOL`Bool`DISCH[hNestTm, allX];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[nV, dischNest]]]
+  ];
+
+nestedRangeBddAboveThm =
+  Module[{aV, bV, wV, xV, range, hNestTm, hNest, ubAll, exW},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    wV = mkVar["w", realTy]; xV = mkVar["xBA", realTy];
+    range = seqRangeTm[aV];
+    hNestTm = nestedIntervalsTm[aV, bV]; hNest = ASSUME[hNestTm];
+    ubAll = HOL`Bool`MP[seqSpecAll[upperEndpointUBThm, {aV, bV, zeroN[]}], hNest];
+    exW = HOL`Bool`EXISTS[
+      existsTm[wV, forallTm[xV, impTm[mkComb[range, xV], realLeTm[xV, wV]]]],
+      mkComb[bV, zeroN[]], ubAll];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[hNestTm, exW]]]
+  ];
+
+supInIntervalThm =
+  Module[{aV, bV, nV, range, sup, hNestTm, hNest, nonempty, bounded,
+          supUpperAll, memN, left, ubN, right, both},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy]; nV = mkVar["n", numTy];
+    range = seqRangeTm[aV]; sup = seqRealSup[range];
+    hNestTm = nestedIntervalsTm[aV, bV]; hNest = ASSUME[hNestTm];
+    nonempty = seqRangeNonemptyThm[range, aV];
+    bounded = HOL`Bool`MP[seqSpecAll[nestedRangeBddAboveThm, {aV, bV}], hNest];
+    supUpperAll = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[range, realSupUpperThm],
+      nonempty], bounded];
+    memN = seqRangeMemThm[range, aV, nV];
+    left = HOL`Bool`MP[HOL`Bool`SPEC[mkComb[aV, nV], supUpperAll], memN];
+    ubN = HOL`Bool`MP[seqSpecAll[upperEndpointUBThm, {aV, bV, nV}], hNest];
+    right = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realSupLeastThm, {range, mkComb[bV, nV]}], nonempty], bounded], ubN];
+    both = HOL`Bool`CONJ[left, right];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hNestTm, both]]]]
+  ];
+
+commonGapLeLengthThm =
+  Module[{aV, bV, xV, yV, nV, hXTm, hYTm, hX, hY, xN, yN, xLeB,
+          aLeY, gapLe, allN},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy]; nV = mkVar["n", numTy];
+    hXTm = seqCommonPointBody[aV, bV, xV]; hYTm = seqCommonPointBody[aV, bV, yV];
+    hX = ASSUME[hXTm]; hY = ASSUME[hYTm];
+    xN = HOL`Bool`SPEC[nV, hX]; yN = HOL`Bool`SPEC[nV, hY];
+    xLeB = HOL`Bool`CONJUNCT2[xN]; aLeY = HOL`Bool`CONJUNCT1[yN];
+    gapLe = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[seqArithGapLeLengthThm,
+        {mkComb[aV, nV], mkComb[bV, nV], xV, yV}], xLeB], aLeY];
+    allN = HOL`Bool`GEN[nV, gapLe];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      HOL`Bool`DISCH[hXTm, HOL`Bool`DISCH[hYTm, allN]]]]]]
+  ];
+
+commonPointLeThm =
+  Module[{aV, bV, xV, yV, nW, hNestTm, hLenTm, hXTm, hYTm, hNest,
+          hLen, hX, hY, goal, hNotLe, ltYX, eps, epsPos, lenSeq,
+          hLenTend, lenUnfolded, exN, hAllCloseTm, hAllClose, closeRaw,
+          leRefl, lenN, nestUnfolded, leftAll, leAB, lenNonneg, dropZero,
+          closeNoZero, absLenEq, lengthLt, gapAll, gapLe, badLt, notBad,
+          ff, chosenN, body},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy]; nW = mkVar["NW", numTy];
+    hNestTm = nestedIntervalsTm[aV, bV]; hLenTm = intervalLengthsToZeroTm[aV, bV];
+    hXTm = seqCommonPointBody[aV, bV, xV]; hYTm = seqCommonPointBody[aV, bV, yV];
+    hNest = ASSUME[hNestTm]; hLen = ASSUME[hLenTm];
+    hX = ASSUME[hXTm]; hY = ASSUME[hYTm];
+    goal = realLeTm[xV, yV];
+    hNotLe = ASSUME[notTm[goal]];
+    ltYX = EQMP[seqSpecAll[HOL`Auto`RealArith`realNotLeLtThm, {xV, yV}], hNotLe];
+    eps = realAddTm[xV, realNegTm[yV]];
+    epsPos = HOL`Bool`MP[seqSpecAll[seqArithGapPosThm, {xV, yV}], ltYX];
+    lenSeq = seqLengthSeq[aV, bV];
+    hLenTend = EQMP[unfoldIntervalLengthsToZero[aV, bV], hLen];
+    lenUnfolded = EQMP[seqBetaClean[unfoldTendsto[lenSeq, zeroRealTm[]]], hLenTend];
+    exN = HOL`Bool`MP[HOL`Bool`SPEC[eps, lenUnfolded], epsPos];
+    hAllCloseTm = seqLengthCloseAll[aV, bV, eps, nW];
+    hAllClose = ASSUME[hAllCloseTm];
+    leRefl = HOL`Bool`SPEC[nW, HOL`Stdlib`Num`leqReflThm];
+    closeRaw = HOL`Bool`MP[HOL`Bool`SPEC[nW, hAllClose], leRefl];
+    lenN = seqLengthTerm[aV, bV, nW];
+    nestUnfolded = EQMP[unfoldNestedIntervals[aV, bV], hNest];
+    leftAll = HOL`Bool`CONJUNCT1[nestUnfolded];
+    leAB = HOL`Bool`SPEC[nW, leftAll];
+    lenNonneg = EQMP[
+      seqSpecAll[realLeSubNonnegThm, {mkComb[aV, nW], mkComb[bV, nW]}], leAB];
+    dropZero = HOL`Bool`SPEC[lenN, seqArithAddNegZeroThm];
+    closeNoZero = EQMP[seqRealLtCong[seqRealAbsCong[dropZero], REFL[eps]], closeRaw];
+    absLenEq = HOL`Bool`MP[HOL`Bool`SPEC[lenN, realAbsPosThm], lenNonneg];
+    lengthLt = EQMP[seqRealLtCong[absLenEq, REFL[eps]], closeNoZero];
+    gapAll = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[commonGapLeLengthThm, {aV, bV, xV, yV}], hX], hY];
+    gapLe = HOL`Bool`SPEC[nW, gapAll];
+    badLt = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeLtTransThm, {eps, lenN, eps}], gapLe], lengthLt];
+    notBad = HOL`Bool`SPEC[eps, HOL`Auto`RealArith`realLtIrreflThm];
+    ff = HOL`Bool`MP[HOL`Bool`NOTELIM[notBad], badLt];
+    chosenN = HOL`Bool`CHOOSE[nW, exN, ff];
+    body = HOL`Bool`CCONTR[goal, chosenN];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      HOL`Bool`DISCH[hNestTm, HOL`Bool`DISCH[hLenTm,
+        HOL`Bool`DISCH[hXTm, HOL`Bool`DISCH[hYTm, body]]]]]]]]
+  ];
+
+commonPointsEqualThm =
+  Module[{aV, bV, xV, yV, hNestTm, hLenTm, hXTm, hYTm, hNest, hLen,
+          hX, hY, leXY, leYX, eqYX},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    xV = mkVar["x", realTy]; yV = mkVar["y", realTy];
+    hNestTm = nestedIntervalsTm[aV, bV]; hLenTm = intervalLengthsToZeroTm[aV, bV];
+    hXTm = seqCommonPointBody[aV, bV, xV]; hYTm = seqCommonPointBody[aV, bV, yV];
+    hNest = ASSUME[hNestTm]; hLen = ASSUME[hLenTm];
+    hX = ASSUME[hXTm]; hY = ASSUME[hYTm];
+    leXY = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[commonPointLeThm, {aV, bV, xV, yV}], hNest], hLen], hX], hY];
+    leYX = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[commonPointLeThm, {aV, bV, yV, xV}], hNest], hLen], hY], hX];
+    eqYX = HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[realLeAntisymThm, {yV, xV}], leYX], leXY];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      HOL`Bool`DISCH[hNestTm, HOL`Bool`DISCH[hLenTm,
+        HOL`Bool`DISCH[hXTm, HOL`Bool`DISCH[hYTm, eqYX]]]]]]]]
+  ];
+
+nestedExistsPointThm =
+  Module[{aV, bV, nV, range, sup, hNestTm, hNest, pointN, allN, exX},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy]; nV = mkVar["n", numTy];
+    range = seqRangeTm[aV]; sup = seqRealSup[range];
+    hNestTm = nestedIntervalsTm[aV, bV]; hNest = ASSUME[hNestTm];
+    pointN = HOL`Bool`MP[seqSpecAll[supInIntervalThm, {aV, bV, nV}], hNest];
+    allN = HOL`Bool`GEN[nV, pointN];
+    exX = HOL`Bool`EXISTS[seqNestedExistsBody[aV, bV], sup, allN];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[hNestTm, exX]]]
+  ];
+
+nestedUniquePointThm =
+  Module[{aV, bV, nV, yV, range, sup, hNestTm, hLenTm, hNest, hLen,
+          pointN, pointAll, hYTm, hY, eqY, impY, allY, pair, exX},
+    aV = mkVar["a", seqTy]; bV = mkVar["b", seqTy];
+    nV = mkVar["n", numTy]; yV = mkVar["y", realTy];
+    range = seqRangeTm[aV]; sup = seqRealSup[range];
+    hNestTm = nestedIntervalsTm[aV, bV]; hLenTm = intervalLengthsToZeroTm[aV, bV];
+    hNest = ASSUME[hNestTm]; hLen = ASSUME[hLenTm];
+    pointN = HOL`Bool`MP[seqSpecAll[supInIntervalThm, {aV, bV, nV}], hNest];
+    pointAll = HOL`Bool`GEN[nV, pointN];
+    hYTm = seqCommonPointBody[aV, bV, yV]; hY = ASSUME[hYTm];
+    eqY = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      seqSpecAll[commonPointsEqualThm, {aV, bV, sup, yV}], hNest], hLen], pointAll], hY];
+    impY = HOL`Bool`DISCH[hYTm, eqY];
+    allY = HOL`Bool`GEN[yV, impY];
+    pair = HOL`Bool`CONJ[pointAll, allY];
+    exX = HOL`Bool`EXISTS[seqNestedUniqueBody[aV, bV], sup, pair];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[hNestTm, HOL`Bool`DISCH[hLenTm, exX]]]]
   ];
 
 End[];

@@ -294,6 +294,87 @@ constCauchyRST[cT_] :=
     folded
   ];
 
+nestedIntervalsBodyRST[aT_, bT_] :=
+  Module[{nV, mV},
+    nV = mkVar["n", numTyRST]; mV = mkVar["m", numTyRST];
+    andRST[
+      forallRST[nV, rLeRST[mkComb[aT, nV], mkComb[bT, nV]]],
+      andRST[
+        forallRST[nV, forallRST[mV,
+          impRST[nLeRST[nV, mV], rLeRST[mkComb[aT, nV], mkComb[aT, mV]]]]],
+        forallRST[nV, forallRST[mV,
+          impRST[nLeRST[nV, mV], rLeRST[mkComb[bT, mV], mkComb[bT, nV]]]]]]]
+  ];
+
+lengthSeqRST[aT_, bT_] :=
+  Module[{nV},
+    nV = mkVar["nLen", numTyRST];
+    mkAbs[nV, rAddRST[mkComb[bT, nV], rNegRST[mkComb[aT, nV]]]]
+  ];
+
+intervalLengthsToZeroBodyRST[aT_, bT_] :=
+  HOL`Stdlib`Real`tendstoTm[lengthSeqRST[aT, bT], zeroRealRST[]];
+
+commonPointBodyRST[aT_, bT_, xT_] :=
+  Module[{nV},
+    nV = mkVar["n", numTyRST];
+    forallRST[nV, andRST[rLeRST[mkComb[aT, nV], xT],
+      rLeRST[xT, mkComb[bT, nV]]]]
+  ];
+
+nestedExistsBodyRST[aT_, bT_] :=
+  Module[{xV},
+    xV = mkVar["x", realTyRST];
+    existsRST[xV, commonPointBodyRST[aT, bT, xV]]
+  ];
+
+nestedUniqueBodyRST[aT_, bT_] :=
+  Module[{xV, yV},
+    xV = mkVar["x", realTyRST]; yV = mkVar["y", realTyRST];
+    existsRST[xV, andRST[commonPointBodyRST[aT, bT, xV],
+      forallRST[yV, impRST[commonPointBodyRST[aT, bT, yV], mkEq[yV, xV]]]]]
+  ];
+
+constNestedRST[cT_] :=
+  Module[{nV, mV, seq, clean, leCC, allLen, impInc, allIncM, allInc,
+          impDec, allDecM, allDec, body},
+    nV = mkVar["n", numTyRST]; mV = mkVar["m", numTyRST];
+    seq = constSeqRST[cT];
+    clean = betaCleanRST[HOL`Stdlib`Real`unfoldNestedIntervals[seq, seq]];
+    leCC = HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realLeReflThm];
+    allLen = HOL`Bool`GEN[nV, leCC];
+    impInc = HOL`Bool`DISCH[nLeRST[nV, mV], leCC];
+    allIncM = HOL`Bool`GEN[mV, impInc];
+    allInc = HOL`Bool`GEN[nV, allIncM];
+    impDec = HOL`Bool`DISCH[nLeRST[nV, mV], leCC];
+    allDecM = HOL`Bool`GEN[mV, impDec];
+    allDec = HOL`Bool`GEN[nV, allDecM];
+    body = HOL`Bool`CONJ[allLen, HOL`Bool`CONJ[allInc, allDec]];
+    EQMP[HOL`Equal`SYM[clean], body]
+  ];
+
+constIntervalLengthsZeroRST[cT_] :=
+  Module[{nV, seq, lenSeq, zeroSeq, lenApp, zeroApp, addNeg, pointEq,
+          pointAll, seqEq, zeroLim, tendEq, tendLen, folded},
+    nV = mkVar["n", numTyRST];
+    seq = constSeqRST[cT];
+    lenSeq = mkAbs[nV, rAddRST[cT, rNegRST[cT]]];
+    zeroSeq = constSeqRST[zeroRealRST[]];
+    lenApp = HOL`Equal`BETACONV[mkComb[lenSeq, nV]];
+    zeroApp = HOL`Equal`BETACONV[mkComb[zeroSeq, nV]];
+    addNeg = HOL`Bool`SPEC[cT, HOL`Stdlib`Real`realAddNegThm];
+    pointEq = TRANS[lenApp, TRANS[addNeg, HOL`Equal`SYM[zeroApp]]];
+    pointAll = HOL`Bool`GEN[nV, pointEq];
+    seqEq = HOL`Stdlib`List`funcExtThm[lenSeq, zeroSeq, pointAll];
+    zeroLim = HOL`Bool`SPEC[zeroRealRST[], HOL`Stdlib`Real`tendstoConstThm];
+    tendEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[HOL`Stdlib`Real`tendstoConst[], seqEq],
+      REFL[zeroRealRST[]]];
+    tendLen = EQMP[HOL`Equal`SYM[tendEq], zeroLim];
+    folded = EQMP[HOL`Equal`SYM[betaCleanRST[
+      HOL`Stdlib`Real`unfoldIntervalLengthsToZero[seq, seq]]], tendLen];
+    folded
+  ];
+
 assertConclRST[name_String, th_, expected_] := (
   HOLTest`assertEq[hyp[th], {}, name <> " no hyps"];
   HOLTest`assertTrue[aconv[concl[th], expected], name <> " concl"]);
@@ -874,3 +955,75 @@ HOLTest`runTests["stdlib/Real/Seq: constant peaks and identity index",
     mono12 = betaCleanRST[HOL`Bool`MP[specAllRST[monoAll, {oneN, twoN}], le12]];
     expected = nLeRST[oneN, twoN];
     assertConclRST["identity mono one two", mono12, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: nested interval definitions and builders",
+  Module[{aV, bV, th, expected},
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`nestedIntervalsDefThm], {},
+      "nestedIntervalsDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`nestedIntervalsDefThm],
+      "nestedIntervalsDef is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`intervalLengthsToZeroDefThm], {},
+      "intervalLengthsToZeroDef no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`intervalLengthsToZeroDefThm],
+      "intervalLengthsToZeroDef is thm"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`nestedIntervalsConst[]],
+      tyFun[seqTyRST, tyFun[seqTyRST, boolTy]], "nestedIntervalsConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`intervalLengthsToZeroConst[]],
+      tyFun[seqTyRST, tyFun[seqTyRST, boolTy]], "intervalLengthsToZeroConst type"];
+
+    aV = mkVar["aNestedRST", seqTyRST]; bV = mkVar["bNestedRST", seqTyRST];
+    th = HOL`Stdlib`Real`unfoldNestedIntervals[aV, bV];
+    expected = mkEq[HOL`Stdlib`Real`nestedIntervalsTm[aV, bV],
+      nestedIntervalsBodyRST[aV, bV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldNestedIntervals body"];
+
+    th = HOL`Stdlib`Real`unfoldIntervalLengthsToZero[aV, bV];
+    expected = mkEq[HOL`Stdlib`Real`intervalLengthsToZeroTm[aV, bV],
+      intervalLengthsToZeroBodyRST[aV, bV]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "unfoldIntervalLengthsToZero body"]]];
+
+HOLTest`runTests["stdlib/Real/Seq: nested interval theorem shapes",
+  Module[{aV, bV, th, expected},
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`nestedExistsPointThm],
+      "nestedExistsPointThm is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`nestedExistsPointThm], {},
+      "nestedExistsPointThm no hyps"];
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`nestedUniquePointThm],
+      "nestedUniquePointThm is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`nestedUniquePointThm], {},
+      "nestedUniquePointThm no hyps"];
+
+    aV = mkVar["aShapeNestedRST", seqTyRST];
+    bV = mkVar["bShapeNestedRST", seqTyRST];
+    th = specAllRST[HOL`Stdlib`Real`nestedExistsPointThm, {aV, bV}];
+    expected = impRST[HOL`Stdlib`Real`nestedIntervalsTm[aV, bV],
+      nestedExistsBodyRST[aV, bV]];
+    assertConclRST["nestedExistsPoint instantiated shape", th, expected];
+
+    th = specAllRST[HOL`Stdlib`Real`nestedUniquePointThm, {aV, bV}];
+    expected = impRST[HOL`Stdlib`Real`nestedIntervalsTm[aV, bV],
+      impRST[HOL`Stdlib`Real`intervalLengthsToZeroTm[aV, bV],
+        nestedUniqueBodyRST[aV, bV]]];
+    assertConclRST["nestedUniquePoint instantiated shape", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Seq: nested intervals on constants",
+  Module[{cV, cSeq, hNest, hLen, inst, th, expected},
+    cV = mkVar["cNestedConstRST", realTyRST];
+    cSeq = constSeqRST[cV];
+    hNest = constNestedRST[cV];
+    hLen = constIntervalLengthsZeroRST[cV];
+    assertConclRST["constant nested intervals", hNest,
+      HOL`Stdlib`Real`nestedIntervalsTm[cSeq, cSeq]];
+    assertConclRST["constant interval lengths zero", hLen,
+      HOL`Stdlib`Real`intervalLengthsToZeroTm[cSeq, cSeq]];
+
+    inst = specAllRST[HOL`Stdlib`Real`nestedExistsPointThm, {cSeq, cSeq}];
+    th = HOL`Bool`MP[inst, hNest];
+    expected = nestedExistsBodyRST[cSeq, cSeq];
+    assertConclRST["constant nested exists point", th, expected];
+
+    inst = specAllRST[HOL`Stdlib`Real`nestedUniquePointThm, {cSeq, cSeq}];
+    th = HOL`Bool`MP[HOL`Bool`MP[inst, hNest], hLen];
+    expected = nestedUniqueBodyRST[cSeq, cSeq];
+    assertConclRST["constant nested unique point", th, expected]]];
