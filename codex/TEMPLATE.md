@@ -64,7 +64,11 @@ Bullet list of concrete artifacts (code, tests, doc line updates).
 7. **Tests** use `tests/harness.wl` (`HOLTest`assertEq/assertTrue/
    assertThrows/runTests`). Avoid deeply-nested `MatchQ` literal term
    patterns — use position extraction + shallow asserts, or build the
-   expected term and compare with `aconv`.
+   expected term and compare with `aconv`. **NEVER call `HOLTest`testExit[]`
+   in a test file** — the runners call it once centrally; a per-file
+   testExit `Exit[]`s the process and silently truncates a cold `run_all`
+   (it stays invisible under your `dev.wls` run because that runs your file
+   LAST). End test files with the last `runTests[...]`, nothing after.
 8. Term construction above the kernel goes through `mkVar`/`mkConst`/
    `mkComb`/`mkAbs` — never raw `comb[...]`/`abs[...]` literals.
 9. **Debug with narrow probes** (`Head[th]`, `hyp[th]`, one sub-slot), never

@@ -79,6 +79,9 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
      (graduated into build_snapshot.wls 2026-06-14 after Seq Stages 1-6) *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Seq.wl"}]];
 
+  (* M8.2 compactness — FRONTIER (not yet in build_snapshot.wls), loads after Seq *)
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Compact.wl"}]];
+
   runGroup["post-bootstrap", postBootstrapTests];
 
   HOLTest`testExit[]
