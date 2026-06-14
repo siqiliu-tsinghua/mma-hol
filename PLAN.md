@@ -501,22 +501,31 @@ EndPackage[];
 - [x] `tendsto`（实 ε、关系式）+ 极限演算（常数 / 唯一 / 和 / 负 / 差）、`convergent`（Stage 1，brief-008）
 - [x] `eventually` 组合子 + 收敛 ⇒ 有界 + 远离零 + 绝对值乘法 + 乘积 / 数乘极限律（Stage 2，briefs 009/010）
 - [x] **确界 ⇒ 单调收敛**（`dedekindCompleteThm` → 单调有界收敛；蓝本 `RealSequence/Principles/FromSupMonotone.lean`）（Stage 3，brief-011，commit 00981cf）
-- [x] **子列基础设施 + 单调子列存在**（Peak / 上升指标递归 → `existsMonoSubseqThm`；蓝本 `RealSequence/Subsequence.lean`）（Stage 4，brief-012，commit 8d27504）。**注意:这一步只到「任意序列有单调子列」,属序列层基础设施;BW 本身(有界⇒收敛子列的组装)按蓝本分层放在 M8.2 紧性层,不在序列层做。**
-- [ ] **柯西准则**（Cauchy ⇒ 收敛,直接走确界,**不需要 BW**——`FromSupCauchy` 只依赖 Supremum；M7 桥接 capstone `⊢ ∀a. Cauchy a ⇒ ∃L. tendsto a L`；蓝本 `RealSequence/Principles/FromSupCauchy.lean`）（Stage 5）
-- 完成后 `Seq.wl` 毕业进 `bootstrap.mx`
+- [x] **子列基础设施 + 单调子列存在**（Peak / 上升指标递归 → `existsMonoSubseqThm`；蓝本 `RealSequence/Subsequence.lean`）（Stage 4，brief-012，commit 8d27504）。**`existsMonoSubseqThm` 喂入 M8.2 的 BW 自组装(见下)——不是孤儿;子列定义另被 `FiniteToSeq` 风格证明复用。**
+- [x] **柯西准则**（`cauchyConvergesThm` `⊢ ∀u. seqCauchy u ⇒ ∃L. tendsto u L`,M7 桥接 capstone;走 `FromSupCauchy`(最终下界集之确界),蓝本 `Principles/FromSupCauchy.lean`）（Stage 5，brief-014，commit 58455bf；首个 full-access 自验 brief,Codex 自跑 dev.wls 到 202/0）。**注:这是 FromSupCauchy 路线,与 active 阀门的 `FromMonotoneCauchy`(经单调子列)不同;按 owner 决定保留为独立证明,而 `existsMonoSubseq` 的用武之地改在 M8.2 的 BW。**
+- 序列层(Stages 1–5)**全部完成**;`Seq.wl` 毕业进 `bootstrap.mx`(graduation 待办)。
 
-#### M8.2 闭区间紧性（确界原理路线）
-- [ ] **Bolzano–Weierstrass（序列版 + 集合版）、列紧性、聚点紧性**：序列版 BW（有界⇒收敛子列）= Stage 4 的 `existsMonoSubseqThm` + 子列继承有界 + Stage 3 单调收敛的组装（~3 步,极限来自 `realSup`,非区间套）；集合版列紧 + 聚点紧在其上
-- [ ] **Heine–Borel**：`[a,b]` 的任意开覆盖有有限子覆盖（确界 + 勒贝格延拓法）
-- [ ] **勒贝格数引理**（紧覆盖的勒贝格数；与已砍的测度-Lebesgue 判据是拓扑表亲，同名不同物）
-- 蓝本 `RealCompactness/ClosedInterval/{Statements,FromSup*,SeqTo*,...}.lean`（取 `FromSup*` 路线，跳过 Lindelöf / 可数子覆盖文件）
+#### M8.2 闭区间紧性（**双独立分支**路线 —— owner 重规划 2026-06-14）
+**路线决定(owner)。** 蓝本紧性层四路线 + 阀门是为「单一入口、阀门可控」服务的;**我们不需要那个约束**,所以走**两条互不相连的独立分支**——既能用上我们辛苦做的 `existsMonoSubseqThm`(否则成孤儿),又**全程避开 Lindelöf**(关键:`SeqToFinite` 列紧→紧 需 Lindelöf/可数性,我们**根本不连这条边**)。**全部依赖已审计为 Lindelöf-free(2026-06-14)。除「BW 自组装」一个新证明外,其余全是蓝本忠实翻译(~1370 行 Lean)。**
+
+**分支 A(列紧 / 聚点):**
+- [ ] **BW 列紧性 = 有界数列必有收敛子列**(**唯一的新证明**):`existsMonoSubseqThm`(Stage 4a)+ 子列继承有界 + `monoConverges{Inc,Dec}Thm`(Stage 3)。这就是「用单调子列存在 + 单调有界收敛证 BW」。
+- [ ] **聚点原理 = 列紧 → 聚点**:抄 `ClosedInterval/SeqToAccum.lean`(184 行;用 `ListInfinite` ~3 行独立谓词,本地补,非基数塔)。
+
+**分支 B(区间套 → 有限覆盖 → 勒贝格数):**
+- [ ] **区间套原理 = 确界 → 区间套**:抄 `Principles/FromSupNested.lean`(184 行;只依赖 Supremum + Statements,**干净无可数性**)。**取「区间长度趋于零 ⇒ 公共点唯一」那版**(owner)。
+- [ ] **Heine–Borel = 区间套 → 有限覆盖**:抄 `ClosedInterval/FromNestedFinite.lean`(512 行;需 `NestedIntervalPrinciple` + `DyadicArchimedeanPrinciple`;无 Lindelöf)。`IsCompact = FiniteSubcover`(List 索引,无可数性)。
+- [ ] **勒贝格数 = 有限覆盖 → 勒贝格数**:抄 `ClosedInterval/FiniteToLebesgue.lean`(371 行;需 `RealSequence/Order` 的夹逼)。
+
+**配套蓝本件(待抄,全是翻译非新设计):** `ClosedInterval/Statements.lean`(紧性原理结构定义,120 行)、`Principles/Dyadic.lean`(`DyadicArchimedean`,162 行,deps Archimedean)、`Principles/NestedBasic.lean`(127 行)、`RealSequence/Order.lean`(夹逼/序极限,119 行,deps Algebra)、`ListInfinite` 谓词(~3 行)。
+**两分支不相连**(无 `SeqToFinite`/`FiniteToSeq`)——这正是避开 Lindelöf 的关键,且我们无需蓝本的单一入口约束。
 
 #### M8.3 连通性（核心）
 - [ ] connected ⟺ 区间；介值定理味道的核心结论
-- 蓝本 `RealConnectedness/Connected.lean`（跳过 `OpenDecomposition` / `ConnectedComponents`——开集 = 可数区间并需要可数性）
+- 蓝本 `RealConnectedness/Connected.lean`(**审计确认干净**:只 import Subspace/Supremum/Sequence.Algebra,**不碰** `OpenDecomposition`/可数性;`IsConnected`/`IsIntervalSet` + `intervalSet_*` 全在此)。跳过 `OpenIntervalClassification`/`OpenDecomposition`/`ConnectedComponents`(开集 = 可数区间并,需可数性)。
 
 #### M8.4 配套点集拓扑（供上面用的基础）
-- [ ] 开 / 闭 / 闭包 / 内部 / 子空间（`RealTopology/{Basic,Closed,Intervals,Subspace,...}.lean` 中**不依赖可数基**的部分；跳过 `RationalBasis` / `Lindelof`）
+- [ ] 开 / 闭 / 闭包 / 内部 / 子空间(`RealTopology/{Basic,Closed,Intervals,Subspace,...}.lean` 中**不依赖可数基**的部分；跳过 `RationalBasis`/`Lindelof`)。**审计 2026-06-14**:拓扑层里**只有 `Basic.lean` import `Foundation.Cardinal`**,且仅为 `CountableSubcover`(Lindelöf,CUT)的定义——移植 Basic 时跳过该 def,其余(开/闭/邻域)无基数依赖。
 
 **M8 capstone（一组够得着的经典定理，取代旧的遥远 Lebesgue 判据）：**
 - 单调有界收敛定理
