@@ -40,6 +40,38 @@ accumulationPointConst::usage = "accumulationPointConst[] - accumulationPoint : 
 accumulationPointTm::usage = "accumulationPointTm[S, x] - builds accumulationPoint S x.";
 unfoldAccumulationPoint::usage = "unfoldAccumulationPoint[S, x] - proves the beta-reduced accumulationPoint definition at S and x.";
 
+openIntervalDefThm::usage = "openIntervalDefThm - |- openInterval = (lambda left right x. realLt left x /\\ realLt x right).";
+openIntervalConst::usage = "openIntervalConst[] - openInterval : real -> real -> real -> bool.";
+openIntervalTm::usage = "openIntervalTm[left, right, x] - builds openInterval left right x.";
+unfoldOpenInterval::usage = "unfoldOpenInterval[left, right, x] - proves the beta-reduced openInterval definition at left, right, and x.";
+openIntervalMemThm::usage = "openIntervalMemThm - |- forall left right x. openInterval left right x = (realLt left x /\\ realLt x right).";
+
+closedIntervalDefThm::usage = "closedIntervalDefThm - |- closedInterval = (lambda left right x. realLe left x /\\ realLe x right).";
+closedIntervalConst::usage = "closedIntervalConst[] - closedInterval : real -> real -> real -> bool.";
+closedIntervalTm::usage = "closedIntervalTm[left, right, x] - builds closedInterval left right x.";
+unfoldClosedInterval::usage = "unfoldClosedInterval[left, right, x] - proves the beta-reduced closedInterval definition at left, right, and x.";
+closedIntervalMemThm::usage = "closedIntervalMemThm - |- forall left right x. closedInterval left right x = (realLe left x /\\ realLe x right).";
+
+isOpenDefThm::usage = "isOpenDefThm - |- isOpen = (lambda U. forall x. U x ==> exists left right. realLt left x /\\ realLt x right /\\ forall y. openInterval left right y ==> U y).";
+isOpenConst::usage = "isOpenConst[] - isOpen : (real -> bool) -> bool.";
+isOpenTm::usage = "isOpenTm[U] - builds isOpen U.";
+unfoldIsOpen::usage = "unfoldIsOpen[U] - proves the beta-reduced isOpen definition at U.";
+
+coversDefThm::usage = "coversDefThm - |- covers = (lambda U S. forall x. S x ==> exists i. U i x).";
+coversConst::usage = "coversConst[] - covers : (iota -> real -> bool) -> (real -> bool) -> bool.";
+coversTm::usage = "coversTm[U, S] - builds covers U S.";
+unfoldCovers::usage = "unfoldCovers[U, S] - proves the beta-reduced covers definition at U and S.";
+
+listSubcoverDefThm::usage = "listSubcoverDefThm - |- listSubcover = (lambda U S js. forall x. S x ==> exists i. MEM i js /\\ U i x).";
+listSubcoverConst::usage = "listSubcoverConst[] - listSubcover : (iota -> real -> bool) -> (real -> bool) -> iota list -> bool.";
+listSubcoverTm::usage = "listSubcoverTm[U, S, js] - builds listSubcover U S js.";
+unfoldListSubcover::usage = "unfoldListSubcover[U, S, js] - proves the beta-reduced listSubcover definition at U, S, and js.";
+
+finiteSubcoverDefThm::usage = "finiteSubcoverDefThm - |- finiteSubcover = (lambda U S. exists js. listSubcover U S js).";
+finiteSubcoverConst::usage = "finiteSubcoverConst[] - finiteSubcover : (iota -> real -> bool) -> (real -> bool) -> bool.";
+finiteSubcoverTm::usage = "finiteSubcoverTm[U, S] - builds finiteSubcover U S.";
+unfoldFiniteSubcover::usage = "unfoldFiniteSubcover[U, S] - proves the beta-reduced finiteSubcover definition at U and S.";
+
 freshListDefThm::usage = "freshListDefThm - epsilon-selected num recursion for fresh finite prefixes.";
 freshListConst::usage = "freshListConst[] - freshList : (real -> bool) -> num -> real list.";
 freshListTm::usage = "freshListTm[S] - builds freshList S.";
@@ -65,12 +97,25 @@ compactSeqTy = tyFun[numTy, realTy];
 compactNumFunTy = tyFun[numTy, numTy];
 compactSetTy = tyFun[realTy, boolTy];
 compactRealListTy = HOL`Stdlib`List`listTy[realTy];
+iotaTy = mkVarType["iota"];
+compactIotaListTy = HOL`Stdlib`List`listTy[iotaTy];
 seqBoundedTy = tyFun[compactSeqTy, boolTy];
 hasConvergentSubseqTy = tyFun[compactSeqTy, tyFun[realTy, boolTy]];
 listInfiniteTy = tyFun[compactSetTy, boolTy];
 setBoundedTy = tyFun[compactSetTy, boolTy];
 distTy = tyFun[realTy, tyFun[realTy, realTy]];
 accumulationPointTy = tyFun[compactSetTy, tyFun[realTy, boolTy]];
+openIntervalTy = tyFun[realTy, tyFun[realTy, compactSetTy]];
+closedIntervalTy = openIntervalTy;
+isOpenTy = tyFun[compactSetTy, boolTy];
+compactCoverTyAt[ty_] := tyFun[ty, compactSetTy];
+compactCoverTy = compactCoverTyAt[iotaTy];
+compactCoversTyAt[ty_] := tyFun[compactCoverTyAt[ty], tyFun[compactSetTy, boolTy]];
+coversTy = compactCoversTyAt[iotaTy];
+compactListSubcoverTyAt[ty_] := tyFun[compactCoverTyAt[ty],
+  tyFun[compactSetTy, tyFun[HOL`Stdlib`List`listTy[ty], boolTy]]];
+listSubcoverTy = compactListSubcoverTyAt[iotaTy];
+finiteSubcoverTy = coversTy;
 freshListTy = tyFun[compactSetTy, tyFun[numTy, compactRealListTy]];
 freshSeqTy = tyFun[compactSetTy, tyFun[numTy, realTy]];
 
@@ -131,6 +176,9 @@ compactConsReal[] := mkConst["CONS",
 compactMemRealConst[] := mkConst["MEM",
   tyFun[realTy, tyFun[compactRealListTy, boolTy]]];
 compactMemTm[xT_, xsT_] := mkComb[mkComb[compactMemRealConst[], xT], xsT];
+compactMemConstAt[ty_] := mkConst["MEM",
+  tyFun[ty, tyFun[HOL`Stdlib`List`listTy[ty], boolTy]]];
+compactMemTmAt[ty_, xT_, xsT_] := mkComb[mkComb[compactMemConstAt[ty], xT], xsT];
 compactNotTm[pT_] := mkComb[mkConst["¬", tyFun[boolTy, boolTy]], pT];
 
 compactRealAbs[xT_] := mkComb[realAbsConst[], xT];
@@ -204,6 +252,48 @@ compactAccumulationBody[S_, xT_] :=
       existsTm[yV, conjTm[mkComb[S, yV],
         conjTm[compactNotTm[mkEq[yV, xT]],
           realLtTm[distTm[yV, xT], epsV]]]]]]
+  ];
+
+compactOpenIntervalBody[leftT_, rightT_, xT_] :=
+  conjTm[realLtTm[leftT, xT], realLtTm[xT, rightT]];
+
+compactClosedIntervalBody[leftT_, rightT_, xT_] :=
+  conjTm[realLeTm[leftT, xT], realLeTm[xT, rightT]];
+
+compactIsOpenBody[uT_] :=
+  Module[{xV, leftV, rightV, yV},
+    xV = mkVar["x", realTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; yV = mkVar["y", realTy];
+    forallTm[xV, impTm[mkComb[uT, xV],
+      existsTm[leftV, existsTm[rightV,
+        conjTm[realLtTm[leftV, xV],
+          conjTm[realLtTm[xV, rightV],
+            forallTm[yV, impTm[openIntervalTm[leftV, rightV, yV],
+              mkComb[uT, yV]]]]]]]]]
+  ];
+
+compactCoverIndexTy[uT_] := typeOf[uT][[2, 1]];
+compactCoverApp[uT_, iT_, xT_] := mkComb[mkComb[uT, iT], xT];
+
+compactCoversBodyAt[ty_, uT_, sT_] :=
+  Module[{xV, iV},
+    xV = mkVar["x", realTy]; iV = mkVar["i", ty];
+    forallTm[xV, impTm[mkComb[sT, xV],
+      existsTm[iV, compactCoverApp[uT, iV, xV]]]]
+  ];
+
+compactListSubcoverBodyAt[ty_, uT_, sT_, jsT_] :=
+  Module[{xV, iV},
+    xV = mkVar["x", realTy]; iV = mkVar["i", ty];
+    forallTm[xV, impTm[mkComb[sT, xV],
+      existsTm[iV, conjTm[compactMemTmAt[ty, iV, jsT],
+        compactCoverApp[uT, iV, xV]]]]]
+  ];
+
+compactFiniteSubcoverBodyAt[ty_, uT_, sT_] :=
+  Module[{jsV},
+    jsV = mkVar["js", HOL`Stdlib`List`listTy[ty]];
+    existsTm[jsV, listSubcoverTm[uT, sT, jsV]]
   ];
 
 compactSubsequenceAppEq[uT_, phiT_, nT_] :=
@@ -312,6 +402,150 @@ unfoldAccumulationPoint[sT_, xT_] :=
     s1 = HOL`Equal`APTHM[accumulationPointDefThm, sT];
     s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
     s2 = HOL`Equal`APTHM[s1b, xT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+openIntervalDefThm =
+  Module[{leftV, rightV, xV},
+    leftV = mkVar["left", realTy]; rightV = mkVar["right", realTy];
+    xV = mkVar["x", realTy];
+    newDefinition[mkEq[mkVar["openInterval", openIntervalTy],
+      mkAbs[leftV, mkAbs[rightV, mkAbs[xV,
+        compactOpenIntervalBody[leftV, rightV, xV]]]]]]
+  ];
+
+openIntervalConst[] := mkConst["openInterval", openIntervalTy];
+openIntervalTm[leftT_, rightT_, xT_] :=
+  mkComb[mkComb[mkComb[openIntervalConst[], leftT], rightT], xT];
+
+unfoldOpenInterval[leftT_, rightT_, xT_] :=
+  Module[{s1, s1b, s2, s2b, s3},
+    s1 = HOL`Equal`APTHM[openIntervalDefThm, leftT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, rightT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, xT];
+    TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]]
+  ];
+
+openIntervalMemThm =
+  Module[{leftV, rightV, xV},
+    leftV = mkVar["left", realTy]; rightV = mkVar["right", realTy];
+    xV = mkVar["x", realTy];
+    HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[xV,
+      unfoldOpenInterval[leftV, rightV, xV]]]]
+  ];
+
+closedIntervalDefThm =
+  Module[{leftV, rightV, xV},
+    leftV = mkVar["left", realTy]; rightV = mkVar["right", realTy];
+    xV = mkVar["x", realTy];
+    newDefinition[mkEq[mkVar["closedInterval", closedIntervalTy],
+      mkAbs[leftV, mkAbs[rightV, mkAbs[xV,
+        compactClosedIntervalBody[leftV, rightV, xV]]]]]]
+  ];
+
+closedIntervalConst[] := mkConst["closedInterval", closedIntervalTy];
+closedIntervalTm[leftT_, rightT_, xT_] :=
+  mkComb[mkComb[mkComb[closedIntervalConst[], leftT], rightT], xT];
+
+unfoldClosedInterval[leftT_, rightT_, xT_] :=
+  Module[{s1, s1b, s2, s2b, s3},
+    s1 = HOL`Equal`APTHM[closedIntervalDefThm, leftT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, rightT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, xT];
+    TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]]
+  ];
+
+closedIntervalMemThm =
+  Module[{leftV, rightV, xV},
+    leftV = mkVar["left", realTy]; rightV = mkVar["right", realTy];
+    xV = mkVar["x", realTy];
+    HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[xV,
+      unfoldClosedInterval[leftV, rightV, xV]]]]
+  ];
+
+isOpenDefThm =
+  Module[{uV},
+    uV = mkVar["U", compactSetTy];
+    newDefinition[mkEq[mkVar["isOpen", isOpenTy],
+      mkAbs[uV, compactIsOpenBody[uV]]]]
+  ];
+
+isOpenConst[] := mkConst["isOpen", isOpenTy];
+isOpenTm[uT_] := mkComb[isOpenConst[], uT];
+
+unfoldIsOpen[uT_] :=
+  Module[{s1},
+    s1 = HOL`Equal`APTHM[isOpenDefThm, uT];
+    TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]]
+  ];
+
+coversDefThm =
+  Module[{uV, sV},
+    uV = mkVar["U", compactCoverTy]; sV = mkVar["S", compactSetTy];
+    newDefinition[mkEq[mkVar["covers", coversTy],
+      mkAbs[uV, mkAbs[sV, compactCoversBodyAt[iotaTy, uV, sV]]]]]
+  ];
+
+coversConst[] := mkConst["covers", coversTy];
+compactCoversConstAt[ty_] := mkConst["covers", compactCoversTyAt[ty]];
+coversTm[uT_, sT_] := mkComb[mkComb[compactCoversConstAt[compactCoverIndexTy[uT]], uT], sT];
+
+unfoldCovers[uT_, sT_] :=
+  Module[{def, s1, s1b, s2},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, coversDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, sT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+listSubcoverDefThm =
+  Module[{uV, sV, jsV},
+    uV = mkVar["U", compactCoverTy]; sV = mkVar["S", compactSetTy];
+    jsV = mkVar["js", compactIotaListTy];
+    newDefinition[mkEq[mkVar["listSubcover", listSubcoverTy],
+      mkAbs[uV, mkAbs[sV, mkAbs[jsV,
+        compactListSubcoverBodyAt[iotaTy, uV, sV, jsV]]]]]]
+  ];
+
+listSubcoverConst[] := mkConst["listSubcover", listSubcoverTy];
+compactListSubcoverConstAt[ty_] := mkConst["listSubcover", compactListSubcoverTyAt[ty]];
+listSubcoverTm[uT_, sT_, jsT_] :=
+  mkComb[mkComb[mkComb[compactListSubcoverConstAt[compactCoverIndexTy[uT]], uT], sT], jsT];
+
+unfoldListSubcover[uT_, sT_, jsT_] :=
+  Module[{def, s1, s1b, s2, s2b, s3},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, listSubcoverDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, sT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, jsT];
+    TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]]
+  ];
+
+finiteSubcoverDefThm =
+  Module[{uV, sV},
+    uV = mkVar["U", compactCoverTy]; sV = mkVar["S", compactSetTy];
+    newDefinition[mkEq[mkVar["finiteSubcover", finiteSubcoverTy],
+      mkAbs[uV, mkAbs[sV, compactFiniteSubcoverBodyAt[iotaTy, uV, sV]]]]]
+  ];
+
+finiteSubcoverConst[] := mkConst["finiteSubcover", finiteSubcoverTy];
+compactFiniteSubcoverConstAt[ty_] := mkConst["finiteSubcover", compactCoversTyAt[ty]];
+finiteSubcoverTm[uT_, sT_] :=
+  mkComb[mkComb[compactFiniteSubcoverConstAt[compactCoverIndexTy[uT]], uT], sT];
+
+unfoldFiniteSubcover[uT_, sT_] :=
+  Module[{def, s1, s1b, s2},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, finiteSubcoverDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, sT];
     TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
   ];
 

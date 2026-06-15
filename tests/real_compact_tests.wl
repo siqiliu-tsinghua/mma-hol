@@ -25,6 +25,14 @@ seqTyRCT = tyFun[numTyRCT, realTyRCT];
 numFunTyRCT = tyFun[numTyRCT, numTyRCT];
 realListTyRCT = HOL`Stdlib`List`listTy[realTyRCT];
 setTyRCT = tyFun[realTyRCT, boolTy];
+iotaTyRCT = mkVarType["iota"];
+iotaListTyRCT = HOL`Stdlib`List`listTy[iotaTyRCT];
+intervalTyRCT = tyFun[realTyRCT, tyFun[realTyRCT, setTyRCT]];
+isOpenTyRCT = tyFun[setTyRCT, boolTy];
+coverTyRCT = tyFun[iotaTyRCT, setTyRCT];
+coversTyRCT = tyFun[coverTyRCT, tyFun[setTyRCT, boolTy]];
+listSubcoverTyRCT = tyFun[coverTyRCT,
+  tyFun[setTyRCT, tyFun[iotaListTyRCT, boolTy]]];
 
 zeroNumRCT[] := HOL`Stdlib`Num`zeroConst[];
 sucNumRCT[n_] := mkComb[HOL`Stdlib`Num`sucConst[], n];
@@ -52,6 +60,8 @@ memRCT[x_, xs_] := mkComb[
 nilRealRCT[] := mkConst["NIL", realListTyRCT];
 consRealRCT[] := mkConst["CONS", tyFun[realTyRCT,
   tyFun[realListTyRCT, realListTyRCT]]];
+memIotaRCT[i_, js_] := mkComb[
+  mkComb[mkConst["MEM", tyFun[iotaTyRCT, tyFun[iotaListTyRCT, boolTy]]], i], js];
 
 specAllRCT[th_, ts_List] :=
   Fold[Function[{acc, t}, HOL`Bool`SPEC[t, acc]], th, ts];
@@ -169,6 +179,46 @@ accumulationGoalRCT[sT_] :=
   Module[{xV},
     xV = mkVar["x", realTyRCT];
     existsRCT[xV, HOL`Stdlib`Real`accumulationPointTm[sT, xV]]
+  ];
+
+openIntervalBodyRCT[leftT_, rightT_, xT_] :=
+  andRCT[rLtRCT[leftT, xT], rLtRCT[xT, rightT]];
+
+closedIntervalBodyRCT[leftT_, rightT_, xT_] :=
+  andRCT[rLeRCT[leftT, xT], rLeRCT[xT, rightT]];
+
+isOpenBodyRCT[uT_] :=
+  Module[{xV, leftV, rightV, yV},
+    xV = mkVar["x", realTyRCT]; leftV = mkVar["left", realTyRCT];
+    rightV = mkVar["right", realTyRCT]; yV = mkVar["y", realTyRCT];
+    forallRCT[xV, impRCT[mkComb[uT, xV],
+      existsRCT[leftV, existsRCT[rightV,
+        andRCT[rLtRCT[leftV, xV],
+          andRCT[rLtRCT[xV, rightV],
+            forallRCT[yV, impRCT[
+              HOL`Stdlib`Real`openIntervalTm[leftV, rightV, yV],
+              mkComb[uT, yV]]]]]]]]]
+  ];
+
+coversBodyRCT[uT_, sT_] :=
+  Module[{xV, iV},
+    xV = mkVar["x", realTyRCT]; iV = mkVar["i", iotaTyRCT];
+    forallRCT[xV, impRCT[mkComb[sT, xV],
+      existsRCT[iV, mkComb[mkComb[uT, iV], xV]]]]
+  ];
+
+listSubcoverBodyRCT[uT_, sT_, jsT_] :=
+  Module[{xV, iV},
+    xV = mkVar["x", realTyRCT]; iV = mkVar["i", iotaTyRCT];
+    forallRCT[xV, impRCT[mkComb[sT, xV],
+      existsRCT[iV, andRCT[memIotaRCT[iV, jsT],
+        mkComb[mkComb[uT, iV], xV]]]]]
+  ];
+
+finiteSubcoverBodyRCT[uT_, sT_] :=
+  Module[{jsV},
+    jsV = mkVar["js", iotaListTyRCT];
+    existsRCT[jsV, HOL`Stdlib`Real`listSubcoverTm[uT, sT, jsV]]
   ];
 
 constSeqBoundedRCT[cT_] :=
@@ -351,3 +401,80 @@ HOLTest`runTests["stdlib/Real/Compact: fresh theorem shapes",
 (* NOTE: no testExit[] here — the runners (run_all/run_fast/dev) call it once
    centrally; a per-file testExit[] would Exit[] the process and truncate
    run_all (it passes dev.wls only because that runs this file last). *)
+
+HOLTest`runTests["stdlib/Real/Compact: cover vocabulary",
+  Module[{leftV, rightV, xV, yV, uV, coverV, sV, jsV, th, expected,
+          defs},
+    defs = {
+      {"openIntervalDef", HOL`Stdlib`Real`openIntervalDefThm},
+      {"closedIntervalDef", HOL`Stdlib`Real`closedIntervalDefThm},
+      {"isOpenDef", HOL`Stdlib`Real`isOpenDefThm},
+      {"coversDef", HOL`Stdlib`Real`coversDefThm},
+      {"listSubcoverDef", HOL`Stdlib`Real`listSubcoverDefThm},
+      {"finiteSubcoverDef", HOL`Stdlib`Real`finiteSubcoverDefThm}};
+    Scan[Function[{entry},
+      HOLTest`assertTrue[isThm[entry[[2]]], entry[[1]] <> " is thm"];
+      HOLTest`assertEq[hyp[entry[[2]]], {}, entry[[1]] <> " no hyps"]], defs];
+
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`openIntervalConst[]],
+      intervalTyRCT, "openIntervalConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`closedIntervalConst[]],
+      intervalTyRCT, "closedIntervalConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`isOpenConst[]],
+      isOpenTyRCT, "isOpenConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`coversConst[]],
+      coversTyRCT, "coversConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`listSubcoverConst[]],
+      listSubcoverTyRCT, "listSubcoverConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`finiteSubcoverConst[]],
+      coversTyRCT, "finiteSubcoverConst type"];
+
+    leftV = mkVar["leftCoverRCT", realTyRCT];
+    rightV = mkVar["rightCoverRCT", realTyRCT];
+    xV = mkVar["xCoverRCT", realTyRCT];
+    yV = mkVar["yCoverRCT", realTyRCT];
+    uV = mkVar["UCoverSetRCT", setTyRCT];
+    coverV = mkVar["UCoverRCT", coverTyRCT];
+    sV = mkVar["SCoverRCT", setTyRCT];
+    jsV = mkVar["jsCoverRCT", iotaListTyRCT];
+
+    th = HOL`Stdlib`Real`unfoldOpenInterval[leftV, rightV, xV];
+    expected = mkEq[HOL`Stdlib`Real`openIntervalTm[leftV, rightV, xV],
+      openIntervalBodyRCT[leftV, rightV, xV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldOpenInterval body"];
+
+    th = HOL`Stdlib`Real`unfoldClosedInterval[leftV, rightV, xV];
+    expected = mkEq[HOL`Stdlib`Real`closedIntervalTm[leftV, rightV, xV],
+      closedIntervalBodyRCT[leftV, rightV, xV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldClosedInterval body"];
+
+    expected = forallRCT[leftV, forallRCT[rightV, forallRCT[xV,
+      mkEq[HOL`Stdlib`Real`openIntervalTm[leftV, rightV, xV],
+        openIntervalBodyRCT[leftV, rightV, xV]]]]];
+    HOLTest`assertTrue[aconv[concl[HOL`Stdlib`Real`openIntervalMemThm], expected],
+      "openIntervalMemThm shape"];
+
+    expected = forallRCT[leftV, forallRCT[rightV, forallRCT[xV,
+      mkEq[HOL`Stdlib`Real`closedIntervalTm[leftV, rightV, xV],
+        closedIntervalBodyRCT[leftV, rightV, xV]]]]];
+    HOLTest`assertTrue[aconv[concl[HOL`Stdlib`Real`closedIntervalMemThm], expected],
+      "closedIntervalMemThm shape"];
+
+    th = HOL`Stdlib`Real`unfoldIsOpen[uV];
+    expected = mkEq[HOL`Stdlib`Real`isOpenTm[uV], isOpenBodyRCT[uV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldIsOpen body"];
+
+    th = HOL`Stdlib`Real`unfoldCovers[coverV, sV];
+    expected = mkEq[HOL`Stdlib`Real`coversTm[coverV, sV],
+      coversBodyRCT[coverV, sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldCovers body"];
+
+    th = HOL`Stdlib`Real`unfoldListSubcover[coverV, sV, jsV];
+    expected = mkEq[HOL`Stdlib`Real`listSubcoverTm[coverV, sV, jsV],
+      listSubcoverBodyRCT[coverV, sV, jsV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldListSubcover body"];
+
+    th = HOL`Stdlib`Real`unfoldFiniteSubcover[coverV, sV];
+    expected = mkEq[HOL`Stdlib`Real`finiteSubcoverTm[coverV, sV],
+      finiteSubcoverBodyRCT[coverV, sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldFiniteSubcover body"]]];
