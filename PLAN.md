@@ -512,12 +512,12 @@ EndPackage[];
 - [x] **BW 列紧性 = 有界数列必有收敛子列**(**唯一的新证明**):`existsMonoSubseqThm`(Stage 4a)+ 子列继承有界 + `monoConverges{Inc,Dec}Thm`(Stage 3)。这就是「用单调子列存在 + 单调有界收敛证 BW」。(`bwSequentialThm`,brief-016,commit c171e29。)
 - [x] **聚点原理 = 列紧 → 聚点**:抄 `ClosedInterval/SeqToAccum.lean`(184 行;用 `ListInfinite` ~3 行独立谓词,本地补,非基数塔)。(`accumulationPrincipleThm`,`freshList` num→list 递归 + SeqToAccum,brief-017,commit b337ff0。)
 
-**分支 B(区间套 → 有限覆盖 → 勒贝格数):**
+**分支 B(区间套 → 有限覆盖):**
 - [x] **区间套原理 = 确界 → 区间套**:已在**序列层 Stage 6**(brief-015,`FromSupNested`)证出 —— `nestedExistsPointThm`(公共点存在)+ `nestedUniquePointThm`(长度→0 ⇒ 公共点唯一),已随 Seq.wl 毕业进 bootstrap.mx,commit e20f696。**取「区间长度趋于零 ⇒ 公共点唯一」那版**(owner)。
-- [ ] **Heine–Borel = 区间套 → 有限覆盖**:抄 `ClosedInterval/FromNestedFinite.lean`(512 行;需 `NestedIntervalPrinciple` + `DyadicArchimedeanPrinciple`;无 Lindelöf)。`IsCompact = FiniteSubcover`(List 索引,无可数性)。**基础设施已就位**:开覆盖词汇(brief-020,commit 183353d)、子覆盖代数 `midpoint`/`combineHalfSubcover`/`rightHalfBad`(brief-021,commit 06d9a16)、**二分递归** `bisectInterval`/`lower`/`upper`/`badIntervals`/`nestedIntervals`(brief-022,THE hardest,commit 3c67f05)。**收尾 = brief-023(区间长度→0 via `dyadicArchThm`)+ brief-024(`interval_subset_open_interval` + 单点子覆盖 + 反证 → `compactnessPrinciple`)。**
-- [ ] **勒贝格数 = 有限覆盖 → 勒贝格数**:抄 `ClosedInterval/FiniteToLebesgue.lean`(371 行;需 `RealSequence/Order` 的夹逼)。(brief-025。)
+- [x] **Heine–Borel = 区间套 → 有限覆盖**:抄 `ClosedInterval/FromNestedFinite.lean`(512 行;需 `NestedIntervalPrinciple` + `DyadicArchimedeanPrinciple`;无 Lindelöf)。`IsCompact = FiniteSubcover`(List 索引,无可数性)。开覆盖词汇(brief-020,183353d)、子覆盖代数 `midpoint`/`combineHalfSubcover`/`rightHalfBad`(brief-021,06d9a16)、**二分递归** `bisectInterval`/`lower`/`upper`/`badIntervals`/`nestedIntervals`(brief-022,THE hardest,3c67f05)、**区间长度→0** via `dyadicArchThm`(brief-023,8eca9cd)、**收尾** `intervalSubsetOpenInterval` + 单点子覆盖 + 反证 → **`compactnessPrincipleThm`**(brief-024,60c6a19)。**DONE,cold Strict run_all 2906/0。**
+- ~~**勒贝格数 = 有限覆盖 → 勒贝格数**(`ClosedInterval/FiniteToLebesgue.lean`)~~ —— **移出范围(owner 2026-06-16)**。Lebesgue 数引理在 tautology 里是给黎曼积分的 Lebesgue 可积判据铺路的;本库只做到实数理论即止,不做积分,故 Lebesgue 数无下游消费者,删去。蓝本还需 `LocalIndex` 记录类型(我们无记录,得自创子类型/COND-空集编码),代价与收益不成正比。
 
-**配套蓝本件(全是翻译非新设计):** ~~`Principles/Dyadic.lean`(`DyadicArchimedean`)~~ ✅ `dyadicArchThm`(SeqAux,brief-018)、~~`Principles/NestedBasic.lean`~~ ✅ `intervalPointsClose`/`lengthLtOfClose`(SeqAux,brief-019)、~~`ClosedInterval/Statements.lean`(紧性原理结构定义)~~ ✅ 开覆盖词汇(brief-020)、`RealSequence/Order.lean`(夹逼/序极限,119 行,deps Algebra,brief-023/025 用到)、`ListInfinite` 谓词(~3 行,brief-017 已本地补)。
+**配套蓝本件(全是翻译非新设计):** ~~`Principles/Dyadic.lean`(`DyadicArchimedean`)~~ ✅ `dyadicArchThm`(SeqAux,brief-018)、~~`Principles/NestedBasic.lean`~~ ✅ `intervalPointsClose`/`lengthLtOfClose`(SeqAux,brief-019)、~~`ClosedInterval/Statements.lean`(紧性原理结构定义)~~ ✅ 开覆盖词汇(brief-020)、`ListInfinite` 谓词(~3 行,brief-017 已本地补)。
 **两分支不相连**(无 `SeqToFinite`/`FiniteToSeq`)——这正是避开 Lindelöf 的关键,且我们无需蓝本的单一入口约束。
 
 #### M8.3 连通性（核心）
@@ -531,7 +531,7 @@ EndPackage[];
 - 单调有界收敛定理
 - **柯西完备性** `⊢ ∀a. Cauchy a ⇒ ∃L. tendsto a L`
 - **Bolzano–Weierstrass**
-- **Heine–Borel**（闭区间）+ 勒贝格数引理
+- **Heine–Borel**（闭区间）✅（勒贝格数引理已移出范围 2026-06-16 —— 见分支 B）
 - 连通性 / 介值定理
 
 **验收 + 收官**：以上证出后，宣告 stdlib 完成，整理发布到 GitHub。

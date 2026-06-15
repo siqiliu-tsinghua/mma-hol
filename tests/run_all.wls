@@ -79,10 +79,12 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
      (graduated into build_snapshot.wls 2026-06-14 after Seq Stages 1-6) *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Seq.wl"}]];
 
-  (* M8.2 Branch B sequence-layer prereqs (Dyadic etc.) - FRONTIER, before Compact *)
+  (* M8.2 Branch B sequence-layer prereqs (Dyadic etc.); GRADUATED into
+     build_snapshot.wls 2026-06-16, before Compact *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "SeqAux.wl"}]];
 
-  (* M8.2 compactness — FRONTIER (not yet in build_snapshot.wls), loads after Seq *)
+  (* M8.2 compactness (Heine–Borel); GRADUATED into build_snapshot.wls
+     2026-06-16, loads after SeqAux *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Compact.wl"}]];
 
   runGroup["post-bootstrap", postBootstrapTests];
