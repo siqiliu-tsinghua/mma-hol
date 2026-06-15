@@ -781,3 +781,64 @@ HOLTest`runTests["stdlib/Real/Compact: bisection recursion shapes",
           HOL`Stdlib`Real`lowerTm[coverV, leftV, rightV],
           HOL`Stdlib`Real`upperTm[coverV, leftV, rightV]]]];
     assertConclRCT["nestedIntervals shape", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Compact: length theorem shapes",
+  Module[{coverV, leftV, rightV, nV, bigNV, lenAt, lenSeq, dyN, subLR,
+          natLe, th, expected},
+    coverV = mkVar["ULengthRCT", coverTyRCT];
+    leftV = mkVar["leftLengthRCT", realTyRCT];
+    rightV = mkVar["rightLengthRCT", realTyRCT];
+    nV = mkVar["nLengthRCT", numTyRCT];
+    bigNV = mkVar["NLengthRCT", numTyRCT];
+    lenSeq = HOL`Stdlib`Real`intervalLengthTm[coverV, leftV, rightV];
+    lenAt[k_] := mkComb[lenSeq, k];
+    dyN = HOL`Stdlib`Real`dyadicTm[nV];
+    subLR = realAddRCT[rightV, realNegRCT[leftV]];
+    natLe[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
+
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`intervalLengthConst[]],
+      lowerTyRCT, "intervalLengthConst type"];
+
+    th = HOL`Stdlib`Real`unfoldIntervalLength[coverV, leftV, rightV, nV];
+    expected = mkEq[lenAt[nV], realAddRCT[
+      upperAtRCT[coverV, leftV, rightV, nV],
+      realNegRCT[lowerAtRCT[coverV, leftV, rightV, nV]]]];
+    assertConclRCT["unfoldIntervalLength body", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lengthZeroThm, {coverV, leftV, rightV}];
+    expected = mkEq[lenAt[zeroNumRCT[]], subLR];
+    assertConclRCT["lengthZero shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lengthSuccThm, {coverV, leftV, rightV, nV}];
+    expected = mkEq[lenAt[sucNumRCT[nV]],
+      realMulRCT[lenAt[nV], realInvRCT[twoRealRCT[]]]];
+    assertConclRCT["lengthSucc shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lengthInvariantThm, {coverV, leftV, rightV, nV}];
+    expected = mkEq[realMulRCT[dyN, lenAt[nV]], subLR];
+    assertConclRCT["lengthInvariant shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lengthFormulaThm, {coverV, leftV, rightV, nV}];
+    expected = mkEq[lenAt[nV], realMulRCT[subLR, realInvRCT[dyN]]];
+    assertConclRCT["lengthFormula shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lengthNonnegThm, {coverV, leftV, rightV}];
+    expected = impRCT[rLeRCT[leftV, rightV],
+      impRCT[HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, leftV, rightV],
+        forallRCT[nV, rLeRCT[zeroRealRCT[], lenAt[nV]]]]];
+    assertConclRCT["lengthNonneg shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lengthDecreaseThm, {coverV, leftV, rightV}];
+    expected = impRCT[rLeRCT[leftV, rightV],
+      impRCT[HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, leftV, rightV],
+        forallRCT[bigNV, forallRCT[nV,
+          impRCT[natLe[bigNV, nV], rLeRCT[lenAt[nV], lenAt[bigNV]]]]]]];
+    assertConclRCT["lengthDecrease shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lengthsToZeroThm, {coverV, leftV, rightV}];
+    expected = impRCT[rLeRCT[leftV, rightV],
+      impRCT[HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, leftV, rightV],
+        HOL`Stdlib`Real`intervalLengthsToZeroTm[
+          HOL`Stdlib`Real`lowerTm[coverV, leftV, rightV],
+          HOL`Stdlib`Real`upperTm[coverV, leftV, rightV]]]];
+    assertConclRCT["lengthsToZero shape", th, expected]]];

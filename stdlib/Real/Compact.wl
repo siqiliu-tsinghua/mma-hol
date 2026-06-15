@@ -133,6 +133,18 @@ upperStepLeThm::usage = "upperStepLeThm - bisection upper endpoint sequence is s
 lowerMonoThm::usage = "lowerMonoThm - bisection lower endpoint sequence is monotone.";
 upperAntitoneThm::usage = "upperAntitoneThm - bisection upper endpoint sequence is antitone.";
 nestedIntervalsThm::usage = "nestedIntervalsThm - bisection lower/upper sequences form nestedIntervals.";
+intervalLengthDefThm::usage = "intervalLengthDefThm - |- length = (lambda U left right n. upper U left right n + -(lower U left right n)).";
+intervalLengthConst::usage = "intervalLengthConst[] - length : (iota -> real -> bool) -> real -> real -> num -> real.";
+intervalLengthTm::usage = "intervalLengthTm[U, left, right] - builds length U left right.";
+compactLengthAt::usage = "compactLengthAt[U, left, right, n] - builds length U left right n.";
+unfoldIntervalLength::usage = "unfoldIntervalLength[U, left, right, n] - proves the beta-reduced length definition at U, left, right, and n.";
+lengthZeroThm::usage = "lengthZeroThm - |- forall U left right. length U left right 0 = right - left.";
+lengthSuccThm::usage = "lengthSuccThm - |- forall U left right n. length U left right (SUC n) = length U left right n * inv 2.";
+lengthInvariantThm::usage = "lengthInvariantThm - |- forall U left right n. dyadic n * length U left right n = right - left.";
+lengthFormulaThm::usage = "lengthFormulaThm - |- forall U left right n. length U left right n = (right - left) * inv (dyadic n).";
+lengthNonnegThm::usage = "lengthNonnegThm - nonnegative interval lengths under the bad bisection hypotheses.";
+lengthDecreaseThm::usage = "lengthDecreaseThm - bisection interval lengths decrease along the sequence.";
+lengthsToZeroThm::usage = "lengthsToZeroThm - bad bisection interval lengths tend to zero.";
 
 freshListDefThm::usage = "freshListDefThm - epsilon-selected num recursion for fresh finite prefixes.";
 freshListConst::usage = "freshListConst[] - freshList : (real -> bool) -> num -> real list.";
@@ -2293,6 +2305,337 @@ nestedIntervalsThm =
       {uV, leftV, rightV}], hLe], hBad];
     body = HOL`Bool`CONJ[orderAll, HOL`Bool`CONJ[lowerAll, upperAll]];
     folded = EQMP[HOL`Equal`SYM[unfoldNestedIntervals[lowerSeq, upperSeq]], body];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, folded]]]]]
+  ];
+
+compactRealAddCong[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], eqLeft], eqRight];
+compactRealNegCong[eq_] := HOL`Equal`APTERM[realNegConst[], eq];
+compactRealMulCong[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realMulConst[], eqLeft], eqRight];
+compactRealMulCongLeft[eqLeft_, rightT_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realMulConst[], eqLeft], REFL[rightT]];
+compactRealMulCongRight[leftT_, eqRight_] :=
+  HOL`Equal`APTERM[mkComb[realMulConst[], leftT], eqRight];
+
+compactOneReal[] := realOfRatTm[oneQ[]];
+
+compactMulComm[xT_, yT_] :=
+  HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, realMulCommThm]];
+compactMulAssoc[xT_, yT_, zT_] :=
+  HOL`Bool`SPEC[zT, HOL`Bool`SPEC[yT, HOL`Bool`SPEC[xT, realMulAssocThm]]];
+compactMulOneLeft[xT_] :=
+  TRANS[compactMulComm[compactOneReal[], xT], HOL`Bool`SPEC[xT, realMulOneThm]];
+
+compactMulFourShuffleThm =
+  Module[{aV, bV, cV, dV, cd, bd, e1, e2, e3, e4, e5, point},
+    aV = mkVar["aMulFour", realTy]; bV = mkVar["bMulFour", realTy];
+    cV = mkVar["cMulFour", realTy]; dV = mkVar["dMulFour", realTy];
+    cd = realMulTm[cV, dV]; bd = realMulTm[bV, dV];
+    e1 = compactMulAssoc[aV, bV, cd];
+    e2 = compactRealMulCongRight[aV, compactMulComm[bV, cd]];
+    e3 = compactRealMulCongRight[aV, compactMulAssoc[cV, dV, bV]];
+    e4 = compactRealMulCongRight[aV,
+      compactRealMulCongRight[cV, compactMulComm[dV, bV]]];
+    e5 = HOL`Equal`SYM[compactMulAssoc[aV, cV, bd]];
+    point = compactTransList[{e1, e2, e3, e4, e5}];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV, HOL`Bool`GEN[dV, point]]]]
+  ];
+
+compactSubNonnegThm =
+  Module[{aV, bV},
+    aV = mkVar["aSubNonneg", realTy]; bV = mkVar["bSubNonneg", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{aV, bV}, impTm[realLeTm[aV, bV],
+        realLeTm[zeroRealTm[], realAddTm[bV, realNegTm[aV]]]]]]
+  ];
+
+compactSubLeSubThm =
+  Module[{unV, uNV, lNV, lnV},
+    unV = mkVar["uppernSubLe", realTy]; uNV = mkVar["upperNSubLe", realTy];
+    lNV = mkVar["lowerNSubLe", realTy]; lnV = mkVar["lowernSubLe", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{unV, uNV, lNV, lnV},
+        compactImpList[{realLeTm[unV, uNV], realLeTm[lNV, lnV]},
+          realLeTm[realAddTm[unV, realNegTm[lnV]],
+            realAddTm[uNV, realNegTm[lNV]]]]]]
+  ];
+
+compactDropZeroThm =
+  Module[{zV},
+    zV = mkVar["zDropZero", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      forallTm[zV, mkEq[realAddTm[zV, realNegTm[zeroRealTm[]]], zV]]]
+  ];
+
+compactTwoNeZeroThm =
+  Module[{twoPos},
+    twoPos = HOL`Auto`RealArith`realArithProve[
+      realLtTm[zeroRealTm[], compactTwoReal[]]];
+    HOL`Bool`MP[HOL`Bool`SPEC[compactTwoReal[], seqArithPosNeZeroThm], twoPos]
+  ];
+
+compactLengthTyAt[ty_] := compactLowerTyAt[ty];
+lengthTy = compactLengthTyAt[iotaTy];
+
+compactLengthBody[uT_, leftT_, rightT_, nT_] :=
+  realAddTm[compactUpperAt[uT, leftT, rightT, nT],
+    realNegTm[compactLowerAt[uT, leftT, rightT, nT]]];
+
+intervalLengthDefThm =
+  Module[{uV, leftV, rightV, nV},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    newDefinition[mkEq[mkVar["length", lengthTy],
+      mkAbs[uV, mkAbs[leftV, mkAbs[rightV, mkAbs[nV,
+        compactLengthBody[uV, leftV, rightV, nV]]]]]]]
+  ];
+
+HOL`Stdlib`Real`intervalLengthConst[] := mkConst["length", lengthTy];
+compactLengthConstAt[ty_] := mkConst["length", compactLengthTyAt[ty]];
+intervalLengthTm[uT_, leftT_, rightT_] :=
+  mkComb[mkComb[mkComb[compactLengthConstAt[compactCoverIndexTy[uT]], uT],
+    leftT], rightT];
+compactLengthAt[uT_, leftT_, rightT_, nT_] := mkComb[intervalLengthTm[uT, leftT, rightT], nT];
+
+unfoldIntervalLengthFun[uT_, leftT_, rightT_] :=
+  Module[{def, s1, s1b, s2, s2b, s3},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, intervalLengthDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, leftT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, rightT];
+    compactBetaClean[TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]]]
+  ];
+
+unfoldIntervalLength[uT_, leftT_, rightT_, nT_] :=
+  Module[{s1, s2},
+    s1 = HOL`Equal`APTHM[unfoldIntervalLengthFun[uT, leftT, rightT], nT];
+    s2 = HOL`Equal`BETACONV[concl[s1][[2]]];
+    compactBetaClean[TRANS[s1, s2]]
+  ];
+
+lengthZeroThm =
+  Module[{uV, leftV, rightV, lEq, uEq, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy];
+    lEq = compactLowerZeroEq[uV, leftV, rightV];
+    uEq = compactUpperZeroEq[uV, leftV, rightV];
+    point = TRANS[unfoldIntervalLength[uV, leftV, rightV, zeroN[]],
+      compactRealAddCong[uEq, compactRealNegCong[lEq]]];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, point]]]
+  ];
+
+lengthSuccThm =
+  Module[{uV, leftV, rightV, nV, loN, hiN, lenN, lenS, rhs, condTm, em,
+          hLeft, uEq, lEq, branchT, hNot, branchF},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    loN = compactLowerAt[uV, leftV, rightV, nV];
+    hiN = compactUpperAt[uV, leftV, rightV, nV];
+    lenN = compactLengthAt[uV, leftV, rightV, nV];
+    lenS = compactLengthAt[uV, leftV, rightV, sucT[nV]];
+    rhs = realMulTm[lenN, compactHalfScalar[]];
+    condTm = compactStepCondition[uV, leftV, rightV, nV];
+    em = HOL`Bool`EXCLUDEDMIDDLE[condTm];
+
+    hLeft = ASSUME[condTm];
+    uEq = compactUpperSuccRightEq[uV, leftV, rightV, nV, hLeft];
+    lEq = compactLowerSuccRightEq[uV, leftV, rightV, nV, hLeft];
+    branchT = compactTransList[{
+      unfoldIntervalLength[uV, leftV, rightV, sucT[nV]],
+      compactRealAddCong[uEq, compactRealNegCong[lEq]],
+      compactSpecAll[rightSubMidpointThm, {loN, hiN}],
+      compactRealMulCongLeft[HOL`Equal`SYM[unfoldIntervalLength[uV, leftV, rightV, nV]],
+        compactHalfScalar[]]}];
+
+    hNot = ASSUME[compactNotTm[condTm]];
+    uEq = compactUpperSuccLeftEq[uV, leftV, rightV, nV, hNot];
+    lEq = compactLowerSuccLeftEq[uV, leftV, rightV, nV, hNot];
+    branchF = compactTransList[{
+      unfoldIntervalLength[uV, leftV, rightV, sucT[nV]],
+      compactRealAddCong[uEq, compactRealNegCong[lEq]],
+      compactSpecAll[midpointSubLeftThm, {loN, hiN}],
+      compactRealMulCongLeft[HOL`Equal`SYM[unfoldIntervalLength[uV, leftV, rightV, nV]],
+        compactHalfScalar[]]}];
+
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISJCASES[em, branchT, branchF]]]]]
+  ];
+
+lengthInvariantThm =
+  Module[{uV, leftV, rightV, nInd, pLam, lT, len0, baseStep, base, ihTm, ih,
+          lenN, lenS, dN, dS, recEq, shuffle, invTwo, oneStep, stepPoint,
+          stepAll, indSpec, indAll, nV, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    lT = realAddTm[rightV, realNegTm[leftV]];
+    pLam = Module[{kInv},
+      kInv = mkVar["kLengthInv", numTy];
+      mkAbs[kInv, mkEq[
+        realMulTm[dyadicTm[kInv], compactLengthAt[uV, leftV, rightV, kInv]],
+        lT]]
+    ];
+
+    len0 = compactLengthAt[uV, leftV, rightV, zeroN[]];
+    baseStep = compactRealMulCong[dyadicZeroThm,
+      compactSpecAll[lengthZeroThm, {uV, leftV, rightV}]];
+    base = TRANS[baseStep, compactMulOneLeft[lT]];
+
+    nInd = mkVar["nLengthInv", numTy];
+    lenN = compactLengthAt[uV, leftV, rightV, nInd];
+    lenS = compactLengthAt[uV, leftV, rightV, sucT[nInd]];
+    dN = dyadicTm[nInd]; dS = dyadicTm[sucT[nInd]];
+    ihTm = mkEq[realMulTm[dN, lenN], lT]; ih = ASSUME[ihTm];
+    recEq = compactRealMulCong[
+      HOL`Bool`SPEC[nInd, dyadicSuccThm],
+      compactSpecAll[lengthSuccThm, {uV, leftV, rightV, nInd}]];
+    shuffle = compactSpecAll[compactMulFourShuffleThm,
+      {dN, compactTwoReal[], lenN, compactHalfScalar[]}];
+    invTwo = HOL`Bool`MP[HOL`Bool`SPEC[compactTwoReal[], realMulInvThm],
+      compactTwoNeZeroThm];
+    oneStep = compactRealMulCongRight[realMulTm[dN, lenN], invTwo];
+    stepPoint = compactTransList[{recEq, shuffle, oneStep,
+      HOL`Bool`SPEC[realMulTm[dN, lenN], realMulOneThm], ih}];
+    stepAll = HOL`Bool`GEN[nInd, HOL`Bool`DISCH[ihTm, stepPoint]];
+
+    indSpec = compactBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAll = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+    point = HOL`Bool`SPEC[nV, indAll];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[nV, point]]]]
+  ];
+
+lengthFormulaThm =
+  Module[{uV, leftV, rightV, nV, lenN, dN, invD, lT, invEq, dNe, invLaw,
+          invLeft, leftCancel, scaled, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    lenN = compactLengthAt[uV, leftV, rightV, nV];
+    dN = dyadicTm[nV]; invD = compactRealInv[dN];
+    lT = realAddTm[rightV, realNegTm[leftV]];
+    invEq = compactSpecAll[lengthInvariantThm, {uV, leftV, rightV, nV}];
+    dNe = HOL`Bool`SPEC[nV, dyadicNeZeroThm];
+    invLaw = HOL`Bool`MP[HOL`Bool`SPEC[dN, realMulInvThm], dNe];
+    invLeft = TRANS[compactMulComm[invD, dN], invLaw];
+    leftCancel = compactTransList[{
+      HOL`Equal`SYM[compactMulAssoc[invD, dN, lenN]],
+      compactRealMulCongLeft[invLeft, lenN],
+      compactMulOneLeft[lenN]}];
+    scaled = compactRealMulCongRight[invD, invEq];
+    point = compactTransList[{HOL`Equal`SYM[leftCancel], scaled, compactMulComm[invD, lT]}];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[nV, point]]]]
+  ];
+
+lengthNonnegThm =
+  Module[{uV, leftV, rightV, nV, hLeTm, hLe, hBadTm, hBad, loN, hiN, order,
+          raw, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    loN = compactLowerAt[uV, leftV, rightV, nV];
+    hiN = compactUpperAt[uV, leftV, rightV, nV];
+    order = compactIntervalOrderAt[uV, leftV, rightV, hLe, hBad, nV];
+    raw = HOL`Bool`MP[compactSpecAll[compactSubNonnegThm, {loN, hiN}], order];
+    point = EQMP[compactRealLeCong[REFL[zeroRealTm[]],
+      HOL`Equal`SYM[unfoldIntervalLength[uV, leftV, rightV, nV]]], raw];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, HOL`Bool`GEN[nV, point]]]]]]
+  ];
+
+lengthDecreaseThm =
+  Module[{uV, leftV, rightV, bigN, nV, hLeTm, hLe, hBadTm, hBad, hNatTm, hNat,
+          lowerAll, upperAll, lowerLe, upperLe, raw, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; bigN = mkVar["N", numTy];
+    nV = mkVar["n", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    hNatTm = compactNatLe[bigN, nV]; hNat = ASSUME[hNatTm];
+    lowerAll = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[lowerMonoThm,
+      {uV, leftV, rightV}], hLe], hBad];
+    upperAll = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[upperAntitoneThm,
+      {uV, leftV, rightV}], hLe], hBad];
+    lowerLe = HOL`Bool`MP[compactSpecAll[lowerAll, {bigN, nV}], hNat];
+    upperLe = HOL`Bool`MP[compactSpecAll[upperAll, {bigN, nV}], hNat];
+    raw = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[compactSubLeSubThm,
+      {compactUpperAt[uV, leftV, rightV, nV], compactUpperAt[uV, leftV, rightV, bigN],
+        compactLowerAt[uV, leftV, rightV, bigN], compactLowerAt[uV, leftV, rightV, nV]}],
+      upperLe], lowerLe];
+    point = EQMP[compactRealLeCong[
+      HOL`Equal`SYM[unfoldIntervalLength[uV, leftV, rightV, nV]],
+      HOL`Equal`SYM[unfoldIntervalLength[uV, leftV, rightV, bigN]]], raw];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm,
+        HOL`Bool`GEN[bigN, HOL`Bool`GEN[nV, HOL`Bool`DISCH[hNatTm, point]]]]]]]]
+  ];
+
+compactLengthTendstoZeroThm =
+  Module[{uV, leftV, rightV, eV, bigN, nV, hLeTm, hLe, hBadTm, hBad, hETm,
+          hE, lenSeq, lT, hLNonneg, arch, hSmallTm, hSmall, hNatTm, hNat,
+          lenN, lenBig, formula, lenBigLt, dec, lenLt, nonneg, absPos,
+          dropZero, absDrop, absEq, point, allN, exN, chosen, epsAll, folded},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; eV = mkVar["e", realTy];
+    bigN = mkVar["bigNLength", numTy]; nV = mkVar["n", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    hETm = realLtTm[zeroRealTm[], eV]; hE = ASSUME[hETm];
+    lenSeq = intervalLengthTm[uV, leftV, rightV];
+    lT = realAddTm[rightV, realNegTm[leftV]];
+    hLNonneg = HOL`Bool`MP[compactSpecAll[compactSubNonnegThm, {leftV, rightV}], hLe];
+    arch = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[dyadicArchThm, {lT, eV}],
+      hLNonneg], hE];
+
+    hSmallTm = realLtTm[realMulTm[lT, compactRealInv[dyadicTm[bigN]]], eV];
+    hSmall = ASSUME[hSmallTm];
+    hNatTm = compactNatLe[bigN, nV]; hNat = ASSUME[hNatTm];
+    lenN = compactLengthAt[uV, leftV, rightV, nV];
+    lenBig = compactLengthAt[uV, leftV, rightV, bigN];
+    formula = compactSpecAll[lengthFormulaThm, {uV, leftV, rightV, bigN}];
+    lenBigLt = EQMP[compactRealLtCong[HOL`Equal`SYM[formula], REFL[eV]], hSmall];
+    dec = HOL`Bool`MP[compactSpecAll[
+      HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[lengthDecreaseThm,
+        {uV, leftV, rightV}], hLe], hBad], {bigN, nV}], hNat];
+    lenLt = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[realLeLtTransThm,
+      {lenN, lenBig, eV}], dec], lenBigLt];
+    nonneg = HOL`Bool`SPEC[nV, HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[lengthNonnegThm, {uV, leftV, rightV}], hLe], hBad]];
+    absPos = HOL`Bool`MP[HOL`Bool`SPEC[lenN, realAbsPosThm], nonneg];
+    dropZero = HOL`Bool`SPEC[lenN, compactDropZeroThm];
+    absDrop = HOL`Equal`APTERM[realAbsConst[], dropZero];
+    absEq = TRANS[absDrop, absPos];
+    point = EQMP[compactRealLtCong[HOL`Equal`SYM[absEq], REFL[eV]], lenLt];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`DISCH[hNatTm, point]];
+    exN = HOL`Bool`EXISTS[existsTm[bigN, forallTm[nV,
+      impTm[compactNatLe[bigN, nV],
+        realLtTm[compactRealAbs[realAddTm[compactLengthAt[uV, leftV, rightV, nV],
+          realNegTm[zeroRealTm[]]]], eV]]]], bigN, allN];
+    chosen = HOL`Bool`CHOOSE[bigN, arch, exN];
+    epsAll = HOL`Bool`GEN[eV, HOL`Bool`DISCH[hETm, chosen]];
+    folded = EQMP[HOL`Equal`SYM[unfoldTendsto[lenSeq, zeroRealTm[]]], epsAll];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, folded]]]]]
+  ];
+
+lengthsToZeroThm =
+  Module[{uV, leftV, rightV, hLeTm, hLe, hBadTm, hBad, lowerSeq, upperSeq,
+          tendLen, lenFunEq, tendEq, tendBody, folded},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    lowerSeq = lowerTm[uV, leftV, rightV];
+    upperSeq = upperTm[uV, leftV, rightV];
+    tendLen = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[compactLengthTendstoZeroThm,
+      {uV, leftV, rightV}], hLe], hBad];
+    lenFunEq = unfoldIntervalLengthFun[uV, leftV, rightV];
+    tendEq = HOL`Kernel`MKCOMB[HOL`Equal`APTERM[tendstoConst[], lenFunEq],
+      REFL[zeroRealTm[]]];
+    tendBody = EQMP[tendEq, tendLen];
+    folded = EQMP[HOL`Equal`SYM[unfoldIntervalLengthsToZero[lowerSeq, upperSeq]], tendBody];
     HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
       HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, folded]]]]]
   ];
