@@ -22,6 +22,8 @@ oneLeDyadicThm::usage = "oneLeDyadicThm - |- forall n. realLe 1 (dyadic n).";
 natLeDyadicThm::usage = "natLeDyadicThm - |- forall n. realLe (&R (&Q (&Z n))) (dyadic n).";
 existsDyadicGtThm::usage = "existsDyadicGtThm - |- forall x. exists n. realLt x (dyadic n).";
 dyadicArchThm::usage = "dyadicArchThm - |- forall L eps. realLe 0 L ==> realLt 0 eps ==> exists n. realLt (realMul L (realInv (dyadic n))) eps.";
+intervalPointsCloseThm::usage = "intervalPointsCloseThm - |- forall a b x y eps. a <= x ==> x <= b ==> a <= y ==> y <= b ==> b - a < eps ==> abs (x - y) < eps.";
+lengthLtOfCloseThm::usage = "lengthLtOfCloseThm - |- forall a b eps. a <= b ==> abs ((b - a) - 0) < eps ==> b - a < eps.";
 
 Begin["`Private`"];
 
@@ -32,6 +34,7 @@ seqAuxOneReal[] := realOfRatTm[oneQ[]];
 seqAuxTwoReal[] := realOfRatTm[ratOfIntTm[intOfNumTm[seqAuxTwoNat[]]]];
 seqAuxNatReal[nT_] := realOfRatTm[ratOfIntTm[intOfNumTm[nT]]];
 seqAuxRealInv[xT_] := mkComb[realInvConst[], xT];
+seqAuxRealAbs[xT_] := mkComb[realAbsConst[], xT];
 seqAuxSelectTm[ty_, predT_] := mkComb[mkConst["@", tyFun[tyFun[ty, boolTy], ty]], predT];
 
 seqAuxSpecAll[th_, ts_List] :=
@@ -312,6 +315,88 @@ dyadicArchThm =
     body = HOL`Bool`CHOOSE[nW, exDy, exN];
     HOL`Bool`GEN[lV, HOL`Bool`GEN[epsV,
       HOL`Bool`DISCH[hLTm, HOL`Bool`DISCH[hEpsTm, body]]]]
+  ];
+
+seqAuxIntervalLowerThm =
+  Module[{aV, bV, xV, yV, epsV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; xV = mkVar["x", realTy];
+    yV = mkVar["y", realTy]; epsV = mkVar["eps", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqAuxForallList[{aV, bV, xV, yV, epsV},
+        seqAuxImpList[{realLeTm[aV, xV], realLeTm[xV, bV],
+          realLeTm[aV, yV], realLeTm[yV, bV],
+          realLtTm[realAddTm[bV, realNegTm[aV]], epsV]},
+          realLtTm[realAddTm[yV, realNegTm[epsV]], xV]]]]
+  ];
+
+seqAuxIntervalUpperThm =
+  Module[{aV, bV, xV, yV, epsV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; xV = mkVar["x", realTy];
+    yV = mkVar["y", realTy]; epsV = mkVar["eps", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqAuxForallList[{aV, bV, xV, yV, epsV},
+        seqAuxImpList[{realLeTm[aV, xV], realLeTm[xV, bV],
+          realLeTm[aV, yV], realLeTm[yV, bV],
+          realLtTm[realAddTm[bV, realNegTm[aV]], epsV]},
+          realLtTm[xV, realAddTm[yV, epsV]]]]]
+  ];
+
+intervalPointsCloseThm =
+  Module[{aV, bV, xV, yV, epsV, hAxTm, hXbTm, hAyTm, hYbTm, hLenTm,
+          hAx, hXb, hAy, hYb, hLen, lower, upper, close},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; xV = mkVar["x", realTy];
+    yV = mkVar["y", realTy]; epsV = mkVar["eps", realTy];
+    hAxTm = realLeTm[aV, xV]; hXbTm = realLeTm[xV, bV];
+    hAyTm = realLeTm[aV, yV]; hYbTm = realLeTm[yV, bV];
+    hLenTm = realLtTm[realAddTm[bV, realNegTm[aV]], epsV];
+    hAx = ASSUME[hAxTm]; hXb = ASSUME[hXbTm]; hAy = ASSUME[hAyTm];
+    hYb = ASSUME[hYbTm]; hLen = ASSUME[hLenTm];
+    lower = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`MP[seqAuxSpecAll[seqAuxIntervalLowerThm,
+        {aV, bV, xV, yV, epsV}], hAx], hXb], hAy], hYb], hLen];
+    upper = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`MP[seqAuxSpecAll[seqAuxIntervalUpperThm,
+        {aV, bV, xV, yV, epsV}], hAx], hXb], hAy], hYb], hLen];
+    close = HOL`Bool`MP[HOL`Bool`MP[
+      seqAuxSpecAll[realAbsSubLtThm, {xV, yV, epsV}], lower], upper];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      HOL`Bool`GEN[epsV, HOL`Bool`DISCH[hAxTm, HOL`Bool`DISCH[hXbTm,
+        HOL`Bool`DISCH[hAyTm, HOL`Bool`DISCH[hYbTm,
+          HOL`Bool`DISCH[hLenTm, close]]]]]]]]]]
+  ];
+
+seqAuxLengthNonnegThm =
+  Module[{aV, bV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      seqAuxForallList[{aV, bV},
+        impTm[realLeTm[aV, bV],
+          realLeTm[zeroRealTm[], realAddTm[bV, realNegTm[aV]]]]]]
+  ];
+
+seqAuxDropZeroThm =
+  Module[{zV},
+    zV = mkVar["z", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      forallTm[zV, mkEq[realAddTm[zV, realNegTm[zeroRealTm[]]], zV]]]
+  ];
+
+lengthLtOfCloseThm =
+  Module[{aV, bV, epsV, len, hLeTm, hCloseTm, hLe, hClose, lenNonneg,
+          dropZero, absDrop, absPos, absEq, body},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy]; epsV = mkVar["eps", realTy];
+    len = realAddTm[bV, realNegTm[aV]];
+    hLeTm = realLeTm[aV, bV];
+    hCloseTm = realLtTm[seqAuxRealAbs[realAddTm[len, realNegTm[zeroRealTm[]]]], epsV];
+    hLe = ASSUME[hLeTm]; hClose = ASSUME[hCloseTm];
+    lenNonneg = HOL`Bool`MP[seqAuxSpecAll[seqAuxLengthNonnegThm, {aV, bV}], hLe];
+    dropZero = HOL`Bool`SPEC[len, seqAuxDropZeroThm];
+    absDrop = HOL`Equal`APTERM[realAbsConst[], dropZero];
+    absPos = HOL`Bool`MP[HOL`Bool`SPEC[len, realAbsPosThm], lenNonneg];
+    absEq = TRANS[absDrop, absPos];
+    body = EQMP[seqAuxRealLtCong[absEq, REFL[epsV]], hClose];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[epsV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hCloseTm, body]]]]]
   ];
 
 End[];

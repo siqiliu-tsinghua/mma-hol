@@ -97,3 +97,63 @@ HOLTest`runTests["stdlib/Real/SeqAux: dyadic definitions and theorem shapes",
       archExpected]
   ]
 ]
+
+realNegRSAT[x_] := mkComb[HOL`Stdlib`Real`realNegConst[], x];
+realAbsRSAT[x_] := mkComb[HOL`Stdlib`Real`realAbsConst[], x];
+realLtCongRSAT[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[HOL`Stdlib`Real`realLtConst[], eqLeft], eqRight];
+
+HOLTest`runTests["stdlib/Real/SeqAux: nested interval helper shapes",
+  Module[{aV, bV, xV, yV, epsV, len, intervalExpected, lengthExpected,
+          z0, z1, z2, intervalInst, hAx, hXb, hAy, hYb, hLen,
+          concreteInterval, lengthInst, hLe, closeArg, dropZero, lenNonneg,
+          absDrop, absPos, absEq, lenLt, hClose, concreteLength},
+    aV = mkVar["a", realTyRSAT]; bV = mkVar["b", realTyRSAT];
+    xV = mkVar["x", realTyRSAT]; yV = mkVar["y", realTyRSAT];
+    epsV = mkVar["eps", realTyRSAT];
+    len = realAddRSAT[bV, realNegRSAT[aV]];
+    intervalExpected = impRSAT[realLeRSAT[aV, xV],
+      impRSAT[realLeRSAT[xV, bV],
+        impRSAT[realLeRSAT[aV, yV],
+          impRSAT[realLeRSAT[yV, bV],
+            impRSAT[realLtRSAT[len, epsV],
+              realLtRSAT[realAbsRSAT[realAddRSAT[xV, realNegRSAT[yV]]], epsV]]]]]];
+    assertConclRSAT["intervalPointsCloseThm",
+      specAllRSAT[HOL`Stdlib`Real`intervalPointsCloseThm, {aV, bV, xV, yV, epsV}],
+      intervalExpected];
+    lengthExpected = impRSAT[realLeRSAT[aV, bV],
+      impRSAT[realLtRSAT[
+        realAbsRSAT[realAddRSAT[len, realNegRSAT[zeroRealRSAT[]]]], epsV],
+        realLtRSAT[len, epsV]]];
+    assertConclRSAT["lengthLtOfCloseThm",
+      specAllRSAT[HOL`Stdlib`Real`lengthLtOfCloseThm, {aV, bV, epsV}],
+      lengthExpected];
+    z0 = zeroRealRSAT[]; z1 = oneRealRSAT[]; z2 = twoRealRSAT[];
+    intervalInst = specAllRSAT[HOL`Stdlib`Real`intervalPointsCloseThm,
+      {z0, z1, z0, z1, z2}];
+    hAx = HOL`Auto`RealArith`rnumLe[0, 0];
+    hXb = HOL`Auto`RealArith`rnumLe[0, 1];
+    hAy = HOL`Auto`RealArith`rnumLe[0, 1];
+    hYb = HOL`Auto`RealArith`rnumLe[1, 1];
+    hLen = HOL`Auto`RealArith`realArithProve[
+      realLtRSAT[realAddRSAT[z1, realNegRSAT[z0]], z2]];
+    concreteInterval = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`MP[intervalInst, hAx], hXb], hAy], hYb], hLen];
+    assertConclRSAT["intervalPointsCloseThm concrete", concreteInterval,
+      realLtRSAT[realAbsRSAT[realAddRSAT[z0, realNegRSAT[z1]]], z2]];
+    lengthInst = specAllRSAT[HOL`Stdlib`Real`lengthLtOfCloseThm, {z0, z1, z2}];
+    hLe = HOL`Auto`RealArith`rnumLe[0, 1];
+    len = realAddRSAT[z1, realNegRSAT[z0]];
+    closeArg = realAddRSAT[len, realNegRSAT[z0]];
+    dropZero = HOL`Auto`RealArith`realArithProve[mkEq[closeArg, len]];
+    lenNonneg = HOL`Auto`RealArith`realArithProve[realLeRSAT[z0, len]];
+    absDrop = HOL`Equal`APTERM[HOL`Stdlib`Real`realAbsConst[], dropZero];
+    absPos = HOL`Bool`MP[HOL`Bool`SPEC[len, HOL`Stdlib`Real`realAbsPosThm], lenNonneg];
+    absEq = HOL`Kernel`TRANS[absDrop, absPos];
+    lenLt = HOL`Auto`RealArith`realArithProve[realLtRSAT[len, z2]];
+    hClose = HOL`Kernel`EQMP[realLtCongRSAT[HOL`Equal`SYM[absEq], HOL`Kernel`REFL[z2]], lenLt];
+    concreteLength = HOL`Bool`MP[HOL`Bool`MP[lengthInst, hLe], hClose];
+    assertConclRSAT["lengthLtOfCloseThm concrete", concreteLength,
+      realLtRSAT[realAddRSAT[z1, realNegRSAT[z0]], z2]]
+  ]
+]
