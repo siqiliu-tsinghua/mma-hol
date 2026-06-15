@@ -36,6 +36,13 @@ listSubcoverTyRCT = tyFun[coverTyRCT,
 midpointTyRCT = tyFun[realTyRCT, tyFun[realTyRCT, realTyRCT]];
 noFiniteSubcoverTyRCT = tyFun[coverTyRCT,
   tyFun[realTyRCT, tyFun[realTyRCT, boolTy]]];
+pairTyRCT = HOL`Stdlib`Pair`prodTy[realTyRCT, realTyRCT];
+badIntervalTyRCT = noFiniteSubcoverTyRCT;
+stepIntervalTyRCT = tyFun[coverTyRCT, tyFun[pairTyRCT, pairTyRCT]];
+bisectIntervalTyRCT = tyFun[coverTyRCT,
+  tyFun[realTyRCT, tyFun[realTyRCT, tyFun[numTyRCT, pairTyRCT]]]];
+lowerTyRCT = tyFun[coverTyRCT,
+  tyFun[realTyRCT, tyFun[realTyRCT, tyFun[numTyRCT, realTyRCT]]]];
 
 zeroNumRCT[] := HOL`Stdlib`Num`zeroConst[];
 sucNumRCT[n_] := mkComb[HOL`Stdlib`Num`sucConst[], n];
@@ -82,6 +89,12 @@ consIotaRCT[x_, xs_] := mkComb[
 appendIotaRCT[xs_, ys_] := mkComb[
   mkComb[mkConst["APPEND", tyFun[iotaListTyRCT, tyFun[iotaListTyRCT, iotaListTyRCT]]],
     xs], ys];
+pairRCT[a_, b_] := mkComb[
+  mkComb[mkConst[",", tyFun[realTyRCT, tyFun[realTyRCT, pairTyRCT]]], a], b];
+fstRCT[p_] := mkComb[mkConst["FST", tyFun[pairTyRCT, realTyRCT]], p];
+sndRCT[p_] := mkComb[mkConst["SND", tyFun[pairTyRCT, realTyRCT]], p];
+condRCT[ty_, c_, a_, b_] := mkComb[
+  mkComb[mkComb[HOL`Bool`condConst[ty], c], a], b];
 
 specAllRCT[th_, ts_List] :=
   Fold[Function[{acc, t}, HOL`Bool`SPEC[t, acc]], th, ts];
@@ -257,6 +270,28 @@ finiteSubcoverBodyRCT[uT_, sT_] :=
 
 noFiniteSubcoverBodyRCT[uT_, aT_, bT_] :=
   notRCT[HOL`Stdlib`Real`finiteSubcoverTm[uT, closedIntervalSetRCT[aT, bT]]];
+
+badIntervalBodyRCT[uT_, aT_, bT_] :=
+  andRCT[rLeRCT[aT, bT], HOL`Stdlib`Real`noFiniteSubcoverTm[uT, aT, bT]];
+
+stepIntervalBodyRCT[uT_, pT_] :=
+  Module[{loT, hiT, midT, condT},
+    loT = fstRCT[pT]; hiT = sndRCT[pT]; midT = HOL`Stdlib`Real`midpointTm[loT, hiT];
+    condT = HOL`Stdlib`Real`finiteSubcoverTm[uT, closedIntervalSetRCT[loT, midT]];
+    condRCT[pairTyRCT, condT, pairRCT[midT, hiT], pairRCT[loT, midT]]
+  ];
+
+bisectAtRCT[uT_, leftT_, rightT_, nT_] :=
+  mkComb[HOL`Stdlib`Real`bisectIntervalTm[uT, leftT, rightT], nT];
+lowerAtRCT[uT_, leftT_, rightT_, nT_] :=
+  mkComb[HOL`Stdlib`Real`lowerTm[uT, leftT, rightT], nT];
+upperAtRCT[uT_, leftT_, rightT_, nT_] :=
+  mkComb[HOL`Stdlib`Real`upperTm[uT, leftT, rightT], nT];
+stepCondRCT[uT_, leftT_, rightT_, nT_] :=
+  HOL`Stdlib`Real`finiteSubcoverTm[uT,
+    closedIntervalSetRCT[lowerAtRCT[uT, leftT, rightT, nT],
+      HOL`Stdlib`Real`midpointTm[lowerAtRCT[uT, leftT, rightT, nT],
+        upperAtRCT[uT, leftT, rightT, nT]]]];
 
 constSeqBoundedRCT[cT_] :=
   Module[{nV, seq, clean, outerEx, betaLo, innerEx, leCC, allN, exHi, exLo},
@@ -639,3 +674,110 @@ HOLTest`runTests["stdlib/Real/Compact: subcover theorem shapes",
       impRCT[HOL`Stdlib`Real`finiteSubcoverTm[coverV, leftSet],
         HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, mV, bV]]];
     assertConclRCT["rightHalfBad shape", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Compact: bisection recursion shapes",
+  Module[{coverV, leftV, rightV, nV, pV, bisN, loN, hiN, midN, condN,
+          th, expected, defs},
+    coverV = mkVar["UBisectRCT", coverTyRCT];
+    leftV = mkVar["leftBisectRCT", realTyRCT];
+    rightV = mkVar["rightBisectRCT", realTyRCT];
+    nV = mkVar["nBisectRCT", numTyRCT];
+    pV = mkVar["pBisectRCT", pairTyRCT];
+
+    defs = {
+      {"badIntervalDef", HOL`Stdlib`Real`badIntervalDefThm},
+      {"stepIntervalDef", HOL`Stdlib`Real`stepIntervalDefThm},
+      {"bisectIntervalDef", HOL`Stdlib`Real`bisectIntervalDefThm},
+      {"lowerDef", HOL`Stdlib`Real`lowerDefThm},
+      {"upperDef", HOL`Stdlib`Real`upperDefThm}};
+    Scan[Function[{entry},
+      HOLTest`assertTrue[isThm[entry[[2]]], entry[[1]] <> " is thm"];
+      HOLTest`assertEq[hyp[entry[[2]]], {}, entry[[1]] <> " no hyps"]], defs];
+
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`badIntervalConst[]],
+      badIntervalTyRCT, "badIntervalConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`stepIntervalConst[]],
+      stepIntervalTyRCT, "stepIntervalConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`bisectIntervalConst[]],
+      bisectIntervalTyRCT, "bisectIntervalConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`lowerConst[]],
+      lowerTyRCT, "lowerConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`upperConst[]],
+      lowerTyRCT, "upperConst type"];
+
+    th = HOL`Stdlib`Real`unfoldBadInterval[coverV, leftV, rightV];
+    expected = mkEq[HOL`Stdlib`Real`badIntervalTm[coverV, leftV, rightV],
+      badIntervalBodyRCT[coverV, leftV, rightV]];
+    assertConclRCT["unfoldBadInterval body", th, expected];
+
+    th = HOL`Stdlib`Real`unfoldStepInterval[coverV, pV];
+    expected = mkEq[HOL`Stdlib`Real`stepIntervalTm[coverV, pV],
+      stepIntervalBodyRCT[coverV, pV]];
+    assertConclRCT["unfoldStepInterval body", th, expected];
+
+    th = HOL`Stdlib`Real`unfoldLower[coverV, leftV, rightV, nV];
+    expected = mkEq[lowerAtRCT[coverV, leftV, rightV, nV],
+      fstRCT[bisectAtRCT[coverV, leftV, rightV, nV]]];
+    assertConclRCT["unfoldLower body", th, expected];
+
+    th = HOL`Stdlib`Real`unfoldUpper[coverV, leftV, rightV, nV];
+    expected = mkEq[upperAtRCT[coverV, leftV, rightV, nV],
+      sndRCT[bisectAtRCT[coverV, leftV, rightV, nV]]];
+    assertConclRCT["unfoldUpper body", th, expected];
+
+    bisN = bisectAtRCT[coverV, leftV, rightV, nV];
+    th = specAllRCT[HOL`Stdlib`Real`bisectRecSpecThm, {coverV, leftV, rightV}];
+    expected = andRCT[
+      mkEq[bisectAtRCT[coverV, leftV, rightV, zeroNumRCT[]], pairRCT[leftV, rightV]],
+      forallRCT[nV, mkEq[bisectAtRCT[coverV, leftV, rightV, sucNumRCT[nV]],
+        HOL`Stdlib`Real`stepIntervalTm[coverV, bisN]]]];
+    assertConclRCT["bisectRecSpec shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lowerZeroThm, {coverV, leftV, rightV}];
+    expected = mkEq[lowerAtRCT[coverV, leftV, rightV, zeroNumRCT[]], leftV];
+    assertConclRCT["lowerZero shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`upperZeroThm, {coverV, leftV, rightV}];
+    expected = mkEq[upperAtRCT[coverV, leftV, rightV, zeroNumRCT[]], rightV];
+    assertConclRCT["upperZero shape", th, expected];
+
+    loN = lowerAtRCT[coverV, leftV, rightV, nV];
+    hiN = upperAtRCT[coverV, leftV, rightV, nV];
+    midN = HOL`Stdlib`Real`midpointTm[loN, hiN];
+    condN = stepCondRCT[coverV, leftV, rightV, nV];
+
+    th = specAllRCT[HOL`Stdlib`Real`lowerSuccRightThm, {coverV, leftV, rightV, nV}];
+    expected = impRCT[condN,
+      mkEq[lowerAtRCT[coverV, leftV, rightV, sucNumRCT[nV]], midN]];
+    assertConclRCT["lowerSuccRight shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`upperSuccRightThm, {coverV, leftV, rightV, nV}];
+    expected = impRCT[condN,
+      mkEq[upperAtRCT[coverV, leftV, rightV, sucNumRCT[nV]], hiN]];
+    assertConclRCT["upperSuccRight shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`lowerSuccLeftThm, {coverV, leftV, rightV, nV}];
+    expected = impRCT[notRCT[condN],
+      mkEq[lowerAtRCT[coverV, leftV, rightV, sucNumRCT[nV]], loN]];
+    assertConclRCT["lowerSuccLeft shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`upperSuccLeftThm, {coverV, leftV, rightV, nV}];
+    expected = impRCT[notRCT[condN],
+      mkEq[upperAtRCT[coverV, leftV, rightV, sucNumRCT[nV]], midN]];
+    assertConclRCT["upperSuccLeft shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`badIntervalsThm, {coverV, leftV, rightV}];
+    expected = impRCT[rLeRCT[leftV, rightV],
+      impRCT[HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, leftV, rightV],
+        forallRCT[nV, HOL`Stdlib`Real`badIntervalTm[coverV,
+          lowerAtRCT[coverV, leftV, rightV, nV],
+          upperAtRCT[coverV, leftV, rightV, nV]]]]];
+    assertConclRCT["badIntervals shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`nestedIntervalsThm, {coverV, leftV, rightV}];
+    expected = impRCT[rLeRCT[leftV, rightV],
+      impRCT[HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, leftV, rightV],
+        HOL`Stdlib`Real`nestedIntervalsTm[
+          HOL`Stdlib`Real`lowerTm[coverV, leftV, rightV],
+          HOL`Stdlib`Real`upperTm[coverV, leftV, rightV]]]];
+    assertConclRCT["nestedIntervals shape", th, expected]]];

@@ -95,6 +95,45 @@ combineHalfSubcoverThm::usage = "combineHalfSubcoverThm - combines list subcover
 finiteSubcoverOfHalvesThm::usage = "finiteSubcoverOfHalvesThm - combines finite subcovers of adjacent closed intervals.";
 rightHalfBadThm::usage = "rightHalfBadThm - if [a,b] has no finite subcover and [a,m] has one, then [m,b] has no finite subcover.";
 
+badIntervalDefThm::usage = "badIntervalDefThm - |- badInterval = (lambda U a b. realLe a b /\\ noFiniteSubcover U a b).";
+badIntervalConst::usage = "badIntervalConst[] - badInterval : (iota -> real -> bool) -> real -> real -> bool.";
+badIntervalTm::usage = "badIntervalTm[U, a, b] - builds badInterval U a b.";
+unfoldBadInterval::usage = "unfoldBadInterval[U, a, b] - proves the beta-reduced badInterval definition at U, a, and b.";
+
+stepIntervalDefThm::usage = "stepIntervalDefThm - bisection step choosing the right half when the left half has a finite subcover.";
+stepIntervalConst::usage = "stepIntervalConst[] - stepInterval : (iota -> real -> bool) -> real # real -> real # real.";
+stepIntervalTm::usage = "stepIntervalTm[U, p] - builds stepInterval U p.";
+unfoldStepInterval::usage = "unfoldStepInterval[U, p] - proves the beta-reduced stepInterval definition at U and p.";
+
+bisectIntervalDefThm::usage = "bisectIntervalDefThm - epsilon-selected num recursion for repeatedly bisecting a bad interval.";
+bisectIntervalConst::usage = "bisectIntervalConst[] - bisectInterval : (iota -> real -> bool) -> real -> real -> num -> real # real.";
+bisectIntervalTm::usage = "bisectIntervalTm[U, left, right] - builds bisectInterval U left right.";
+unfoldBisectInterval::usage = "unfoldBisectInterval[U, left, right] - proves the deep-beta-reduced bisectInterval definition at U, left, and right.";
+bisectRecSpecThm::usage = "bisectRecSpecThm - |- forall U left right. bisectInterval U left right 0 = (left,right) /\\ forall n. bisectInterval U left right (SUC n) = stepInterval U (bisectInterval U left right n).";
+
+lowerDefThm::usage = "lowerDefThm - |- lower = (lambda U left right n. FST (bisectInterval U left right n)).";
+lowerConst::usage = "lowerConst[] - lower : (iota -> real -> bool) -> real -> real -> num -> real.";
+lowerTm::usage = "lowerTm[U, left, right] - builds lower U left right.";
+unfoldLower::usage = "unfoldLower[U, left, right, n] - proves the beta-reduced lower definition at U, left, right, and n.";
+upperDefThm::usage = "upperDefThm - |- upper = (lambda U left right n. SND (bisectInterval U left right n)).";
+upperConst::usage = "upperConst[] - upper : (iota -> real -> bool) -> real -> real -> num -> real.";
+upperTm::usage = "upperTm[U, left, right] - builds upper U left right.";
+unfoldUpper::usage = "unfoldUpper[U, left, right, n] - proves the beta-reduced upper definition at U, left, right, and n.";
+
+lowerZeroThm::usage = "lowerZeroThm - |- forall U left right. lower U left right 0 = left.";
+upperZeroThm::usage = "upperZeroThm - |- forall U left right. upper U left right 0 = right.";
+lowerSuccRightThm::usage = "lowerSuccRightThm - finite left half implies lower at SUC is the midpoint.";
+upperSuccRightThm::usage = "upperSuccRightThm - finite left half implies upper at SUC is unchanged.";
+lowerSuccLeftThm::usage = "lowerSuccLeftThm - non-finite left half implies lower at SUC is unchanged.";
+upperSuccLeftThm::usage = "upperSuccLeftThm - non-finite left half implies upper at SUC is the midpoint.";
+badIntervalsThm::usage = "badIntervalsThm - every interval produced by bisection is bad when the initial interval is bad.";
+intervalOrderThm::usage = "intervalOrderThm - bisection lower endpoints stay below upper endpoints.";
+lowerStepLeThm::usage = "lowerStepLeThm - bisection lower endpoint sequence is stepwise monotone.";
+upperStepLeThm::usage = "upperStepLeThm - bisection upper endpoint sequence is stepwise antitone.";
+lowerMonoThm::usage = "lowerMonoThm - bisection lower endpoint sequence is monotone.";
+upperAntitoneThm::usage = "upperAntitoneThm - bisection upper endpoint sequence is antitone.";
+nestedIntervalsThm::usage = "nestedIntervalsThm - bisection lower/upper sequences form nestedIntervals.";
+
 freshListDefThm::usage = "freshListDefThm - epsilon-selected num recursion for fresh finite prefixes.";
 freshListConst::usage = "freshListConst[] - freshList : (real -> bool) -> num -> real list.";
 freshListTm::usage = "freshListTm[S] - builds freshList S.";
@@ -1368,7 +1407,9 @@ memAppendRightThm =
 compactClosedIntervalSetTm[leftT_, rightT_] :=
   mkComb[mkComb[closedIntervalConst[], leftT], rightT];
 
-noFiniteSubcoverTy = tyFun[compactCoverTy, tyFun[realTy, tyFun[realTy, boolTy]]];
+compactNoFiniteSubcoverTyAt[ty_] :=
+  tyFun[compactCoverTyAt[ty], tyFun[realTy, tyFun[realTy, boolTy]]];
+noFiniteSubcoverTy = compactNoFiniteSubcoverTyAt[iotaTy];
 
 compactNoFiniteSubcoverBody[uT_, aT_, bT_] :=
   compactNotTm[finiteSubcoverTm[uT, compactClosedIntervalSetTm[aT, bT]]];
@@ -1381,8 +1422,11 @@ noFiniteSubcoverDefThm =
   ];
 
 noFiniteSubcoverConst[] := mkConst["noFiniteSubcover", noFiniteSubcoverTy];
+compactNoFiniteSubcoverConstAt[ty_] :=
+  mkConst["noFiniteSubcover", compactNoFiniteSubcoverTyAt[ty]];
 noFiniteSubcoverTm[uT_, aT_, bT_] :=
-  mkComb[mkComb[mkComb[noFiniteSubcoverConst[], uT], aT], bT];
+  mkComb[mkComb[mkComb[compactNoFiniteSubcoverConstAt[compactCoverIndexTy[uT]], uT],
+    aT], bT];
 
 unfoldNoFiniteSubcover[uT_, aT_, bT_] :=
   Module[{s1, s1b, s2, s2b, s3},
@@ -1516,6 +1560,741 @@ rightHalfBadThm =
     folded = EQMP[HOL`Equal`SYM[unfoldNoFiniteSubcover[uV, mV, bV]], notRight];
     HOL`Bool`GEN[uV, HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[mV,
       HOL`Bool`DISCH[hBadTm, HOL`Bool`DISCH[hLeftTm, folded]]]]]]
+  ];
+
+compactRealPairTy = HOL`Stdlib`Pair`prodTy[realTy, realTy];
+compactBisectFunTy = tyFun[numTy, compactRealPairTy];
+
+compactPairConsConst[] :=
+  mkConst[",", tyFun[realTy, tyFun[realTy, compactRealPairTy]]];
+compactPairTm[aT_, bT_] := mkComb[mkComb[compactPairConsConst[], aT], bT];
+compactFstConst[] := mkConst["FST", tyFun[compactRealPairTy, realTy]];
+compactSndConst[] := mkConst["SND", tyFun[compactRealPairTy, realTy]];
+compactFstTm[pT_] := mkComb[compactFstConst[], pT];
+compactSndTm[pT_] := mkComb[compactSndConst[], pT];
+
+compactPairInst[th_] := HOL`Kernel`INSTTYPE[
+  {mkVarType["A"] -> realTy, mkVarType["B"] -> realTy}, th];
+compactFstPairEq[aT_, bT_] := INST[
+  {mkVar["a", realTy] -> aT, mkVar["b", realTy] -> bT},
+  compactPairInst[HOL`Stdlib`Pair`fstPairEqThm]];
+compactSndPairEq[aT_, bT_] := INST[
+  {mkVar["a", realTy] -> aT, mkVar["b", realTy] -> bT},
+  compactPairInst[HOL`Stdlib`Pair`sndPairEqThm]];
+
+compactTransList[ths_List] := Fold[TRANS, First[ths], Rest[ths]];
+
+compactPairCong[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[compactPairConsConst[], eqLeft], eqRight];
+compactMidpointCong[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[midpointConst[], eqLeft], eqRight];
+compactClosedIntervalSetCong[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[closedIntervalConst[], eqLeft], eqRight];
+compactFiniteSubcoverSetCong[uT_, eqSet_] :=
+  HOL`Equal`APTERM[mkComb[compactFiniteSubcoverConstAt[compactCoverIndexTy[uT]], uT],
+    eqSet];
+compactFiniteSubcoverCong[uT_, eqLeft_, eqRight_] :=
+  Module[{midEq, setEq},
+    midEq = compactMidpointCong[eqLeft, eqRight];
+    setEq = compactClosedIntervalSetCong[eqLeft, midEq];
+    compactFiniteSubcoverSetCong[uT, setEq]
+  ];
+compactNoFiniteSubcoverCong[uT_, eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[
+    HOL`Equal`APTERM[mkComb[compactNoFiniteSubcoverConstAt[compactCoverIndexTy[uT]], uT],
+      eqLeft], eqRight];
+compactRealLeTrans[aT_, bT_, cT_, abTh_, bcTh_] :=
+  HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[realLeTransThm, {aT, bT, cT}],
+    abTh], bcTh];
+
+compactFalseTm[] := mkConst["F", boolTy];
+compactEqfIntro[thNotP_] :=
+  Module[{pT, pToF, fToP},
+    pT = concl[thNotP][[2]];
+    pToF = HOL`Bool`MP[HOL`Bool`NOTELIM[thNotP], ASSUME[pT]];
+    fToP = HOL`Bool`CONTR[pT, ASSUME[compactFalseTm[]]];
+    HOL`Kernel`DEDUCTANTISYM[fToP, pToF]
+  ];
+compactNotEqRight[eqTh_, notLeftTh_] :=
+  Module[{rightT, hRight, leftTh, falseTh},
+    rightT = concl[eqTh][[2]];
+    hRight = ASSUME[rightT];
+    leftTh = EQMP[HOL`Equal`SYM[eqTh], hRight];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notLeftTh], leftTh];
+    HOL`Bool`NOTINTRO[HOL`Bool`DISCH[rightT, falseTh]]
+  ];
+compactCondReduceT[ty_, condProof_, aT_, bT_] :=
+  TRANS[HOL`Equal`APTHM[HOL`Equal`APTHM[
+      HOL`Equal`APTERM[HOL`Bool`condConst[ty], HOL`Bool`EQTINTRO[condProof]],
+      aT], bT],
+    HOL`Bool`ISPEC[bT, HOL`Bool`ISPEC[aT, HOL`Bool`condTThm]]];
+compactCondReduceF[ty_, notCondProof_, aT_, bT_] :=
+  TRANS[HOL`Equal`APTHM[HOL`Equal`APTHM[
+      HOL`Equal`APTERM[HOL`Bool`condConst[ty], compactEqfIntro[notCondProof]],
+      aT], bT],
+    HOL`Bool`ISPEC[bT, HOL`Bool`ISPEC[aT, HOL`Bool`condFThm]]];
+
+compactBadIntervalTyAt[ty_] :=
+  tyFun[compactCoverTyAt[ty], tyFun[realTy, tyFun[realTy, boolTy]]];
+badIntervalTy = compactBadIntervalTyAt[iotaTy];
+
+compactBadIntervalBody[uT_, aT_, bT_] :=
+  conjTm[realLeTm[aT, bT], noFiniteSubcoverTm[uT, aT, bT]];
+
+badIntervalDefThm =
+  Module[{uV, aV, bV},
+    uV = mkVar["U", compactCoverTy]; aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    newDefinition[mkEq[mkVar["badInterval", badIntervalTy],
+      mkAbs[uV, mkAbs[aV, mkAbs[bV, compactBadIntervalBody[uV, aV, bV]]]]]]
+  ];
+
+badIntervalConst[] := mkConst["badInterval", badIntervalTy];
+compactBadIntervalConstAt[ty_] := mkConst["badInterval", compactBadIntervalTyAt[ty]];
+badIntervalTm[uT_, aT_, bT_] :=
+  mkComb[mkComb[mkComb[compactBadIntervalConstAt[compactCoverIndexTy[uT]], uT],
+    aT], bT];
+
+unfoldBadInterval[uT_, aT_, bT_] :=
+  Module[{def, s1, s1b, s2, s2b, s3},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, badIntervalDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, aT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, bT];
+    TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]]
+  ];
+
+compactStepIntervalTyAt[ty_] :=
+  tyFun[compactCoverTyAt[ty], tyFun[compactRealPairTy, compactRealPairTy]];
+stepIntervalTy = compactStepIntervalTyAt[iotaTy];
+
+compactStepIntervalCond[uT_, pT_] :=
+  Module[{loT, hiT},
+    loT = compactFstTm[pT]; hiT = compactSndTm[pT];
+    finiteSubcoverTm[uT, compactClosedIntervalSetTm[loT, midpointTm[loT, hiT]]]
+  ];
+compactStepIntervalBody[uT_, pT_] :=
+  Module[{loT, hiT, midT, rightPair, leftPair},
+    loT = compactFstTm[pT]; hiT = compactSndTm[pT]; midT = midpointTm[loT, hiT];
+    rightPair = compactPairTm[midT, hiT]; leftPair = compactPairTm[loT, midT];
+    mkComb[mkComb[mkComb[HOL`Bool`condConst[compactRealPairTy],
+      compactStepIntervalCond[uT, pT]], rightPair], leftPair]
+  ];
+
+stepIntervalDefThm =
+  Module[{uV, pV},
+    uV = mkVar["U", compactCoverTy]; pV = mkVar["p", compactRealPairTy];
+    newDefinition[mkEq[mkVar["stepInterval", stepIntervalTy],
+      mkAbs[uV, mkAbs[pV, compactStepIntervalBody[uV, pV]]]]]
+  ];
+
+stepIntervalConst[] := mkConst["stepInterval", stepIntervalTy];
+compactStepIntervalConstAt[ty_] := mkConst["stepInterval", compactStepIntervalTyAt[ty]];
+stepIntervalTm[uT_, pT_] :=
+  mkComb[mkComb[compactStepIntervalConstAt[compactCoverIndexTy[uT]], uT], pT];
+
+unfoldStepInterval[uT_, pT_] :=
+  Module[{def, s1, s1b, s2},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, stepIntervalDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, pT];
+    compactBetaClean[TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]]
+  ];
+
+compactBisectIntervalTyAt[ty_] :=
+  tyFun[compactCoverTyAt[ty],
+    tyFun[realTy, tyFun[realTy, compactBisectFunTy]]];
+bisectIntervalTy = compactBisectIntervalTyAt[iotaTy];
+
+compactBisectIntervalRecPred[uT_, leftT_, rightT_] :=
+  Module[{gV, nV},
+    gV = mkVar["gBisect", compactBisectFunTy]; nV = mkVar["nBisect", numTy];
+    mkAbs[gV, conjTm[
+      mkEq[mkComb[gV, zeroN[]], compactPairTm[leftT, rightT]],
+      forallTm[nV, mkEq[mkComb[gV, sucT[nV]], stepIntervalTm[uT, mkComb[gV, nV]]]]]]
+  ];
+
+bisectIntervalDefThm =
+  Module[{uV, leftV, rightV},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy];
+    newDefinition[mkEq[mkVar["bisectInterval", bisectIntervalTy],
+      mkAbs[uV, mkAbs[leftV, mkAbs[rightV,
+        compactSelectTm[compactBisectFunTy,
+          compactBisectIntervalRecPred[uV, leftV, rightV]]]]]]]
+  ];
+
+bisectIntervalConst[] := mkConst["bisectInterval", bisectIntervalTy];
+compactBisectIntervalConstAt[ty_] :=
+  mkConst["bisectInterval", compactBisectIntervalTyAt[ty]];
+bisectIntervalTm[uT_, leftT_, rightT_] :=
+  mkComb[mkComb[mkComb[compactBisectIntervalConstAt[compactCoverIndexTy[uT]], uT],
+    leftT], rightT];
+compactBisectAt[uT_, leftT_, rightT_, nT_] :=
+  mkComb[bisectIntervalTm[uT, leftT, rightT], nT];
+
+unfoldBisectInterval[uT_, leftT_, rightT_] :=
+  Module[{def, s1, s1b, s2, s2b, s3},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]},
+      bisectIntervalDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, leftT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, rightT];
+    compactBetaClean[TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]]]
+  ];
+
+bisectRecSpecThm =
+  Module[{uV, leftV, rightV, iter, exIter, sat, folded},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy];
+    iter = HOL`Kernel`INSTTYPE[{tyVar["A"] -> compactRealPairTy},
+      HOL`Stdlib`Num`numIterationThm];
+    exIter = compactBetaClean[HOL`Bool`SPEC[mkAbs[mkVar["pStep", compactRealPairTy],
+        stepIntervalTm[uV, mkVar["pStep", compactRealPairTy]]],
+      HOL`Bool`SPEC[compactPairTm[leftV, rightV], iter]]];
+    sat = HOL`Stdlib`Num`selectOfExists[
+      compactBisectIntervalRecPred[uV, leftV, rightV], exIter];
+    folded = compactBetaClean[
+      HOL`Drule`SUBS[{HOL`Equal`SYM[unfoldBisectInterval[uV, leftV, rightV]]}, sat]];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, folded]]]
+  ];
+
+compactBisectRecAt[uT_, leftT_, rightT_] :=
+  compactSpecAll[bisectRecSpecThm, {uT, leftT, rightT}];
+compactBisectZeroEq[uT_, leftT_, rightT_] :=
+  HOL`Bool`CONJUNCT1[compactBisectRecAt[uT, leftT, rightT]];
+compactBisectSucEq[uT_, leftT_, rightT_, nT_] :=
+  compactBetaClean[HOL`Bool`SPEC[nT,
+    HOL`Bool`CONJUNCT2[compactBisectRecAt[uT, leftT, rightT]]]];
+
+compactLowerTyAt[ty_] :=
+  tyFun[compactCoverTyAt[ty], tyFun[realTy, tyFun[realTy, tyFun[numTy, realTy]]]];
+compactUpperTyAt[ty_] := compactLowerTyAt[ty];
+lowerTy = compactLowerTyAt[iotaTy];
+upperTy = compactUpperTyAt[iotaTy];
+
+lowerDefThm =
+  Module[{uV, leftV, rightV, nV},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    newDefinition[mkEq[mkVar["lower", lowerTy],
+      mkAbs[uV, mkAbs[leftV, mkAbs[rightV, mkAbs[nV,
+        compactFstTm[compactBisectAt[uV, leftV, rightV, nV]]]]]]]]
+  ];
+
+upperDefThm =
+  Module[{uV, leftV, rightV, nV},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    newDefinition[mkEq[mkVar["upper", upperTy],
+      mkAbs[uV, mkAbs[leftV, mkAbs[rightV, mkAbs[nV,
+        compactSndTm[compactBisectAt[uV, leftV, rightV, nV]]]]]]]]
+  ];
+
+lowerConst[] := mkConst["lower", lowerTy];
+upperConst[] := mkConst["upper", upperTy];
+compactLowerConstAt[ty_] := mkConst["lower", compactLowerTyAt[ty]];
+compactUpperConstAt[ty_] := mkConst["upper", compactUpperTyAt[ty]];
+lowerTm[uT_, leftT_, rightT_] :=
+  mkComb[mkComb[mkComb[compactLowerConstAt[compactCoverIndexTy[uT]], uT],
+    leftT], rightT];
+upperTm[uT_, leftT_, rightT_] :=
+  mkComb[mkComb[mkComb[compactUpperConstAt[compactCoverIndexTy[uT]], uT],
+    leftT], rightT];
+compactLowerAt[uT_, leftT_, rightT_, nT_] := mkComb[lowerTm[uT, leftT, rightT], nT];
+compactUpperAt[uT_, leftT_, rightT_, nT_] := mkComb[upperTm[uT, leftT, rightT], nT];
+
+unfoldLower[uT_, leftT_, rightT_, nT_] :=
+  Module[{def, s1, s1b, s2, s2b, s3, s3b, s4},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, lowerDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, leftT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, rightT];
+    s3b = TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]];
+    s4 = HOL`Equal`APTHM[s3b, nT];
+    compactBetaClean[TRANS[s4, HOL`Equal`BETACONV[concl[s4][[2]]]]]
+  ];
+
+unfoldUpper[uT_, leftT_, rightT_, nT_] :=
+  Module[{def, s1, s1b, s2, s2b, s3, s3b, s4},
+    def = HOL`Kernel`INSTTYPE[{iotaTy -> compactCoverIndexTy[uT]}, upperDefThm];
+    s1 = HOL`Equal`APTHM[def, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, leftT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, rightT];
+    s3b = TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]];
+    s4 = HOL`Equal`APTHM[s3b, nT];
+    compactBetaClean[TRANS[s4, HOL`Equal`BETACONV[concl[s4][[2]]]]]
+  ];
+
+compactStepCondition[uT_, leftT_, rightT_, nT_] :=
+  finiteSubcoverTm[uT, compactClosedIntervalSetTm[
+    compactLowerAt[uT, leftT, rightT, nT],
+    midpointTm[compactLowerAt[uT, leftT, rightT, nT],
+      compactUpperAt[uT, leftT, rightT, nT]]]];
+compactStepData[uT_, leftT_, rightT_, nT_] :=
+  Module[{bisN, loN, hiN, fstN, sndN, midN, midPair},
+    bisN = compactBisectAt[uT, leftT, rightT, nT];
+    loN = compactLowerAt[uT, leftT, rightT, nT];
+    hiN = compactUpperAt[uT, leftT, rightT, nT];
+    fstN = compactFstTm[bisN]; sndN = compactSndTm[bisN];
+    midN = midpointTm[loN, hiN]; midPair = midpointTm[fstN, sndN];
+    {bisN, loN, hiN, fstN, sndN, midN, midPair}
+  ];
+compactStepConditionEq[uT_, leftT_, rightT_, nT_] :=
+  Module[{data, lowerEq, upperEq, midEq, setEq},
+    data = compactStepData[uT, leftT, rightT, nT];
+    lowerEq = unfoldLower[uT, leftT, rightT, nT];
+    upperEq = unfoldUpper[uT, leftT, rightT, nT];
+    midEq = compactMidpointCong[lowerEq, upperEq];
+    setEq = compactClosedIntervalSetCong[lowerEq, midEq];
+    compactFiniteSubcoverSetCong[uT, setEq]
+  ];
+
+lowerZeroThm =
+  Module[{uV, leftV, rightV, bis0, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; bis0 = compactBisectAt[uV, leftV, rightV, zeroN[]];
+    point = compactTransList[{
+      unfoldLower[uV, leftV, rightV, zeroN[]],
+      HOL`Equal`APTERM[compactFstConst[], compactBisectZeroEq[uV, leftV, rightV]],
+      compactFstPairEq[leftV, rightV]}];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, point]]]
+  ];
+
+upperZeroThm =
+  Module[{uV, leftV, rightV, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy];
+    point = compactTransList[{
+      unfoldUpper[uV, leftV, rightV, zeroN[]],
+      HOL`Equal`APTERM[compactSndConst[], compactBisectZeroEq[uV, leftV, rightV]],
+      compactSndPairEq[leftV, rightV]}];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, point]]]
+  ];
+
+compactLowerZeroEq[uT_, leftT_, rightT_] :=
+  compactSpecAll[lowerZeroThm, {uT, leftT, rightT}];
+compactUpperZeroEq[uT_, leftT_, rightT_] :=
+  compactSpecAll[upperZeroThm, {uT, leftT, rightT}];
+
+lowerSuccRightThm =
+  Module[{uV, leftV, rightV, nV, data, bisN, sndN, midPair, midN, rightPair,
+          leftPair, hTm, h, condEq, hPair, condRed, stepToPair, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    data = compactStepData[uV, leftV, rightV, nV];
+    bisN = data[[1]]; sndN = data[[5]]; midN = data[[6]]; midPair = data[[7]];
+    rightPair = compactPairTm[midPair, sndN];
+    leftPair = compactPairTm[data[[4]], midPair];
+    hTm = compactStepCondition[uV, leftV, rightV, nV]; h = ASSUME[hTm];
+    condEq = compactStepConditionEq[uV, leftV, rightV, nV];
+    hPair = EQMP[condEq, h];
+    condRed = compactCondReduceT[compactRealPairTy, hPair, rightPair, leftPair];
+    stepToPair = TRANS[unfoldStepInterval[uV, bisN], condRed];
+    point = compactTransList[{
+      unfoldLower[uV, leftV, rightV, sucT[nV]],
+      HOL`Equal`APTERM[compactFstConst[], compactBisectSucEq[uV, leftV, rightV, nV]],
+      HOL`Equal`APTERM[compactFstConst[], stepToPair],
+      compactFstPairEq[midPair, sndN],
+      HOL`Equal`SYM[compactMidpointCong[unfoldLower[uV, leftV, rightV, nV],
+        unfoldUpper[uV, leftV, rightV, nV]]]}];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hTm, point]]]]]
+  ];
+
+upperSuccRightThm =
+  Module[{uV, leftV, rightV, nV, data, bisN, sndN, midPair, rightPair,
+          leftPair, hTm, h, condEq, hPair, condRed, stepToPair, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    data = compactStepData[uV, leftV, rightV, nV];
+    bisN = data[[1]]; sndN = data[[5]]; midPair = data[[7]];
+    rightPair = compactPairTm[midPair, sndN];
+    leftPair = compactPairTm[data[[4]], midPair];
+    hTm = compactStepCondition[uV, leftV, rightV, nV]; h = ASSUME[hTm];
+    condEq = compactStepConditionEq[uV, leftV, rightV, nV];
+    hPair = EQMP[condEq, h];
+    condRed = compactCondReduceT[compactRealPairTy, hPair, rightPair, leftPair];
+    stepToPair = TRANS[unfoldStepInterval[uV, bisN], condRed];
+    point = compactTransList[{
+      unfoldUpper[uV, leftV, rightV, sucT[nV]],
+      HOL`Equal`APTERM[compactSndConst[], compactBisectSucEq[uV, leftV, rightV, nV]],
+      HOL`Equal`APTERM[compactSndConst[], stepToPair],
+      compactSndPairEq[midPair, sndN],
+      HOL`Equal`SYM[unfoldUpper[uV, leftV, rightV, nV]]}];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hTm, point]]]]]
+  ];
+
+lowerSuccLeftThm =
+  Module[{uV, leftV, rightV, nV, data, bisN, fstN, midPair, rightPair,
+          leftPair, hTm, h, condEq, hPair, condRed, stepToPair, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    data = compactStepData[uV, leftV, rightV, nV];
+    bisN = data[[1]]; fstN = data[[4]]; midPair = data[[7]];
+    rightPair = compactPairTm[midPair, data[[5]]];
+    leftPair = compactPairTm[fstN, midPair];
+    hTm = compactNotTm[compactStepCondition[uV, leftV, rightV, nV]]; h = ASSUME[hTm];
+    condEq = compactStepConditionEq[uV, leftV, rightV, nV];
+    hPair = compactNotEqRight[condEq, h];
+    condRed = compactCondReduceF[compactRealPairTy, hPair, rightPair, leftPair];
+    stepToPair = TRANS[unfoldStepInterval[uV, bisN], condRed];
+    point = compactTransList[{
+      unfoldLower[uV, leftV, rightV, sucT[nV]],
+      HOL`Equal`APTERM[compactFstConst[], compactBisectSucEq[uV, leftV, rightV, nV]],
+      HOL`Equal`APTERM[compactFstConst[], stepToPair],
+      compactFstPairEq[fstN, midPair],
+      HOL`Equal`SYM[unfoldLower[uV, leftV, rightV, nV]]}];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hTm, point]]]]]
+  ];
+
+upperSuccLeftThm =
+  Module[{uV, leftV, rightV, nV, data, bisN, fstN, midPair, midEq, rightPair,
+          leftPair, hTm, h, condEq, hPair, condRed, stepToPair, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    data = compactStepData[uV, leftV, rightV, nV];
+    bisN = data[[1]]; fstN = data[[4]]; midPair = data[[7]];
+    midEq = compactMidpointCong[unfoldLower[uV, leftV, rightV, nV],
+      unfoldUpper[uV, leftV, rightV, nV]];
+    rightPair = compactPairTm[midPair, data[[5]]];
+    leftPair = compactPairTm[fstN, midPair];
+    hTm = compactNotTm[compactStepCondition[uV, leftV, rightV, nV]]; h = ASSUME[hTm];
+    condEq = compactStepConditionEq[uV, leftV, rightV, nV];
+    hPair = compactNotEqRight[condEq, h];
+    condRed = compactCondReduceF[compactRealPairTy, hPair, rightPair, leftPair];
+    stepToPair = TRANS[unfoldStepInterval[uV, bisN], condRed];
+    point = compactTransList[{
+      unfoldUpper[uV, leftV, rightV, sucT[nV]],
+      HOL`Equal`APTERM[compactSndConst[], compactBisectSucEq[uV, leftV, rightV, nV]],
+      HOL`Equal`APTERM[compactSndConst[], stepToPair],
+      compactSndPairEq[fstN, midPair],
+      HOL`Equal`SYM[midEq]}];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[nV,
+      HOL`Bool`DISCH[hTm, point]]]]]
+  ];
+
+compactBadFromParts[uT_, aT_, bT_, leTh_, noTh_] :=
+  EQMP[HOL`Equal`SYM[unfoldBadInterval[uT, aT, bT]], HOL`Bool`CONJ[leTh, noTh]];
+compactNoFiniteFromNot[uT_, aT_, bT_, notTh_] :=
+  EQMP[HOL`Equal`SYM[unfoldNoFiniteSubcover[uT, aT, bT]], notTh];
+compactLowerSuccRightEq[uT_, leftT_, rightT_, nT_, hTh_] :=
+  HOL`Bool`MP[compactSpecAll[lowerSuccRightThm, {uT, leftT, rightT, nT}], hTh];
+compactUpperSuccRightEq[uT_, leftT_, rightT_, nT_, hTh_] :=
+  HOL`Bool`MP[compactSpecAll[upperSuccRightThm, {uT, leftT, rightT, nT}], hTh];
+compactLowerSuccLeftEq[uT_, leftT_, rightT_, nT_, hTh_] :=
+  HOL`Bool`MP[compactSpecAll[lowerSuccLeftThm, {uT, leftT, rightT, nT}], hTh];
+compactUpperSuccLeftEq[uT_, leftT_, rightT_, nT_, hTh_] :=
+  HOL`Bool`MP[compactSpecAll[upperSuccLeftThm, {uT, leftT, rightT, nT}], hTh];
+
+badIntervalsThm =
+  Module[{uV, leftV, rightV, nV, nInd, hLeTm, hLe, hBadTm, hBad, pLam,
+          lo0, hi0, l0Eq, u0Eq, baseLe, baseNo, base, ihTm, ih, loN, hiN,
+          midN, loS, hiS, ihOpen, ihLe, ihNo, condTm, em, hLeft, hNot,
+          rightBad, lEq, uEq, midLe, branchRightLe, branchRightNo, branchRight,
+          noLeft, leftMidLe, branchLeftLe, branchLeftNo, branchLeft, stepPoint,
+          stepAll, indSpec, indAll},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    pLam = Module[{kP},
+      kP = mkVar["kBad", numTy];
+      mkAbs[kP, badIntervalTm[uV, compactLowerAt[uV, leftV, rightV, kP],
+        compactUpperAt[uV, leftV, rightV, kP]]]
+    ];
+
+    lo0 = compactLowerAt[uV, leftV, rightV, zeroN[]];
+    hi0 = compactUpperAt[uV, leftV, rightV, zeroN[]];
+    l0Eq = compactLowerZeroEq[uV, leftV, rightV];
+    u0Eq = compactUpperZeroEq[uV, leftV, rightV];
+    baseLe = EQMP[compactRealLeCong[HOL`Equal`SYM[l0Eq], HOL`Equal`SYM[u0Eq]], hLe];
+    baseNo = EQMP[compactNoFiniteSubcoverCong[uV, HOL`Equal`SYM[l0Eq],
+      HOL`Equal`SYM[u0Eq]], hBad];
+    base = compactBadFromParts[uV, lo0, hi0, baseLe, baseNo];
+
+    nInd = mkVar["nBad", numTy];
+    loN = compactLowerAt[uV, leftV, rightV, nInd];
+    hiN = compactUpperAt[uV, leftV, rightV, nInd];
+    midN = midpointTm[loN, hiN];
+    loS = compactLowerAt[uV, leftV, rightV, sucT[nInd]];
+    hiS = compactUpperAt[uV, leftV, rightV, sucT[nInd]];
+    ihTm = badIntervalTm[uV, loN, hiN]; ih = ASSUME[ihTm];
+    ihOpen = EQMP[unfoldBadInterval[uV, loN, hiN], ih];
+    ihLe = HOL`Bool`CONJUNCT1[ihOpen]; ihNo = HOL`Bool`CONJUNCT2[ihOpen];
+    condTm = compactStepCondition[uV, leftV, rightV, nInd];
+    em = HOL`Bool`EXCLUDEDMIDDLE[condTm];
+
+    hLeft = ASSUME[condTm];
+    rightBad = HOL`Bool`MP[
+      HOL`Bool`MP[compactSpecAll[rightHalfBadThm, {uV, loN, hiN, midN}], ihNo],
+      hLeft];
+    lEq = compactLowerSuccRightEq[uV, leftV, rightV, nInd, hLeft];
+    uEq = compactUpperSuccRightEq[uV, leftV, rightV, nInd, hLeft];
+    midLe = HOL`Bool`MP[compactSpecAll[midpointLeRightThm, {loN, hiN}], ihLe];
+    branchRightLe = EQMP[compactRealLeCong[HOL`Equal`SYM[lEq], HOL`Equal`SYM[uEq]],
+      midLe];
+    branchRightNo = EQMP[compactNoFiniteSubcoverCong[uV, HOL`Equal`SYM[lEq],
+      HOL`Equal`SYM[uEq]], rightBad];
+    branchRight = compactBadFromParts[uV, loS, hiS, branchRightLe, branchRightNo];
+
+    hNot = ASSUME[compactNotTm[condTm]];
+    noLeft = compactNoFiniteFromNot[uV, loN, midN, hNot];
+    lEq = compactLowerSuccLeftEq[uV, leftV, rightV, nInd, hNot];
+    uEq = compactUpperSuccLeftEq[uV, leftV, rightV, nInd, hNot];
+    leftMidLe = HOL`Bool`MP[compactSpecAll[leftLeMidpointThm, {loN, hiN}], ihLe];
+    branchLeftLe = EQMP[compactRealLeCong[HOL`Equal`SYM[lEq], HOL`Equal`SYM[uEq]],
+      leftMidLe];
+    branchLeftNo = EQMP[compactNoFiniteSubcoverCong[uV, HOL`Equal`SYM[lEq],
+      HOL`Equal`SYM[uEq]], noLeft];
+    branchLeft = compactBadFromParts[uV, loS, hiS, branchLeftLe, branchLeftNo];
+
+    stepPoint = HOL`Bool`DISJCASES[em, branchRight, branchLeft];
+    stepAll = HOL`Bool`GEN[nInd, HOL`Bool`DISCH[ihTm, stepPoint]];
+    indSpec = compactBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAll = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, indAll]]]]]
+  ];
+
+intervalOrderThm =
+  Module[{uV, leftV, rightV, nV, hLeTm, hLe, hBadTm, hBad, badAll, badN,
+          opened, point, allN},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    badAll = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[badIntervalsThm,
+      {uV, leftV, rightV}], hLe], hBad];
+    badN = HOL`Bool`SPEC[nV, badAll];
+    opened = EQMP[unfoldBadInterval[uV, compactLowerAt[uV, leftV, rightV, nV],
+      compactUpperAt[uV, leftV, rightV, nV]], badN];
+    point = HOL`Bool`CONJUNCT1[opened];
+    allN = HOL`Bool`GEN[nV, point];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, allN]]]]]
+  ];
+
+compactIntervalOrderAt[uT_, leftT_, rightT_, hLeTh_, hBadTh_, nT_] :=
+  HOL`Bool`SPEC[nT, HOL`Bool`MP[HOL`Bool`MP[
+    compactSpecAll[intervalOrderThm, {uT, leftT, rightT}], hLeTh], hBadTh]];
+
+lowerStepLeThm =
+  Module[{uV, leftV, rightV, nV, hLeTm, hLe, hBadTm, hBad, loN, hiN, loS,
+          orderN, condTm, em, hLeft, hNot, lEq, leMid, branchT, refl, branchF,
+          point, allN},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    loN = compactLowerAt[uV, leftV, rightV, nV];
+    hiN = compactUpperAt[uV, leftV, rightV, nV];
+    loS = compactLowerAt[uV, leftV, rightV, sucT[nV]];
+    orderN = compactIntervalOrderAt[uV, leftV, rightV, hLe, hBad, nV];
+    condTm = compactStepCondition[uV, leftV, rightV, nV];
+    em = HOL`Bool`EXCLUDEDMIDDLE[condTm];
+
+    hLeft = ASSUME[condTm];
+    lEq = compactLowerSuccRightEq[uV, leftV, rightV, nV, hLeft];
+    leMid = HOL`Bool`MP[compactSpecAll[leftLeMidpointThm, {loN, hiN}], orderN];
+    branchT = EQMP[compactRealLeCong[REFL[loN], HOL`Equal`SYM[lEq]], leMid];
+
+    hNot = ASSUME[compactNotTm[condTm]];
+    lEq = compactLowerSuccLeftEq[uV, leftV, rightV, nV, hNot];
+    refl = HOL`Bool`SPEC[loN, realLeReflThm];
+    branchF = EQMP[compactRealLeCong[REFL[loN], HOL`Equal`SYM[lEq]], refl];
+
+    point = HOL`Bool`DISJCASES[em, branchT, branchF];
+    allN = HOL`Bool`GEN[nV, point];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, allN]]]]]
+  ];
+
+upperStepLeThm =
+  Module[{uV, leftV, rightV, nV, hLeTm, hLe, hBadTm, hBad, loN, hiN, hiS,
+          orderN, condTm, em, hLeft, hNot, uEq, refl, branchT, leMid, branchF,
+          point, allN},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    loN = compactLowerAt[uV, leftV, rightV, nV];
+    hiN = compactUpperAt[uV, leftV, rightV, nV];
+    hiS = compactUpperAt[uV, leftV, rightV, sucT[nV]];
+    orderN = compactIntervalOrderAt[uV, leftV, rightV, hLe, hBad, nV];
+    condTm = compactStepCondition[uV, leftV, rightV, nV];
+    em = HOL`Bool`EXCLUDEDMIDDLE[condTm];
+
+    hLeft = ASSUME[condTm];
+    uEq = compactUpperSuccRightEq[uV, leftV, rightV, nV, hLeft];
+    refl = HOL`Bool`SPEC[hiN, realLeReflThm];
+    branchT = EQMP[compactRealLeCong[HOL`Equal`SYM[uEq], REFL[hiN]], refl];
+
+    hNot = ASSUME[compactNotTm[condTm]];
+    uEq = compactUpperSuccLeftEq[uV, leftV, rightV, nV, hNot];
+    leMid = HOL`Bool`MP[compactSpecAll[midpointLeRightThm, {loN, hiN}], orderN];
+    branchF = EQMP[compactRealLeCong[HOL`Equal`SYM[uEq], REFL[hiN]], leMid];
+
+    point = HOL`Bool`DISJCASES[em, branchT, branchF];
+    allN = HOL`Bool`GEN[nV, point];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, allN]]]]]
+  ];
+
+compactNumLeZeroEqThm =
+  Module[{nV},
+    nV = mkVar["n", numTy];
+    HOL`Auto`Arith`arithProve[forallTm[nV,
+      impTm[compactNatLe[nV, zeroN[]], mkEq[nV, zeroN[]]]]]
+  ];
+
+compactLowerStepAt[uT_, leftT_, rightT_, hLeTh_, hBadTh_, nT_] :=
+  HOL`Bool`SPEC[nT, HOL`Bool`MP[HOL`Bool`MP[
+    compactSpecAll[lowerStepLeThm, {uT, leftT, rightT}], hLeTh], hBadTh]];
+compactUpperStepAt[uT_, leftT_, rightT_, hLeTh_, hBadTh_, nT_] :=
+  HOL`Bool`SPEC[nT, HOL`Bool`MP[HOL`Bool`MP[
+    compactSpecAll[upperStepLeThm, {uT, leftT, rightT}], hLeTh], hBadTh]];
+
+lowerMonoThm =
+  Module[{uV, leftV, rightV, mInd, nV, hLeTm, hLe, hBadTm, hBad, lowerSeq,
+          pLam, hLeBase, nEq0, appEq, baseRefl, base, ihTm, ih, hLeSuc,
+          caseTh, hLeM, ihLe, stepLe, branchA, hEqSuc, appEqS, branchB,
+          stepPoint, stepAll, indSpec, indAll, mV, hLeFinal, finalPoint},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    lowerSeq = lowerTm[uV, leftV, rightV];
+    pLam = Module[{mP, nP},
+      mP = mkVar["mLower", numTy]; nP = mkVar["nLower", numTy];
+      mkAbs[mP, forallTm[nP, impTm[compactNatLe[nP, mP],
+        realLeTm[mkComb[lowerSeq, nP], mkComb[lowerSeq, mP]]]]]
+    ];
+
+    hLeBase = ASSUME[compactNatLe[nV, zeroN[]]];
+    nEq0 = HOL`Bool`MP[HOL`Bool`SPEC[nV, compactNumLeZeroEqThm], hLeBase];
+    appEq = HOL`Equal`APTERM[lowerSeq, nEq0];
+    baseRefl = HOL`Bool`SPEC[mkComb[lowerSeq, zeroN[]], realLeReflThm];
+    base = HOL`Bool`GEN[nV, HOL`Bool`DISCH[compactNatLe[nV, zeroN[]],
+      EQMP[compactRealLeCong[HOL`Equal`SYM[appEq],
+        REFL[mkComb[lowerSeq, zeroN[]]]], baseRefl]]];
+
+    mInd = mkVar["mLowerInd", numTy];
+    ihTm = forallTm[nV, impTm[compactNatLe[nV, mInd],
+      realLeTm[mkComb[lowerSeq, nV], mkComb[lowerSeq, mInd]]]];
+    ih = ASSUME[ihTm];
+    hLeSuc = ASSUME[compactNatLe[nV, sucT[mInd]]];
+    caseTh = HOL`Bool`MP[
+      HOL`Bool`SPEC[mInd, HOL`Bool`SPEC[nV, HOL`Stdlib`Num`leqSucCaseThm]],
+      hLeSuc];
+    hLeM = ASSUME[compactNatLe[nV, mInd]];
+    ihLe = HOL`Bool`MP[HOL`Bool`SPEC[nV, ih], hLeM];
+    stepLe = compactLowerStepAt[uV, leftV, rightV, hLe, hBad, mInd];
+    branchA = compactRealLeTrans[mkComb[lowerSeq, nV], mkComb[lowerSeq, mInd],
+      mkComb[lowerSeq, sucT[mInd]], ihLe, stepLe];
+    hEqSuc = ASSUME[mkEq[nV, sucT[mInd]]];
+    appEqS = HOL`Equal`APTERM[lowerSeq, hEqSuc];
+    branchB = EQMP[compactRealLeCong[HOL`Equal`SYM[appEqS],
+      REFL[mkComb[lowerSeq, sucT[mInd]]]],
+      HOL`Bool`SPEC[mkComb[lowerSeq, sucT[mInd]], realLeReflThm]];
+    stepPoint = HOL`Bool`DISJCASES[caseTh, branchA, branchB];
+    stepAll = HOL`Bool`GEN[mInd, HOL`Bool`DISCH[ihTm,
+      HOL`Bool`GEN[nV, HOL`Bool`DISCH[compactNatLe[nV, sucT[mInd]], stepPoint]]]];
+
+    indSpec = compactBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAll = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+    hLeFinal = ASSUME[compactNatLe[nV, mV]];
+    finalPoint = HOL`Bool`MP[HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, indAll]], hLeFinal];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm,
+        HOL`Bool`GEN[nV, HOL`Bool`GEN[mV,
+          HOL`Bool`DISCH[compactNatLe[nV, mV], finalPoint]]]]]]]]
+  ];
+
+upperAntitoneThm =
+  Module[{uV, leftV, rightV, mInd, nV, hLeTm, hLe, hBadTm, hBad, upperSeq,
+          pLam, hLeBase, nEq0, appEq, baseRefl, base, ihTm, ih, hLeSuc,
+          caseTh, hLeM, ihLe, stepLe, branchA, hEqSuc, appEqS, branchB,
+          stepPoint, stepAll, indSpec, indAll, mV, hLeFinal, finalPoint},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; nV = mkVar["n", numTy]; mV = mkVar["m", numTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    upperSeq = upperTm[uV, leftV, rightV];
+    pLam = Module[{mP, nP},
+      mP = mkVar["mUpper", numTy]; nP = mkVar["nUpper", numTy];
+      mkAbs[mP, forallTm[nP, impTm[compactNatLe[nP, mP],
+        realLeTm[mkComb[upperSeq, mP], mkComb[upperSeq, nP]]]]]
+    ];
+
+    hLeBase = ASSUME[compactNatLe[nV, zeroN[]]];
+    nEq0 = HOL`Bool`MP[HOL`Bool`SPEC[nV, compactNumLeZeroEqThm], hLeBase];
+    appEq = HOL`Equal`APTERM[upperSeq, nEq0];
+    baseRefl = HOL`Bool`SPEC[mkComb[upperSeq, zeroN[]], realLeReflThm];
+    base = HOL`Bool`GEN[nV, HOL`Bool`DISCH[compactNatLe[nV, zeroN[]],
+      EQMP[compactRealLeCong[REFL[mkComb[upperSeq, zeroN[]]],
+        HOL`Equal`SYM[appEq]], baseRefl]]];
+
+    mInd = mkVar["mUpperInd", numTy];
+    ihTm = forallTm[nV, impTm[compactNatLe[nV, mInd],
+      realLeTm[mkComb[upperSeq, mInd], mkComb[upperSeq, nV]]]];
+    ih = ASSUME[ihTm];
+    hLeSuc = ASSUME[compactNatLe[nV, sucT[mInd]]];
+    caseTh = HOL`Bool`MP[
+      HOL`Bool`SPEC[mInd, HOL`Bool`SPEC[nV, HOL`Stdlib`Num`leqSucCaseThm]],
+      hLeSuc];
+    hLeM = ASSUME[compactNatLe[nV, mInd]];
+    ihLe = HOL`Bool`MP[HOL`Bool`SPEC[nV, ih], hLeM];
+    stepLe = compactUpperStepAt[uV, leftV, rightV, hLe, hBad, mInd];
+    branchA = compactRealLeTrans[mkComb[upperSeq, sucT[mInd]],
+      mkComb[upperSeq, mInd], mkComb[upperSeq, nV], stepLe, ihLe];
+    hEqSuc = ASSUME[mkEq[nV, sucT[mInd]]];
+    appEqS = HOL`Equal`APTERM[upperSeq, hEqSuc];
+    branchB = EQMP[compactRealLeCong[REFL[mkComb[upperSeq, sucT[mInd]]],
+      HOL`Equal`SYM[appEqS]],
+      HOL`Bool`SPEC[mkComb[upperSeq, sucT[mInd]], realLeReflThm]];
+    stepPoint = HOL`Bool`DISJCASES[caseTh, branchA, branchB];
+    stepAll = HOL`Bool`GEN[mInd, HOL`Bool`DISCH[ihTm,
+      HOL`Bool`GEN[nV, HOL`Bool`DISCH[compactNatLe[nV, sucT[mInd]], stepPoint]]]];
+
+    indSpec = compactBetaClean[HOL`Bool`SPEC[pLam, HOL`Stdlib`Num`numInductionThm]];
+    indAll = HOL`Bool`MP[indSpec, HOL`Bool`CONJ[base, stepAll]];
+    hLeFinal = ASSUME[compactNatLe[nV, mV]];
+    finalPoint = HOL`Bool`MP[HOL`Bool`SPEC[nV, HOL`Bool`SPEC[mV, indAll]], hLeFinal];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm,
+        HOL`Bool`GEN[nV, HOL`Bool`GEN[mV,
+          HOL`Bool`DISCH[compactNatLe[nV, mV], finalPoint]]]]]]]]
+  ];
+
+nestedIntervalsThm =
+  Module[{uV, leftV, rightV, hLeTm, hLe, hBadTm, hBad, lowerSeq, upperSeq,
+          orderAll, lowerAll, upperAll, body, folded},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy];
+    hLeTm = realLeTm[leftV, rightV]; hLe = ASSUME[hLeTm];
+    hBadTm = noFiniteSubcoverTm[uV, leftV, rightV]; hBad = ASSUME[hBadTm];
+    lowerSeq = lowerTm[uV, leftV, rightV]; upperSeq = upperTm[uV, leftV, rightV];
+    orderAll = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[intervalOrderThm,
+      {uV, leftV, rightV}], hLe], hBad];
+    lowerAll = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[lowerMonoThm,
+      {uV, leftV, rightV}], hLe], hBad];
+    upperAll = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[upperAntitoneThm,
+      {uV, leftV, rightV}], hLe], hBad];
+    body = HOL`Bool`CONJ[orderAll, HOL`Bool`CONJ[lowerAll, upperAll]];
+    folded = EQMP[HOL`Equal`SYM[unfoldNestedIntervals[lowerSeq, upperSeq]], body];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, folded]]]]]
   ];
 
 End[];
