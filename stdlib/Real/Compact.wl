@@ -72,6 +72,29 @@ finiteSubcoverConst::usage = "finiteSubcoverConst[] - finiteSubcover : (iota -> 
 finiteSubcoverTm::usage = "finiteSubcoverTm[U, S] - builds finiteSubcover U S.";
 unfoldFiniteSubcover::usage = "unfoldFiniteSubcover[U, S] - proves the beta-reduced finiteSubcover definition at U and S.";
 
+midpointDefThm::usage = "midpointDefThm - |- midpoint = (lambda a b. realMul (realAdd a b) (realInv 2)).";
+midpointConst::usage = "midpointConst[] - midpoint : real -> real -> real.";
+midpointTm::usage = "midpointTm[a, b] - builds midpoint a b.";
+unfoldMidpoint::usage = "unfoldMidpoint[a, b] - proves the beta-reduced midpoint definition at a and b.";
+leftLeMidpointThm::usage = "leftLeMidpointThm - |- forall a b. realLe a b ==> realLe a (midpoint a b).";
+midpointLeRightThm::usage = "midpointLeRightThm - |- forall a b. realLe a b ==> realLe (midpoint a b) b.";
+leftLtMidpointThm::usage = "leftLtMidpointThm - |- forall a b. realLt a b ==> realLt a (midpoint a b).";
+midpointLtRightThm::usage = "midpointLtRightThm - |- forall a b. realLt a b ==> realLt (midpoint a b) b.";
+midpointSubLeftThm::usage = "midpointSubLeftThm - |- forall a b. midpoint a b - a = (b - a) * inv 2.";
+rightSubMidpointThm::usage = "rightSubMidpointThm - |- forall a b. b - midpoint a b = (b - a) * inv 2.";
+
+memAppendLeftThm::usage = "memAppendLeftThm - |- forall i js ks. MEM i js ==> MEM i (APPEND js ks).";
+memAppendRightThm::usage = "memAppendRightThm - |- forall i js ks. MEM i ks ==> MEM i (APPEND js ks).";
+
+noFiniteSubcoverDefThm::usage = "noFiniteSubcoverDefThm - |- noFiniteSubcover = (lambda U a b. ~(finiteSubcover U (closedInterval a b))).";
+noFiniteSubcoverConst::usage = "noFiniteSubcoverConst[] - noFiniteSubcover : (iota -> real -> bool) -> real -> real -> bool.";
+noFiniteSubcoverTm::usage = "noFiniteSubcoverTm[U, a, b] - builds noFiniteSubcover U a b.";
+unfoldNoFiniteSubcover::usage = "unfoldNoFiniteSubcover[U, a, b] - proves the beta-reduced noFiniteSubcover definition at U, a, and b.";
+
+combineHalfSubcoverThm::usage = "combineHalfSubcoverThm - combines list subcovers of adjacent closed intervals by APPEND.";
+finiteSubcoverOfHalvesThm::usage = "finiteSubcoverOfHalvesThm - combines finite subcovers of adjacent closed intervals.";
+rightHalfBadThm::usage = "rightHalfBadThm - if [a,b] has no finite subcover and [a,m] has one, then [m,b] has no finite subcover.";
+
 freshListDefThm::usage = "freshListDefThm - epsilon-selected num recursion for fresh finite prefixes.";
 freshListConst::usage = "freshListConst[] - freshList : (real -> bool) -> num -> real list.";
 freshListTm::usage = "freshListTm[S] - builds freshList S.";
@@ -987,6 +1010,512 @@ accumulationPrincipleThm =
     chooseL = HOL`Bool`CHOOSE[lW, convEx, choosePhi];
     HOL`Bool`GEN[sV, HOL`Bool`DISCH[hBoundTm,
       HOL`Bool`DISCH[hInfTm, chooseL]]]
+  ];
+
+compactTwoNat[] := sucT[sucT[zeroN[]]];
+compactTwoReal[] := realOfRatTm[ratOfIntTm[intOfNumTm[compactTwoNat[]]]];
+compactRealInv[xT_] := mkComb[realInvConst[], xT];
+compactHalfScalar[] := compactRealInv[compactTwoReal[]];
+compactMidpointBody[aT_, bT_] :=
+  realMulTm[realAddTm[aT, bT], compactHalfScalar[]];
+compactHalfLength[aT_, bT_] :=
+  realMulTm[realAddTm[bT, realNegTm[aT]], compactHalfScalar[]];
+
+midpointDefThm =
+  Module[{aV, bV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    newDefinition[mkEq[mkVar["midpoint", tyFun[realTy, tyFun[realTy, realTy]]],
+      mkAbs[aV, mkAbs[bV, compactMidpointBody[aV, bV]]]]]
+  ];
+
+midpointConst[] := mkConst["midpoint", tyFun[realTy, tyFun[realTy, realTy]]];
+midpointTm[aT_, bT_] := mkComb[mkComb[midpointConst[], aT], bT];
+
+unfoldMidpoint[aT_, bT_] :=
+  Module[{s1, s1b, s2},
+    s1 = HOL`Equal`APTHM[midpointDefThm, aT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, bT];
+    TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]]
+  ];
+
+compactFoldMidpoint[th_, aT_, bT_] :=
+  compactBetaClean[HOL`Drule`SUBS[{HOL`Equal`SYM[unfoldMidpoint[aT, bT]]}, th]];
+
+compactHalfNonnegThm =
+  HOL`Auto`RealArith`realArithProve[realLeTm[zeroRealTm[], compactHalfScalar[]]];
+
+compactHalfPosThm =
+  HOL`Auto`RealArith`realArithProve[realLtTm[zeroRealTm[], compactHalfScalar[]]];
+
+compactHalfDoubleThm =
+  Module[{xV},
+    xV = mkVar["xHalf", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      forallTm[xV, mkEq[
+        realAddTm[realMulTm[xV, compactHalfScalar[]],
+          realMulTm[xV, compactHalfScalar[]]], xV]]]
+  ];
+
+compactHalfTimesDoubleThm =
+  Module[{xV},
+    xV = mkVar["xHalfL", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      forallTm[xV, mkEq[realMulTm[compactHalfScalar[], realAddTm[xV, xV]], xV]]]
+  ];
+
+compactLeLeftDoubleSumThm =
+  Module[{aV, bV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{aV, bV}, impTm[realLeTm[aV, bV],
+        realLeTm[realAddTm[aV, aV], realAddTm[aV, bV]]]]]
+  ];
+
+compactLeSumRightDoubleThm =
+  Module[{aV, bV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{aV, bV}, impTm[realLeTm[aV, bV],
+        realLeTm[realAddTm[aV, bV], realAddTm[bV, bV]]]]]
+  ];
+
+compactLtLeftDoubleSumThm =
+  Module[{aV, bV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{aV, bV}, impTm[realLtTm[aV, bV],
+        realLtTm[realAddTm[aV, aV], realAddTm[aV, bV]]]]]
+  ];
+
+compactLtSumRightDoubleThm =
+  Module[{aV, bV},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{aV, bV}, impTm[realLtTm[aV, bV],
+        realLtTm[realAddTm[aV, bV], realAddTm[bV, bV]]]]]
+  ];
+
+compactDoubleCancelThm =
+  Module[{xV, yV},
+    xV = mkVar["xDouble", realTy]; yV = mkVar["yDouble", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{xV, yV}, impTm[
+        mkEq[realAddTm[xV, xV], realAddTm[yV, yV]], mkEq[xV, yV]]]]
+  ];
+
+compactMidpointSubLeftDoubleThm =
+  Module[{mV, aV, bV},
+    mV = mkVar["mDouble", realTy]; aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{mV, aV, bV}, impTm[
+        mkEq[realAddTm[mV, mV], realAddTm[aV, bV]],
+        mkEq[realAddTm[realAddTm[mV, realNegTm[aV]],
+            realAddTm[mV, realNegTm[aV]]],
+          realAddTm[bV, realNegTm[aV]]]]]]
+  ];
+
+compactMidpointSubRightDoubleThm =
+  Module[{mV, aV, bV},
+    mV = mkVar["mDouble", realTy]; aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{mV, aV, bV}, impTm[
+        mkEq[realAddTm[mV, mV], realAddTm[aV, bV]],
+        mkEq[realAddTm[realAddTm[bV, realNegTm[mV]],
+            realAddTm[bV, realNegTm[mV]]],
+          realAddTm[bV, realNegTm[aV]]]]]]
+  ];
+
+compactMidpointDouble[aT_, bT_] :=
+  Module[{halfDouble},
+    halfDouble = HOL`Bool`SPEC[realAddTm[aT, bT], compactHalfDoubleThm];
+    compactFoldMidpoint[halfDouble, aT, bT]
+  ];
+
+compactHalfTimesDoubleEq[xT_] :=
+  HOL`Bool`SPEC[xT, compactHalfTimesDoubleThm];
+
+compactHalfTimesMidpointEq[aT_, bT_] :=
+  Module[{sumT, comm},
+    sumT = realAddTm[aT, bT];
+    comm = HOL`Bool`SPEC[sumT, HOL`Bool`SPEC[compactHalfScalar[], realMulCommThm]];
+    TRANS[comm, HOL`Equal`SYM[unfoldMidpoint[aT, bT]]]
+  ];
+
+leftLeMidpointThm =
+  Module[{aV, bV, hTm, h, doubleLe, scaled, leftEq, rightEq, point},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    hTm = realLeTm[aV, bV]; h = ASSUME[hTm];
+    doubleLe = HOL`Bool`MP[compactSpecAll[compactLeLeftDoubleSumThm, {aV, bV}], h];
+    scaled = HOL`Bool`MP[
+      HOL`Bool`MP[compactSpecAll[realLeMulMonoThm,
+        {realAddTm[aV, aV], realAddTm[aV, bV], compactHalfScalar[]}],
+        compactHalfNonnegThm], doubleLe];
+    leftEq = compactHalfTimesDoubleEq[aV];
+    rightEq = compactHalfTimesMidpointEq[aV, bV];
+    point = EQMP[compactRealLeCong[leftEq, rightEq], scaled];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[hTm, point]]]
+  ];
+
+midpointLeRightThm =
+  Module[{aV, bV, hTm, h, doubleLe, scaled, leftEq, rightEq, point},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    hTm = realLeTm[aV, bV]; h = ASSUME[hTm];
+    doubleLe = HOL`Bool`MP[compactSpecAll[compactLeSumRightDoubleThm, {aV, bV}], h];
+    scaled = HOL`Bool`MP[
+      HOL`Bool`MP[compactSpecAll[realLeMulMonoThm,
+        {realAddTm[aV, bV], realAddTm[bV, bV], compactHalfScalar[]}],
+        compactHalfNonnegThm], doubleLe];
+    leftEq = compactHalfTimesMidpointEq[aV, bV];
+    rightEq = compactHalfTimesDoubleEq[bV];
+    point = EQMP[compactRealLeCong[leftEq, rightEq], scaled];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[hTm, point]]]
+  ];
+
+leftLtMidpointThm =
+  Module[{aV, bV, hTm, h, doubleLt, scaled, leftEq, rightEq, point},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    hTm = realLtTm[aV, bV]; h = ASSUME[hTm];
+    doubleLt = HOL`Bool`MP[compactSpecAll[compactLtLeftDoubleSumThm, {aV, bV}], h];
+    scaled = HOL`Bool`MP[
+      HOL`Bool`MP[compactSpecAll[realLtMulMonoThm,
+        {realAddTm[aV, aV], realAddTm[aV, bV], compactHalfScalar[]}],
+        compactHalfPosThm], doubleLt];
+    leftEq = compactHalfTimesDoubleEq[aV];
+    rightEq = compactHalfTimesMidpointEq[aV, bV];
+    point = EQMP[compactRealLtCong[leftEq, rightEq], scaled];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[hTm, point]]]
+  ];
+
+midpointLtRightThm =
+  Module[{aV, bV, hTm, h, doubleLt, scaled, leftEq, rightEq, point},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    hTm = realLtTm[aV, bV]; h = ASSUME[hTm];
+    doubleLt = HOL`Bool`MP[compactSpecAll[compactLtSumRightDoubleThm, {aV, bV}], h];
+    scaled = HOL`Bool`MP[
+      HOL`Bool`MP[compactSpecAll[realLtMulMonoThm,
+        {realAddTm[aV, bV], realAddTm[bV, bV], compactHalfScalar[]}],
+        compactHalfPosThm], doubleLt];
+    leftEq = compactHalfTimesMidpointEq[aV, bV];
+    rightEq = compactHalfTimesDoubleEq[bV];
+    point = EQMP[compactRealLtCong[leftEq, rightEq], scaled];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[hTm, point]]]
+  ];
+
+midpointSubLeftThm =
+  Module[{aV, bV, mid, lhs, rhs, midDouble, lhsDouble, rhsDouble, bothDouble,
+          point},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    mid = midpointTm[aV, bV];
+    lhs = realAddTm[mid, realNegTm[aV]]; rhs = compactHalfLength[aV, bV];
+    midDouble = compactMidpointDouble[aV, bV];
+    lhsDouble = HOL`Bool`MP[
+      compactSpecAll[compactMidpointSubLeftDoubleThm, {mid, aV, bV}], midDouble];
+    rhsDouble = HOL`Bool`SPEC[realAddTm[bV, realNegTm[aV]], compactHalfDoubleThm];
+    bothDouble = TRANS[lhsDouble, HOL`Equal`SYM[rhsDouble]];
+    point = HOL`Bool`MP[compactSpecAll[compactDoubleCancelThm, {lhs, rhs}], bothDouble];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, point]]
+  ];
+
+rightSubMidpointThm =
+  Module[{aV, bV, mid, lhs, rhs, midDouble, lhsDouble, rhsDouble, bothDouble,
+          point},
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    mid = midpointTm[aV, bV];
+    lhs = realAddTm[bV, realNegTm[mid]]; rhs = compactHalfLength[aV, bV];
+    midDouble = compactMidpointDouble[aV, bV];
+    lhsDouble = HOL`Bool`MP[
+      compactSpecAll[compactMidpointSubRightDoubleThm, {mid, aV, bV}], midDouble];
+    rhsDouble = HOL`Bool`SPEC[realAddTm[bV, realNegTm[aV]], compactHalfDoubleThm];
+    bothDouble = TRANS[lhsDouble, HOL`Equal`SYM[rhsDouble]];
+    point = HOL`Bool`MP[compactSpecAll[compactDoubleCancelThm, {lhs, rhs}], bothDouble];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, point]]
+  ];
+
+compactListInstAt[ty_, th_] := HOL`Kernel`INSTTYPE[{mkVarType["A"] -> ty}, th];
+compactListTyAt[ty_] := HOL`Stdlib`List`listTy[ty];
+compactNilAt[ty_] := mkConst["NIL", compactListTyAt[ty]];
+compactConsConstAt[ty_] := mkConst["CONS",
+  tyFun[ty, tyFun[compactListTyAt[ty], compactListTyAt[ty]]]];
+compactConsTmAt[ty_, xT_, xsT_] := mkComb[mkComb[compactConsConstAt[ty], xT], xsT];
+compactAppendConstAt[ty_] := mkConst["APPEND",
+  tyFun[compactListTyAt[ty], tyFun[compactListTyAt[ty], compactListTyAt[ty]]]];
+compactAppendTmAt[ty_, xsT_, ysT_] := mkComb[mkComb[compactAppendConstAt[ty], xsT], ysT];
+
+compactAppendNilEqAt[ty_, ysT_] :=
+  HOL`Bool`SPEC[ysT, compactListInstAt[ty, HOL`Stdlib`List`appendNilThm]];
+
+compactAppendConsEqAt[ty_, xT_, xsT_, ysT_] :=
+  compactSpecAll[compactListInstAt[ty, HOL`Stdlib`List`appendConsThm],
+    {xT, xsT, ysT}];
+
+compactMemNilEqAt[ty_, xT_] :=
+  HOL`Bool`SPEC[xT, compactListInstAt[ty, HOL`Stdlib`List`memNilThm]];
+
+compactMemConsEqAt[ty_, xT_, yT_, xsT_] :=
+  compactSpecAll[compactListInstAt[ty, HOL`Stdlib`List`memConsThm],
+    {xT, yT, xsT}];
+
+compactMemAppendConsFromCons[ty_, iT_, xT_, xsT_, ysT_, consMemTh_] :=
+  Module[{appEq, memEq},
+    appEq = compactAppendConsEqAt[ty, xT, xsT, ysT];
+    memEq = HOL`Equal`APTERM[mkComb[compactMemConstAt[ty], iT], appEq];
+    EQMP[HOL`Equal`SYM[memEq], consMemTh]
+  ];
+
+memAppendLeftThm =
+  Module[{iV, jsV, ksV, lV, xV, predLam, inductSpec, inductBeta,
+          baseCase, stepCase, finalAll, point},
+    iV = mkVar["i", iotaTy]; jsV = mkVar["js", compactIotaListTy];
+    ksV = mkVar["ks", compactIotaListTy]; lV = mkVar["lMem", compactIotaListTy];
+    xV = mkVar["xMem", iotaTy];
+    predLam = mkAbs[lV, compactForallList[{iV, ksV},
+      impTm[compactMemTmAt[iotaTy, iV, lV],
+        compactMemTmAt[iotaTy, iV, compactAppendTmAt[iotaTy, lV, ksV]]]]];
+    inductSpec = HOL`Bool`SPEC[predLam,
+      compactListInstAt[iotaTy, HOL`Stdlib`List`listInductionThm]];
+    inductBeta = compactBetaClean[inductSpec];
+    baseCase = Module[{hTm, hMem, baseGoal, baseFalse, basePoint},
+      hTm = compactMemTmAt[iotaTy, iV, compactNilAt[iotaTy]];
+      hMem = ASSUME[hTm];
+      baseGoal = compactMemTmAt[iotaTy, iV,
+        compactAppendTmAt[iotaTy, compactNilAt[iotaTy], ksV]];
+      baseFalse = EQMP[compactMemNilEqAt[iotaTy, iV], hMem];
+      basePoint = HOL`Bool`CONTR[baseGoal, baseFalse];
+      HOL`Bool`GEN[iV, HOL`Bool`GEN[ksV, HOL`Bool`DISCH[hTm, basePoint]]]
+    ];
+    stepCase = Module[{ihTm, ih, hTm, hMem, memConsOpen, tailAppend,
+                       consTailList, target, branchEq, branchTail, stepPoint,
+                       stepDisch, stepGen},
+      ihTm = compactForallList[{iV, ksV},
+        impTm[compactMemTmAt[iotaTy, iV, lV],
+          compactMemTmAt[iotaTy, iV, compactAppendTmAt[iotaTy, lV, ksV]]]];
+      ih = ASSUME[ihTm];
+      hTm = compactMemTmAt[iotaTy, iV, compactConsTmAt[iotaTy, xV, lV]];
+      hMem = ASSUME[hTm];
+      memConsOpen = EQMP[compactMemConsEqAt[iotaTy, iV, xV, lV], hMem];
+      tailAppend = compactAppendTmAt[iotaTy, lV, ksV];
+      consTailList = compactConsTmAt[iotaTy, xV, tailAppend];
+      target = compactMemTmAt[iotaTy, iV,
+        compactAppendTmAt[iotaTy, compactConsTmAt[iotaTy, xV, lV], ksV]];
+      branchEq = Module[{eqTm, hEq, disj, consMem},
+        eqTm = mkEq[iV, xV]; hEq = ASSUME[eqTm];
+        disj = HOL`Bool`DISJ1[hEq, compactMemTmAt[iotaTy, iV, tailAppend]];
+        consMem = EQMP[HOL`Equal`SYM[compactMemConsEqAt[iotaTy, iV, xV, tailAppend]], disj];
+        compactMemAppendConsFromCons[iotaTy, iV, xV, lV, ksV, consMem]
+      ];
+      branchTail = Module[{tailTm, hTail, ihAt, tailMem, disj, consMem},
+        tailTm = compactMemTmAt[iotaTy, iV, lV]; hTail = ASSUME[tailTm];
+        ihAt = compactSpecAll[ih, {iV, ksV}];
+        tailMem = HOL`Bool`MP[ihAt, hTail];
+        disj = HOL`Bool`DISJ2[tailMem, mkEq[iV, xV]];
+        consMem = EQMP[HOL`Equal`SYM[compactMemConsEqAt[iotaTy, iV, xV, tailAppend]], disj];
+        compactMemAppendConsFromCons[iotaTy, iV, xV, lV, ksV, consMem]
+      ];
+      stepPoint = HOL`Bool`DISJCASES[memConsOpen, branchEq, branchTail];
+      stepDisch = HOL`Bool`DISCH[hTm, stepPoint];
+      stepGen = HOL`Bool`GEN[iV, HOL`Bool`GEN[ksV, stepDisch]];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[lV, HOL`Bool`DISCH[ihTm, stepGen]]]
+    ];
+    finalAll = HOL`Bool`MP[inductBeta, HOL`Bool`CONJ[baseCase, stepCase]];
+    point = compactSpecAll[finalAll, {jsV, iV, ksV}];
+    HOL`Bool`GEN[iV, HOL`Bool`GEN[jsV, HOL`Bool`GEN[ksV, point]]]
+  ];
+
+memAppendRightThm =
+  Module[{iV, jsV, ksV, lV, xV, predLam, inductSpec, inductBeta,
+          baseCase, stepCase, finalAll, point},
+    iV = mkVar["i", iotaTy]; jsV = mkVar["js", compactIotaListTy];
+    ksV = mkVar["ks", compactIotaListTy]; lV = mkVar["lMemR", compactIotaListTy];
+    xV = mkVar["xMemR", iotaTy];
+    predLam = mkAbs[lV, compactForallList[{iV, ksV},
+      impTm[compactMemTmAt[iotaTy, iV, ksV],
+        compactMemTmAt[iotaTy, iV, compactAppendTmAt[iotaTy, lV, ksV]]]]];
+    inductSpec = HOL`Bool`SPEC[predLam,
+      compactListInstAt[iotaTy, HOL`Stdlib`List`listInductionThm]];
+    inductBeta = compactBetaClean[inductSpec];
+    baseCase = Module[{hTm, hMem, target, memEq, basePoint},
+      hTm = compactMemTmAt[iotaTy, iV, ksV]; hMem = ASSUME[hTm];
+      target = compactMemTmAt[iotaTy, iV,
+        compactAppendTmAt[iotaTy, compactNilAt[iotaTy], ksV]];
+      memEq = HOL`Equal`APTERM[mkComb[compactMemConstAt[iotaTy], iV],
+        compactAppendNilEqAt[iotaTy, ksV]];
+      basePoint = EQMP[HOL`Equal`SYM[memEq], hMem];
+      HOL`Bool`GEN[iV, HOL`Bool`GEN[ksV, HOL`Bool`DISCH[hTm, basePoint]]]
+    ];
+    stepCase = Module[{ihTm, ih, hTm, hMem, ihAt, tailMem, tailAppend,
+                       disj, consMem, stepPoint, stepDisch, stepGen},
+      ihTm = compactForallList[{iV, ksV},
+        impTm[compactMemTmAt[iotaTy, iV, ksV],
+          compactMemTmAt[iotaTy, iV, compactAppendTmAt[iotaTy, lV, ksV]]]];
+      ih = ASSUME[ihTm];
+      hTm = compactMemTmAt[iotaTy, iV, ksV]; hMem = ASSUME[hTm];
+      ihAt = compactSpecAll[ih, {iV, ksV}];
+      tailMem = HOL`Bool`MP[ihAt, hMem];
+      tailAppend = compactAppendTmAt[iotaTy, lV, ksV];
+      disj = HOL`Bool`DISJ2[tailMem, mkEq[iV, xV]];
+      consMem = EQMP[HOL`Equal`SYM[compactMemConsEqAt[iotaTy, iV, xV, tailAppend]], disj];
+      stepPoint = compactMemAppendConsFromCons[iotaTy, iV, xV, lV, ksV, consMem];
+      stepDisch = HOL`Bool`DISCH[hTm, stepPoint];
+      stepGen = HOL`Bool`GEN[iV, HOL`Bool`GEN[ksV, stepDisch]];
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[lV, HOL`Bool`DISCH[ihTm, stepGen]]]
+    ];
+    finalAll = HOL`Bool`MP[inductBeta, HOL`Bool`CONJ[baseCase, stepCase]];
+    point = compactSpecAll[finalAll, {jsV, iV, ksV}];
+    HOL`Bool`GEN[iV, HOL`Bool`GEN[jsV, HOL`Bool`GEN[ksV, point]]]
+  ];
+
+compactClosedIntervalSetTm[leftT_, rightT_] :=
+  mkComb[mkComb[closedIntervalConst[], leftT], rightT];
+
+noFiniteSubcoverTy = tyFun[compactCoverTy, tyFun[realTy, tyFun[realTy, boolTy]]];
+
+compactNoFiniteSubcoverBody[uT_, aT_, bT_] :=
+  compactNotTm[finiteSubcoverTm[uT, compactClosedIntervalSetTm[aT, bT]]];
+
+noFiniteSubcoverDefThm =
+  Module[{uV, aV, bV},
+    uV = mkVar["U", compactCoverTy]; aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    newDefinition[mkEq[mkVar["noFiniteSubcover", noFiniteSubcoverTy],
+      mkAbs[uV, mkAbs[aV, mkAbs[bV, compactNoFiniteSubcoverBody[uV, aV, bV]]]]]]
+  ];
+
+noFiniteSubcoverConst[] := mkConst["noFiniteSubcover", noFiniteSubcoverTy];
+noFiniteSubcoverTm[uT_, aT_, bT_] :=
+  mkComb[mkComb[mkComb[noFiniteSubcoverConst[], uT], aT], bT];
+
+unfoldNoFiniteSubcover[uT_, aT_, bT_] :=
+  Module[{s1, s1b, s2, s2b, s3},
+    s1 = HOL`Equal`APTHM[noFiniteSubcoverDefThm, uT];
+    s1b = TRANS[s1, HOL`Equal`BETACONV[concl[s1][[2]]]];
+    s2 = HOL`Equal`APTHM[s1b, aT];
+    s2b = TRANS[s2, HOL`Equal`BETACONV[concl[s2][[2]]]];
+    s3 = HOL`Equal`APTHM[s2b, bT];
+    TRANS[s3, HOL`Equal`BETACONV[concl[s3][[2]]]]
+  ];
+
+compactSubcoverExistsTm[uT_, xT_, jsT_] :=
+  Module[{ty, iV},
+    ty = compactCoverIndexTy[uT]; iV = mkVar["iHalf", ty];
+    existsTm[iV, conjTm[compactMemTmAt[ty, iV, jsT],
+      compactCoverApp[uT, iV, xT]]]
+  ];
+
+compactChooseSubcoverWitness[uT_, xT_, sourceListT_, appendLeftT_, appendRightT_,
+    exTh_, memRuleTh_] :=
+  Module[{ty, iW, bodyTm, bodyHyp, memFrom, coverAt, memTo, goalEx},
+    ty = compactCoverIndexTy[uT]; iW = mkVar["iHalfW", ty];
+    bodyTm = conjTm[compactMemTmAt[ty, iW, sourceListT],
+      compactCoverApp[uT, iW, xT]];
+    bodyHyp = ASSUME[bodyTm];
+    memFrom = HOL`Bool`CONJUNCT1[bodyHyp];
+    coverAt = HOL`Bool`CONJUNCT2[bodyHyp];
+    memTo = HOL`Bool`MP[compactSpecAll[memRuleTh, {iW, appendLeftT, appendRightT}],
+      memFrom];
+    goalEx = compactSubcoverExistsTm[uT, xT, compactAppendTmAt[ty, appendLeftT, appendRightT]];
+    HOL`Bool`CHOOSE[iW, exTh,
+      HOL`Bool`EXISTS[goalEx, iW, HOL`Bool`CONJ[memTo, coverAt]]]
+  ];
+
+combineHalfSubcoverThm =
+  Module[{uV, aV, mV, bV, jsV, ksV, xV, leftSet, rightSet, wholeSet,
+          appendList, hLeftTm, hRightTm, hLeft, hRight, openLeft, openRight,
+          hXTm, hX, xBounds, hAx, hXb, split, leftBranch, rightBranch,
+          point, allX, folded},
+    uV = mkVar["U", compactCoverTy]; aV = mkVar["a", realTy];
+    mV = mkVar["m", realTy]; bV = mkVar["b", realTy];
+    jsV = mkVar["js", compactIotaListTy]; ksV = mkVar["ks", compactIotaListTy];
+    xV = mkVar["x", realTy];
+    leftSet = compactClosedIntervalSetTm[aV, mV];
+    rightSet = compactClosedIntervalSetTm[mV, bV];
+    wholeSet = compactClosedIntervalSetTm[aV, bV];
+    appendList = compactAppendTmAt[iotaTy, jsV, ksV];
+    hLeftTm = listSubcoverTm[uV, leftSet, jsV]; hLeft = ASSUME[hLeftTm];
+    hRightTm = listSubcoverTm[uV, rightSet, ksV]; hRight = ASSUME[hRightTm];
+    openLeft = EQMP[unfoldListSubcover[uV, leftSet, jsV], hLeft];
+    openRight = EQMP[unfoldListSubcover[uV, rightSet, ksV], hRight];
+    hXTm = closedIntervalTm[aV, bV, xV]; hX = ASSUME[hXTm];
+    xBounds = EQMP[unfoldClosedInterval[aV, bV, xV], hX];
+    hAx = HOL`Bool`CONJUNCT1[xBounds]; hXb = HOL`Bool`CONJUNCT2[xBounds];
+    split = HOL`Bool`EXCLUDEDMIDDLE[realLeTm[xV, mV]];
+    leftBranch = Module[{hXmTm, hXm, closedAM, exLeft},
+      hXmTm = realLeTm[xV, mV]; hXm = ASSUME[hXmTm];
+      closedAM = EQMP[HOL`Equal`SYM[unfoldClosedInterval[aV, mV, xV]],
+        HOL`Bool`CONJ[hAx, hXm]];
+      exLeft = HOL`Bool`MP[HOL`Bool`SPEC[xV, openLeft], closedAM];
+      compactChooseSubcoverWitness[uV, xV, jsV, jsV, ksV, exLeft, memAppendLeftThm]
+    ];
+    rightBranch = Module[{hNotXmTm, hNotXm, total, mLeX, closedMB, exRight},
+      hNotXmTm = compactNotTm[realLeTm[xV, mV]]; hNotXm = ASSUME[hNotXmTm];
+      total = HOL`Bool`SPEC[mV, HOL`Bool`SPEC[xV, realLeTotalThm]];
+      mLeX = HOL`Bool`DISJCASES[total,
+        HOL`Bool`CONTR[realLeTm[mV, xV],
+          HOL`Bool`MP[HOL`Bool`NOTELIM[hNotXm], ASSUME[realLeTm[xV, mV]]]],
+        ASSUME[realLeTm[mV, xV]]];
+      closedMB = EQMP[HOL`Equal`SYM[unfoldClosedInterval[mV, bV, xV]],
+        HOL`Bool`CONJ[mLeX, hXb]];
+      exRight = HOL`Bool`MP[HOL`Bool`SPEC[xV, openRight], closedMB];
+      compactChooseSubcoverWitness[uV, xV, ksV, jsV, ksV, exRight, memAppendRightThm]
+    ];
+    point = HOL`Bool`DISJCASES[split, leftBranch, rightBranch];
+    allX = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hXTm, point]];
+    folded = EQMP[HOL`Equal`SYM[unfoldListSubcover[uV, wholeSet, appendList]], allX];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[aV, HOL`Bool`GEN[mV, HOL`Bool`GEN[bV,
+      HOL`Bool`GEN[jsV, HOL`Bool`GEN[ksV,
+        HOL`Bool`DISCH[hLeftTm, HOL`Bool`DISCH[hRightTm, folded]]]]]]]]
+  ];
+
+finiteSubcoverOfHalvesThm =
+  Module[{uV, aV, mV, bV, jsW, ksW, leftSet, rightSet, wholeSet,
+          hLeftTm, hRightTm, hLeft, hRight, openLeft, openRight, hListLeftTm,
+          hListRightTm, hListLeft, hListRight, combined, cleanWhole, exWhole,
+          folded, chooseKs, chooseJs},
+    uV = mkVar["U", compactCoverTy]; aV = mkVar["a", realTy];
+    mV = mkVar["m", realTy]; bV = mkVar["b", realTy];
+    jsW = mkVar["jsHalf", compactIotaListTy]; ksW = mkVar["ksHalf", compactIotaListTy];
+    leftSet = compactClosedIntervalSetTm[aV, mV];
+    rightSet = compactClosedIntervalSetTm[mV, bV];
+    wholeSet = compactClosedIntervalSetTm[aV, bV];
+    hLeftTm = finiteSubcoverTm[uV, leftSet]; hLeft = ASSUME[hLeftTm];
+    hRightTm = finiteSubcoverTm[uV, rightSet]; hRight = ASSUME[hRightTm];
+    openLeft = EQMP[unfoldFiniteSubcover[uV, leftSet], hLeft];
+    openRight = EQMP[unfoldFiniteSubcover[uV, rightSet], hRight];
+    hListLeftTm = listSubcoverTm[uV, leftSet, jsW]; hListLeft = ASSUME[hListLeftTm];
+    hListRightTm = listSubcoverTm[uV, rightSet, ksW]; hListRight = ASSUME[hListRightTm];
+    combined = HOL`Bool`MP[
+      HOL`Bool`MP[compactSpecAll[combineHalfSubcoverThm, {uV, aV, mV, bV, jsW, ksW}],
+        hListLeft], hListRight];
+    cleanWhole = unfoldFiniteSubcover[uV, wholeSet];
+    exWhole = HOL`Bool`EXISTS[concl[cleanWhole][[2]],
+      compactAppendTmAt[iotaTy, jsW, ksW], combined];
+    folded = EQMP[HOL`Equal`SYM[cleanWhole], exWhole];
+    chooseKs = HOL`Bool`CHOOSE[ksW, openRight, folded];
+    chooseJs = HOL`Bool`CHOOSE[jsW, openLeft, chooseKs];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[aV, HOL`Bool`GEN[mV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[hLeftTm, HOL`Bool`DISCH[hRightTm, chooseJs]]]]]]
+  ];
+
+rightHalfBadThm =
+  Module[{uV, aV, bV, mV, leftSet, rightSet, wholeSet, hBadTm, hBad,
+          hLeftTm, hLeft, notWhole, hRightTm, hRight, wholeFinite, falseTh,
+          notRight, folded},
+    uV = mkVar["U", compactCoverTy]; aV = mkVar["a", realTy];
+    bV = mkVar["b", realTy]; mV = mkVar["m", realTy];
+    leftSet = compactClosedIntervalSetTm[aV, mV];
+    rightSet = compactClosedIntervalSetTm[mV, bV];
+    wholeSet = compactClosedIntervalSetTm[aV, bV];
+    hBadTm = noFiniteSubcoverTm[uV, aV, bV]; hBad = ASSUME[hBadTm];
+    hLeftTm = finiteSubcoverTm[uV, leftSet]; hLeft = ASSUME[hLeftTm];
+    notWhole = EQMP[unfoldNoFiniteSubcover[uV, aV, bV], hBad];
+    hRightTm = finiteSubcoverTm[uV, rightSet]; hRight = ASSUME[hRightTm];
+    wholeFinite = HOL`Bool`MP[
+      HOL`Bool`MP[compactSpecAll[finiteSubcoverOfHalvesThm, {uV, aV, mV, bV}],
+        hLeft], hRight];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notWhole], wholeFinite];
+    notRight = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hRightTm, falseTh]];
+    folded = EQMP[HOL`Equal`SYM[unfoldNoFiniteSubcover[uV, mV, bV]], notRight];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[mV,
+      HOL`Bool`DISCH[hBadTm, HOL`Bool`DISCH[hLeftTm, folded]]]]]]
   ];
 
 End[];

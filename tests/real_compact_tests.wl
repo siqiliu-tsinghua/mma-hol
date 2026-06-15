@@ -33,14 +33,27 @@ coverTyRCT = tyFun[iotaTyRCT, setTyRCT];
 coversTyRCT = tyFun[coverTyRCT, tyFun[setTyRCT, boolTy]];
 listSubcoverTyRCT = tyFun[coverTyRCT,
   tyFun[setTyRCT, tyFun[iotaListTyRCT, boolTy]]];
+midpointTyRCT = tyFun[realTyRCT, tyFun[realTyRCT, realTyRCT]];
+noFiniteSubcoverTyRCT = tyFun[coverTyRCT,
+  tyFun[realTyRCT, tyFun[realTyRCT, boolTy]]];
 
 zeroNumRCT[] := HOL`Stdlib`Num`zeroConst[];
 sucNumRCT[n_] := mkComb[HOL`Stdlib`Num`sucConst[], n];
+oneNumRCT[] := sucNumRCT[zeroNumRCT[]];
+twoNumRCT[] := sucNumRCT[oneNumRCT[]];
+intOfNumRCT[n_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], n];
+ratOfIntRCT[z_] := mkComb[HOL`Stdlib`Rat`ratOfIntConst[], z];
+realOfRatRCT[q_] := mkComb[HOL`Stdlib`Real`realOfRatConst[], q];
+natRealRCT[n_] := realOfRatRCT[ratOfIntRCT[intOfNumRCT[n]]];
 zeroRealRCT[] := mkComb[HOL`Stdlib`Real`realOfRatConst[],
   mkComb[HOL`Stdlib`Rat`ratOfIntConst[],
     mkComb[HOL`Stdlib`Int`intOfNumConst[], zeroNumRCT[]]]];
+oneRealRCT[] := natRealRCT[oneNumRCT[]];
+twoRealRCT[] := natRealRCT[twoNumRCT[]];
 realAddRCT[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realAddConst[], x], y];
 realNegRCT[x_] := mkComb[HOL`Stdlib`Real`realNegConst[], x];
+realMulRCT[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realMulConst[], x], y];
+realInvRCT[x_] := mkComb[HOL`Stdlib`Real`realInvConst[], x];
 realAbsRCT[x_] := mkComb[HOL`Stdlib`Real`realAbsConst[], x];
 rLeRCT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLeConst[], a], b];
 rLtRCT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], a], b];
@@ -62,9 +75,21 @@ consRealRCT[] := mkConst["CONS", tyFun[realTyRCT,
   tyFun[realListTyRCT, realListTyRCT]]];
 memIotaRCT[i_, js_] := mkComb[
   mkComb[mkConst["MEM", tyFun[iotaTyRCT, tyFun[iotaListTyRCT, boolTy]]], i], js];
+nilIotaRCT[] := mkConst["NIL", iotaListTyRCT];
+consIotaRCT[x_, xs_] := mkComb[
+  mkComb[mkConst["CONS", tyFun[iotaTyRCT, tyFun[iotaListTyRCT, iotaListTyRCT]]], x],
+  xs];
+appendIotaRCT[xs_, ys_] := mkComb[
+  mkComb[mkConst["APPEND", tyFun[iotaListTyRCT, tyFun[iotaListTyRCT, iotaListTyRCT]]],
+    xs], ys];
 
 specAllRCT[th_, ts_List] :=
   Fold[Function[{acc, t}, HOL`Bool`SPEC[t, acc]], th, ts];
+
+listInstIotaRCT[th_] := HOL`Kernel`INSTTYPE[{mkVarType["A"] -> iotaTyRCT}, th];
+
+memConsIotaEqRCT[x_, y_, xs_] :=
+  specAllRCT[listInstIotaRCT[HOL`Stdlib`List`memConsThm], {x, y, xs}];
 
 betaCleanRCT[th_] := HOL`Drule`CONVRULE[
   HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[HOL`Equal`BETACONV]], th];
@@ -187,6 +212,15 @@ openIntervalBodyRCT[leftT_, rightT_, xT_] :=
 closedIntervalBodyRCT[leftT_, rightT_, xT_] :=
   andRCT[rLeRCT[leftT, xT], rLeRCT[xT, rightT]];
 
+closedIntervalSetRCT[leftT_, rightT_] :=
+  mkComb[mkComb[HOL`Stdlib`Real`closedIntervalConst[], leftT], rightT];
+
+midpointBodyRCT[aT_, bT_] :=
+  realMulRCT[realAddRCT[aT, bT], realInvRCT[twoRealRCT[]]];
+
+halfLengthRCT[aT_, bT_] :=
+  realMulRCT[realAddRCT[bT, realNegRCT[aT]], realInvRCT[twoRealRCT[]]];
+
 isOpenBodyRCT[uT_] :=
   Module[{xV, leftV, rightV, yV},
     xV = mkVar["x", realTyRCT]; leftV = mkVar["left", realTyRCT];
@@ -220,6 +254,9 @@ finiteSubcoverBodyRCT[uT_, sT_] :=
     jsV = mkVar["js", iotaListTyRCT];
     existsRCT[jsV, HOL`Stdlib`Real`listSubcoverTm[uT, sT, jsV]]
   ];
+
+noFiniteSubcoverBodyRCT[uT_, aT_, bT_] :=
+  notRCT[HOL`Stdlib`Real`finiteSubcoverTm[uT, closedIntervalSetRCT[aT, bT]]];
 
 constSeqBoundedRCT[cT_] :=
   Module[{nV, seq, clean, outerEx, betaLo, innerEx, leCC, allN, exHi, exLo},
@@ -478,3 +515,127 @@ HOLTest`runTests["stdlib/Real/Compact: cover vocabulary",
     expected = mkEq[HOL`Stdlib`Real`finiteSubcoverTm[coverV, sV],
       finiteSubcoverBodyRCT[coverV, sV]];
     HOLTest`assertTrue[aconv[concl[th], expected], "unfoldFiniteSubcover body"]]];
+
+HOLTest`runTests["stdlib/Real/Compact: midpoint and noFiniteSubcover vocabulary",
+  Module[{aV, bV, coverV, th, expected, defs},
+    defs = {
+      {"midpointDef", HOL`Stdlib`Real`midpointDefThm},
+      {"noFiniteSubcoverDef", HOL`Stdlib`Real`noFiniteSubcoverDefThm}};
+    Scan[Function[{entry},
+      HOLTest`assertTrue[isThm[entry[[2]]], entry[[1]] <> " is thm"];
+      HOLTest`assertEq[hyp[entry[[2]]], {}, entry[[1]] <> " no hyps"]], defs];
+
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`midpointConst[]],
+      midpointTyRCT, "midpointConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`noFiniteSubcoverConst[]],
+      noFiniteSubcoverTyRCT, "noFiniteSubcoverConst type"];
+
+    aV = mkVar["aMidDefRCT", realTyRCT];
+    bV = mkVar["bMidDefRCT", realTyRCT];
+    coverV = mkVar["UMidDefRCT", coverTyRCT];
+
+    th = HOL`Stdlib`Real`unfoldMidpoint[aV, bV];
+    expected = mkEq[HOL`Stdlib`Real`midpointTm[aV, bV], midpointBodyRCT[aV, bV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "unfoldMidpoint body"];
+
+    th = HOL`Stdlib`Real`unfoldNoFiniteSubcover[coverV, aV, bV];
+    expected = mkEq[HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, aV, bV],
+      noFiniteSubcoverBodyRCT[coverV, aV, bV]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "unfoldNoFiniteSubcover body"]]];
+
+HOLTest`runTests["stdlib/Real/Compact: midpoint theorem shapes",
+  Module[{aV, bV, mid, th, expected, z0, z1, z2, arith, folded},
+    aV = mkVar["aMidShapeRCT", realTyRCT];
+    bV = mkVar["bMidShapeRCT", realTyRCT];
+    mid = HOL`Stdlib`Real`midpointTm[aV, bV];
+
+    th = specAllRCT[HOL`Stdlib`Real`leftLeMidpointThm, {aV, bV}];
+    expected = impRCT[rLeRCT[aV, bV], rLeRCT[aV, mid]];
+    assertConclRCT["leftLeMidpoint shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`midpointLeRightThm, {aV, bV}];
+    expected = impRCT[rLeRCT[aV, bV], rLeRCT[mid, bV]];
+    assertConclRCT["midpointLeRight shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`leftLtMidpointThm, {aV, bV}];
+    expected = impRCT[rLtRCT[aV, bV], rLtRCT[aV, mid]];
+    assertConclRCT["leftLtMidpoint shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`midpointLtRightThm, {aV, bV}];
+    expected = impRCT[rLtRCT[aV, bV], rLtRCT[mid, bV]];
+    assertConclRCT["midpointLtRight shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`midpointSubLeftThm, {aV, bV}];
+    expected = mkEq[realAddRCT[mid, realNegRCT[aV]], halfLengthRCT[aV, bV]];
+    assertConclRCT["midpointSubLeft shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`rightSubMidpointThm, {aV, bV}];
+    expected = mkEq[realAddRCT[bV, realNegRCT[mid]], halfLengthRCT[aV, bV]];
+    assertConclRCT["rightSubMidpoint shape", th, expected];
+
+    z0 = zeroRealRCT[]; z1 = oneRealRCT[]; z2 = twoRealRCT[];
+    arith = HOL`Auto`RealArith`realArithProve[
+      mkEq[midpointBodyRCT[z0, z2], z1]];
+    folded = betaCleanRCT[HOL`Drule`SUBS[
+      {HOL`Equal`SYM[HOL`Stdlib`Real`unfoldMidpoint[z0, z2]]}, arith]];
+    expected = mkEq[HOL`Stdlib`Real`midpointTm[z0, z2], z1];
+    assertConclRCT["midpoint zero two", folded, expected]]];
+
+HOLTest`runTests["stdlib/Real/Compact: MEM APPEND theorem shapes",
+  Module[{iV, jsV, ksV, th, expected, consOne, memCons, concrete},
+    iV = mkVar["iMemAppendRCT", iotaTyRCT];
+    jsV = mkVar["jsMemAppendRCT", iotaListTyRCT];
+    ksV = mkVar["ksMemAppendRCT", iotaListTyRCT];
+
+    th = specAllRCT[HOL`Stdlib`Real`memAppendLeftThm, {iV, jsV, ksV}];
+    expected = impRCT[memIotaRCT[iV, jsV],
+      memIotaRCT[iV, appendIotaRCT[jsV, ksV]]];
+    assertConclRCT["memAppendLeft shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`memAppendRightThm, {iV, jsV, ksV}];
+    expected = impRCT[memIotaRCT[iV, ksV],
+      memIotaRCT[iV, appendIotaRCT[jsV, ksV]]];
+    assertConclRCT["memAppendRight shape", th, expected];
+
+    consOne = consIotaRCT[iV, nilIotaRCT[]];
+    memCons = EQMP[HOL`Equal`SYM[memConsIotaEqRCT[iV, iV, nilIotaRCT[]]],
+      HOL`Bool`DISJ1[REFL[iV], memIotaRCT[iV, nilIotaRCT[]]]];
+    concrete = HOL`Bool`MP[
+      specAllRCT[HOL`Stdlib`Real`memAppendLeftThm, {iV, consOne, ksV}], memCons];
+    expected = memIotaRCT[iV, appendIotaRCT[consOne, ksV]];
+    assertConclRCT["memAppendLeft concrete", concrete, expected]]];
+
+HOLTest`runTests["stdlib/Real/Compact: subcover theorem shapes",
+  Module[{coverV, aV, mV, bV, jsV, ksV, leftSet, rightSet, wholeSet,
+          th, expected},
+    coverV = mkVar["USubcoverRCT", coverTyRCT];
+    aV = mkVar["aSubcoverRCT", realTyRCT];
+    mV = mkVar["mSubcoverRCT", realTyRCT];
+    bV = mkVar["bSubcoverRCT", realTyRCT];
+    jsV = mkVar["jsSubcoverRCT", iotaListTyRCT];
+    ksV = mkVar["ksSubcoverRCT", iotaListTyRCT];
+    leftSet = closedIntervalSetRCT[aV, mV];
+    rightSet = closedIntervalSetRCT[mV, bV];
+    wholeSet = closedIntervalSetRCT[aV, bV];
+
+    th = specAllRCT[HOL`Stdlib`Real`combineHalfSubcoverThm,
+      {coverV, aV, mV, bV, jsV, ksV}];
+    expected = impRCT[HOL`Stdlib`Real`listSubcoverTm[coverV, leftSet, jsV],
+      impRCT[HOL`Stdlib`Real`listSubcoverTm[coverV, rightSet, ksV],
+        HOL`Stdlib`Real`listSubcoverTm[coverV, wholeSet,
+          appendIotaRCT[jsV, ksV]]]];
+    assertConclRCT["combineHalfSubcover shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`finiteSubcoverOfHalvesThm,
+      {coverV, aV, mV, bV}];
+    expected = impRCT[HOL`Stdlib`Real`finiteSubcoverTm[coverV, leftSet],
+      impRCT[HOL`Stdlib`Real`finiteSubcoverTm[coverV, rightSet],
+        HOL`Stdlib`Real`finiteSubcoverTm[coverV, wholeSet]]];
+    assertConclRCT["finiteSubcoverOfHalves shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`rightHalfBadThm, {coverV, aV, bV, mV}];
+    expected = impRCT[HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, aV, bV],
+      impRCT[HOL`Stdlib`Real`finiteSubcoverTm[coverV, leftSet],
+        HOL`Stdlib`Real`noFiniteSubcoverTm[coverV, mV, bV]]];
+    assertConclRCT["rightHalfBad shape", th, expected]]];
