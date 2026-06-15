@@ -842,3 +842,46 @@ HOLTest`runTests["stdlib/Real/Compact: length theorem shapes",
           HOL`Stdlib`Real`lowerTm[coverV, leftV, rightV],
           HOL`Stdlib`Real`upperTm[coverV, leftV, rightV]]]];
     assertConclRCT["lengthsToZero shape", th, expected]]];
+
+HOLTest`runTests["stdlib/Real/Compact: Heine Borel capstone shapes",
+  Module[{coverV, leftV, rightV, xV, aV, bV, yV, iV, iOpenV,
+          hClosedX, hClosedY, hLenLeft, hLenRight, hInside, closedSet,
+          hOpen, th, expected},
+    coverV = mkVar["UHeineRCT", coverTyRCT];
+    leftV = mkVar["leftHeineRCT", realTyRCT];
+    rightV = mkVar["rightHeineRCT", realTyRCT];
+    xV = mkVar["xHeineRCT", realTyRCT];
+    aV = mkVar["aHeineRCT", realTyRCT];
+    bV = mkVar["bHeineRCT", realTyRCT];
+    yV = mkVar["yHeineRCT", realTyRCT];
+    iV = mkVar["iHeineRCT", iotaTyRCT];
+    iOpenV = mkVar["iOpenHeineRCT", iotaTyRCT];
+    hClosedX = HOL`Stdlib`Real`closedIntervalTm[leftV, rightV, xV];
+    hClosedY = HOL`Stdlib`Real`closedIntervalTm[leftV, rightV, yV];
+    hLenLeft = rLtRCT[realAddRCT[rightV, realNegRCT[leftV]],
+      realAddRCT[xV, realNegRCT[aV]]];
+    hLenRight = rLtRCT[realAddRCT[rightV, realNegRCT[leftV]],
+      realAddRCT[bV, realNegRCT[xV]]];
+    closedSet = closedIntervalSetRCT[leftV, rightV];
+    hInside = forallRCT[yV, impRCT[HOL`Stdlib`Real`openIntervalTm[aV, bV, yV],
+      mkComb[mkComb[coverV, iV], yV]]];
+
+    th = specAllRCT[HOL`Stdlib`Real`intervalSubsetOpenIntervalThm,
+      {leftV, rightV, xV, aV, bV, yV}];
+    expected = impRCT[hClosedX, impRCT[hClosedY, impRCT[hLenLeft,
+      impRCT[hLenRight, HOL`Stdlib`Real`openIntervalTm[aV, bV, yV]]]]];
+    assertConclRCT["intervalSubsetOpenInterval shape", th, expected];
+
+    th = specAllRCT[HOL`Stdlib`Real`singletonSubcoverOfSmallIntervalThm,
+      {coverV, leftV, rightV, xV, aV, bV, iV}];
+    expected = impRCT[hClosedX, impRCT[hLenLeft, impRCT[hLenRight,
+      impRCT[hInside, HOL`Stdlib`Real`finiteSubcoverTm[coverV, closedSet]]]]];
+    assertConclRCT["singletonSubcoverOfSmallInterval shape", th, expected];
+
+    hOpen = forallRCT[iOpenV, HOL`Stdlib`Real`isOpenTm[mkComb[coverV, iOpenV]]];
+    th = specAllRCT[HOL`Stdlib`Real`compactnessPrincipleThm,
+      {coverV, leftV, rightV}];
+    expected = impRCT[rLeRCT[leftV, rightV], impRCT[hOpen,
+      impRCT[HOL`Stdlib`Real`coversTm[coverV, closedSet],
+        HOL`Stdlib`Real`finiteSubcoverTm[coverV, closedSet]]]];
+    assertConclRCT["compactnessPrinciple shape", th, expected]]];

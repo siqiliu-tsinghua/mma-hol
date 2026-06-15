@@ -145,6 +145,9 @@ lengthFormulaThm::usage = "lengthFormulaThm - |- forall U left right n. length U
 lengthNonnegThm::usage = "lengthNonnegThm - nonnegative interval lengths under the bad bisection hypotheses.";
 lengthDecreaseThm::usage = "lengthDecreaseThm - bisection interval lengths decrease along the sequence.";
 lengthsToZeroThm::usage = "lengthsToZeroThm - bad bisection interval lengths tend to zero.";
+intervalSubsetOpenIntervalThm::usage = "intervalSubsetOpenIntervalThm - a closed interval shorter than both endpoint gaps around x lies inside the open interval.";
+singletonSubcoverOfSmallIntervalThm::usage = "singletonSubcoverOfSmallIntervalThm - a single open-cover member containing a sufficiently small interval gives a finite subcover.";
+compactnessPrincipleThm::usage = "compactnessPrincipleThm - closed intervals in R satisfy the finite-subcover compactness principle.";
 
 freshListDefThm::usage = "freshListDefThm - epsilon-selected num recursion for fresh finite prefixes.";
 freshListConst::usage = "freshListConst[] - freshList : (real -> bool) -> num -> real list.";
@@ -201,6 +204,9 @@ compactOrTm[pT_, qT_] :=
 
 compactSpecAll[th_, ts_List] :=
   Fold[Function[{acc, t}, HOL`Bool`SPEC[t, acc]], th, ts];
+
+compactNatPlus[mT_, nT_] :=
+  mkComb[mkComb[HOL`Stdlib`Num`plusConst[], mT], nT];
 
 compactBetaClean[th_] := HOL`Drule`CONVRULE[
   HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[HOL`Equal`BETACONV]], th];
@@ -2638,6 +2644,284 @@ lengthsToZeroThm =
     folded = EQMP[HOL`Equal`SYM[unfoldIntervalLengthsToZero[lowerSeq, upperSeq]], tendBody];
     HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
       HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hBadTm, folded]]]]]
+  ];
+
+compactSubSelfSubEqThm =
+  Module[{xV, aV},
+    xV = mkVar["xSubSelf", realTy]; aV = mkVar["aSubSelf", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{xV, aV},
+        mkEq[realAddTm[xV, realNegTm[realAddTm[xV, realNegTm[aV]]]], aV]]]
+  ];
+
+compactAddSubRightEqThm =
+  Module[{xV, bV},
+    xV = mkVar["xAddSub", realTy]; bV = mkVar["bAddSub", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{xV, bV},
+        mkEq[realAddTm[xV, realAddTm[bV, realNegTm[xV]]], bV]]]
+  ];
+
+compactGapLeftPosThm =
+  Module[{aV, xV},
+    aV = mkVar["aGap", realTy]; xV = mkVar["xGap", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{aV, xV}, impTm[realLtTm[aV, xV],
+        realLtTm[zeroRealTm[], realAddTm[xV, realNegTm[aV]]]]]]
+  ];
+
+compactGapRightPosThm =
+  Module[{xV, bV},
+    xV = mkVar["xGapR", realTy]; bV = mkVar["bGapR", realTy];
+    HOL`Auto`RealArith`realArithProve[
+      compactForallList[{xV, bV}, impTm[realLtTm[xV, bV],
+        realLtTm[zeroRealTm[], realAddTm[bV, realNegTm[xV]]]]]]
+  ];
+
+compactNatLePlusLeftThm =
+  Module[{aV, bV, leMem, ex},
+    aV = mkVar["aNatPlus", numTy]; bV = mkVar["bNatPlus", numTy];
+    leMem = compactBetaClean[HOL`Equal`APTHM[
+      HOL`Equal`APTHM[HOL`Stdlib`Num`leqDefThm, aV],
+      compactNatPlus[aV, bV]]];
+    ex = HOL`Bool`EXISTS[concl[leMem][[2]], bV,
+      REFL[compactNatPlus[aV, bV]]];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, EQMP[HOL`Equal`SYM[leMem], ex]]]
+  ];
+
+compactNatLePlusRightThm =
+  Module[{aV, bV, leMem, commEq, ex},
+    aV = mkVar["aNatPlusR", numTy]; bV = mkVar["bNatPlusR", numTy];
+    leMem = compactBetaClean[HOL`Equal`APTHM[
+      HOL`Equal`APTHM[HOL`Stdlib`Num`leqDefThm, bV],
+      compactNatPlus[aV, bV]]];
+    commEq = compactSpecAll[HOL`Stdlib`Num`addCommThm, {bV, aV}];
+    ex = HOL`Bool`EXISTS[concl[leMem][[2]], aV, commEq];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, EQMP[HOL`Equal`SYM[leMem], ex]]]
+  ];
+
+intervalSubsetOpenIntervalThm =
+  Module[{leftV, rightV, xV, aV, bV, yV, hXTm, hYTm, hLenLTm,
+          hLenRTm, hX, hY, xBounds, yBounds, hLx, hXr, hLy, hYr,
+          gapL, gapR, closeLeft, leftRaw, leftEq, leftBound,
+          closeRight, rightRaw, rightEq, rightBound, folded},
+    leftV = mkVar["left", realTy]; rightV = mkVar["right", realTy];
+    xV = mkVar["x", realTy]; aV = mkVar["a", realTy];
+    bV = mkVar["b", realTy]; yV = mkVar["y", realTy];
+    hXTm = closedIntervalTm[leftV, rightV, xV];
+    hYTm = closedIntervalTm[leftV, rightV, yV];
+    gapL = realAddTm[xV, realNegTm[aV]];
+    gapR = realAddTm[bV, realNegTm[xV]];
+    hLenLTm = realLtTm[realAddTm[rightV, realNegTm[leftV]], gapL];
+    hLenRTm = realLtTm[realAddTm[rightV, realNegTm[leftV]], gapR];
+    hX = ASSUME[hXTm]; hY = ASSUME[hYTm];
+    xBounds = EQMP[unfoldClosedInterval[leftV, rightV, xV], hX];
+    yBounds = EQMP[unfoldClosedInterval[leftV, rightV, yV], hY];
+    hLx = HOL`Bool`CONJUNCT1[xBounds]; hXr = HOL`Bool`CONJUNCT2[xBounds];
+    hLy = HOL`Bool`CONJUNCT1[yBounds]; hYr = HOL`Bool`CONJUNCT2[yBounds];
+
+    closeLeft = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[intervalPointsCloseThm, {leftV, rightV, yV, xV, gapL}],
+      hLy], hYr], hLx], hXr], ASSUME[hLenLTm]];
+    leftRaw = HOL`Bool`MP[compactSpecAll[realAbsSubLtLeftThm, {yV, xV, gapL}],
+      closeLeft];
+    leftEq = compactSpecAll[compactSubSelfSubEqThm, {xV, aV}];
+    leftBound = EQMP[compactRealLtCong[leftEq, REFL[yV]], leftRaw];
+
+    closeRight = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[intervalPointsCloseThm, {leftV, rightV, yV, xV, gapR}],
+      hLy], hYr], hLx], hXr], ASSUME[hLenRTm]];
+    rightRaw = HOL`Bool`MP[compactSpecAll[realAbsSubLtRightThm, {yV, xV, gapR}],
+      closeRight];
+    rightEq = compactSpecAll[compactAddSubRightEqThm, {xV, bV}];
+    rightBound = EQMP[compactRealLtCong[REFL[yV], rightEq], rightRaw];
+
+    folded = EQMP[HOL`Equal`SYM[unfoldOpenInterval[aV, bV, yV]],
+      HOL`Bool`CONJ[leftBound, rightBound]];
+    HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV, HOL`Bool`GEN[xV,
+      HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[yV,
+        HOL`Bool`DISCH[hXTm, HOL`Bool`DISCH[hYTm,
+          HOL`Bool`DISCH[hLenLTm, HOL`Bool`DISCH[hLenRTm, folded]]]]]]]]]]
+  ];
+
+singletonSubcoverOfSmallIntervalThm =
+  Module[{uV, leftV, rightV, xV, aV, bV, iV, ty, js, coverSet,
+          yB, hXTm, hLenLTm, hLenRTm, hInsideTm, hYBTm, hYB, openY,
+          coverY, memEq, memIn, exY, allY, listFolded, cleanFinite,
+          exList, folded},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; xV = mkVar["x", realTy];
+    aV = mkVar["a", realTy]; bV = mkVar["b", realTy];
+    ty = compactCoverIndexTy[uV]; iV = mkVar["i", ty];
+    js = compactConsTmAt[ty, iV, compactNilAt[ty]];
+    coverSet = compactClosedIntervalSetTm[leftV, rightV];
+    yB = mkVar["yB", realTy];
+    hXTm = closedIntervalTm[leftV, rightV, xV];
+    hLenLTm = realLtTm[realAddTm[rightV, realNegTm[leftV]],
+      realAddTm[xV, realNegTm[aV]]];
+    hLenRTm = realLtTm[realAddTm[rightV, realNegTm[leftV]],
+      realAddTm[bV, realNegTm[xV]]];
+    hInsideTm = forallTm[yB, impTm[openIntervalTm[aV, bV, yB],
+      compactCoverApp[uV, iV, yB]]];
+
+    hYBTm = closedIntervalTm[leftV, rightV, yB]; hYB = ASSUME[hYBTm];
+    openY = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[intervalSubsetOpenIntervalThm, {leftV, rightV, xV, aV, bV, yB}],
+      ASSUME[hXTm]], hYB], ASSUME[hLenLTm]], ASSUME[hLenRTm]];
+    coverY = HOL`Bool`MP[HOL`Bool`SPEC[yB, ASSUME[hInsideTm]], openY];
+    memEq = compactMemConsEqAt[ty, iV, iV, compactNilAt[ty]];
+    memIn = EQMP[HOL`Equal`SYM[memEq],
+      HOL`Bool`DISJ1[REFL[iV], compactMemTmAt[ty, iV, compactNilAt[ty]]]];
+    exY = HOL`Bool`EXISTS[compactSubcoverExistsTm[uV, yB, js], iV,
+      HOL`Bool`CONJ[memIn, coverY]];
+    allY = HOL`Bool`GEN[yB, HOL`Bool`DISCH[hYBTm, exY]];
+    listFolded = EQMP[HOL`Equal`SYM[unfoldListSubcover[uV, coverSet, js]], allY];
+    cleanFinite = unfoldFiniteSubcover[uV, coverSet];
+    exList = HOL`Bool`EXISTS[concl[cleanFinite][[2]], js, listFolded];
+    folded = EQMP[HOL`Equal`SYM[cleanFinite], exList];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`GEN[xV, HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[iV,
+        HOL`Bool`DISCH[hXTm, HOL`Bool`DISCH[hLenLTm,
+          HOL`Bool`DISCH[hLenRTm, HOL`Bool`DISCH[hInsideTm, folded]]]]]]]]]]]
+  ];
+
+compactOpenWitnessBody[uT_, iT_, xT_, aT_, bT_] :=
+  Module[{yOp},
+    yOp = mkVar["yOpen", realTy];
+    conjTm[realLtTm[aT, xT], conjTm[realLtTm[xT, bT],
+      forallTm[yOp, impTm[openIntervalTm[aT, bT, yOp],
+        compactCoverApp[uT, iT, yOp]]]]]
+  ];
+
+compactNestedUniqueBodyAt[aT_, bT_, xT_] :=
+  Module[{yPt},
+    yPt = mkVar["yUnique", realTy];
+    conjTm[seqCommonPointBody[aT, bT, xT],
+      forallTm[yPt, impTm[seqCommonPointBody[aT, bT, yPt], mkEq[yPt, xT]]]]
+  ];
+
+compactPointInInitialClosed[uT_, leftT_, rightT_, xT_, hxAllTh_] :=
+  Module[{hx0, leftEq, rightEq, left0, right0},
+    hx0 = HOL`Bool`SPEC[zeroN[], hxAllTh];
+    leftEq = compactLowerZeroEq[uT, leftT, rightT];
+    rightEq = compactUpperZeroEq[uT, leftT, rightT];
+    left0 = EQMP[compactRealLeCong[leftEq, REFL[xT]], HOL`Bool`CONJUNCT1[hx0]];
+    right0 = EQMP[compactRealLeCong[REFL[xT], rightEq], HOL`Bool`CONJUNCT2[hx0]];
+    EQMP[HOL`Equal`SYM[unfoldClosedInterval[leftT, rightT, xT]],
+      HOL`Bool`CONJ[left0, right0]]
+  ];
+
+compactClosedFromCommonPoint[aT_, bT_, xT_, hxAllTh_, nT_] :=
+  EQMP[HOL`Equal`SYM[unfoldClosedInterval[mkComb[aT, nT], mkComb[bT, nT], xT]],
+    HOL`Bool`SPEC[nT, hxAllTh]];
+
+compactnessPrincipleThm =
+  Module[{uV, leftV, rightV, ty, iOpenV, hLeTm, hOpenTm, hCovTm,
+          coverSet, goalTm, em, trueBranch, hNotTm, hNot, hBadInit,
+          hLe, hBad, hNest, hLen, lowerSeq, upperSeq, pointEx, xPt,
+          hPtTm, hPt, hxAll, hxClosed, covBody, covEx, iIdx, hUiTm,
+          hUi, openI, openBody, openEx, aOpen, bOpen, hATm, hA,
+          hOBTm, hOB, hAx, hXb, hInside, gapL, gapR, hGapL, hGapR,
+          lenSeq, tendLen, tendBody, gotL, gotR, bigNL, bigNR,
+          hNLTm, hNRTm, hNL, hNR, kT, hNLK, hNRK, closeL, closeR,
+          loK, hiK, hOrdK, hLenL, hLenR, hxKClosed, hSmall, hBadK,
+          badKOpen, noK, notSmall, falseTh, falseBranch, chooseNR,
+          chooseNL, chooseB, chooseA, chooseI, chooseX, point},
+    uV = mkVar["U", compactCoverTy]; leftV = mkVar["left", realTy];
+    rightV = mkVar["right", realTy]; ty = compactCoverIndexTy[uV];
+    iOpenV = mkVar["iOpen", ty];
+    coverSet = compactClosedIntervalSetTm[leftV, rightV];
+    hLeTm = realLeTm[leftV, rightV];
+    hOpenTm = forallTm[iOpenV, isOpenTm[mkComb[uV, iOpenV]]];
+    hCovTm = coversTm[uV, coverSet];
+    goalTm = finiteSubcoverTm[uV, coverSet];
+    em = HOL`Bool`EXCLUDEDMIDDLE[goalTm];
+    trueBranch = ASSUME[goalTm];
+
+    hNotTm = compactNotTm[goalTm]; hNot = ASSUME[hNotTm];
+    hLe = ASSUME[hLeTm];
+    hBadInit = EQMP[HOL`Equal`SYM[unfoldNoFiniteSubcover[uV, leftV, rightV]], hNot];
+    hBad = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[badIntervalsThm,
+      {uV, leftV, rightV}], hLe], hBadInit];
+    hNest = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[nestedIntervalsThm,
+      {uV, leftV, rightV}], hLe], hBadInit];
+    hLen = HOL`Bool`MP[HOL`Bool`MP[compactSpecAll[lengthsToZeroThm,
+      {uV, leftV, rightV}], hLe], hBadInit];
+    lowerSeq = lowerTm[uV, leftV, rightV];
+    upperSeq = upperTm[uV, leftV, rightV];
+    pointEx = HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[nestedUniquePointThm, {lowerSeq, upperSeq}], hNest], hLen];
+
+    xPt = mkVar["xPt", realTy];
+    hPtTm = compactNestedUniqueBodyAt[lowerSeq, upperSeq, xPt];
+    hPt = ASSUME[hPtTm];
+    hxAll = HOL`Bool`CONJUNCT1[hPt];
+    hxClosed = compactPointInInitialClosed[uV, leftV, rightV, xPt, hxAll];
+    covBody = EQMP[unfoldCovers[uV, coverSet], ASSUME[hCovTm]];
+    covEx = HOL`Bool`MP[HOL`Bool`SPEC[xPt, covBody], hxClosed];
+
+    iIdx = mkVar["iIdx", ty];
+    hUiTm = compactCoverApp[uV, iIdx, xPt]; hUi = ASSUME[hUiTm];
+    openI = HOL`Bool`SPEC[iIdx, ASSUME[hOpenTm]];
+    openBody = EQMP[unfoldIsOpen[mkComb[uV, iIdx]], openI];
+    openEx = HOL`Bool`MP[HOL`Bool`SPEC[xPt, openBody], hUi];
+
+    aOpen = mkVar["aOpen", realTy]; bOpen = mkVar["bOpen", realTy];
+    hOBTm = compactOpenWitnessBody[uV, iIdx, xPt, aOpen, bOpen];
+    hATm = existsTm[bOpen, hOBTm]; hA = ASSUME[hATm];
+    hOB = ASSUME[hOBTm];
+    hAx = HOL`Bool`CONJUNCT1[hOB];
+    hXb = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[hOB]];
+    hInside = HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[hOB]];
+    gapL = realAddTm[xPt, realNegTm[aOpen]];
+    gapR = realAddTm[bOpen, realNegTm[xPt]];
+    hGapL = HOL`Bool`MP[compactSpecAll[compactGapLeftPosThm, {aOpen, xPt}], hAx];
+    hGapR = HOL`Bool`MP[compactSpecAll[compactGapRightPosThm, {xPt, bOpen}], hXb];
+
+    lenSeq = seqLengthSeq[lowerSeq, upperSeq];
+    tendLen = EQMP[unfoldIntervalLengthsToZero[lowerSeq, upperSeq], hLen];
+    tendBody = EQMP[unfoldTendsto[lenSeq, zeroRealTm[]], tendLen];
+    gotL = compactBetaClean[HOL`Bool`MP[HOL`Bool`SPEC[gapL, tendBody], hGapL]];
+    gotR = compactBetaClean[HOL`Bool`MP[HOL`Bool`SPEC[gapR, tendBody], hGapR]];
+
+    bigNL = mkVar["bigNL", numTy]; bigNR = mkVar["bigNR", numTy];
+    hNLTm = seqLengthCloseAll[lowerSeq, upperSeq, gapL, bigNL];
+    hNRTm = seqLengthCloseAll[lowerSeq, upperSeq, gapR, bigNR];
+    hNL = ASSUME[hNLTm]; hNR = ASSUME[hNRTm];
+    kT = compactNatPlus[bigNL, bigNR];
+    hNLK = compactSpecAll[compactNatLePlusLeftThm, {bigNL, bigNR}];
+    hNRK = compactSpecAll[compactNatLePlusRightThm, {bigNL, bigNR}];
+    closeL = compactBetaClean[HOL`Bool`MP[HOL`Bool`SPEC[kT, hNL], hNLK]];
+    closeR = compactBetaClean[HOL`Bool`MP[HOL`Bool`SPEC[kT, hNR], hNRK]];
+    loK = compactLowerAt[uV, leftV, rightV, kT];
+    hiK = compactUpperAt[uV, leftV, rightV, kT];
+    hOrdK = compactIntervalOrderAt[uV, leftV, rightV, hLe, hBadInit, kT];
+    hLenL = HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[lengthLtOfCloseThm, {loK, hiK, gapL}], hOrdK], closeL];
+    hLenR = HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[lengthLtOfCloseThm, {loK, hiK, gapR}], hOrdK], closeR];
+    hxKClosed = compactClosedFromCommonPoint[lowerSeq, upperSeq, xPt, hxAll, kT];
+    hSmall = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      compactSpecAll[singletonSubcoverOfSmallIntervalThm,
+        {uV, loK, hiK, xPt, aOpen, bOpen, iIdx}], hxKClosed], hLenL], hLenR],
+      hInside];
+    hBadK = HOL`Bool`SPEC[kT, hBad];
+    badKOpen = EQMP[unfoldBadInterval[uV, loK, hiK], hBadK];
+    noK = HOL`Bool`CONJUNCT2[badKOpen];
+    notSmall = EQMP[unfoldNoFiniteSubcover[uV, loK, hiK], noK];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notSmall], hSmall];
+    falseBranch = HOL`Bool`CONTR[goalTm, falseTh];
+
+    chooseNR = HOL`Bool`CHOOSE[bigNR, gotR, falseBranch];
+    chooseNL = HOL`Bool`CHOOSE[bigNL, gotL, chooseNR];
+    chooseB = HOL`Bool`CHOOSE[bOpen, hA, chooseNL];
+    chooseA = HOL`Bool`CHOOSE[aOpen, openEx, chooseB];
+    chooseI = HOL`Bool`CHOOSE[iIdx, covEx, chooseA];
+    chooseX = HOL`Bool`CHOOSE[xPt, pointEx, chooseI];
+    point = HOL`Bool`DISJCASES[em, trueBranch, chooseX];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hOpenTm,
+        HOL`Bool`DISCH[hCovTm, point]]]]]]
   ];
 
 End[];
