@@ -508,16 +508,16 @@ EndPackage[];
 #### M8.2 闭区间紧性（**双独立分支**路线 —— owner 重规划 2026-06-14）
 **路线决定(owner)。** 蓝本紧性层四路线 + 阀门是为「单一入口、阀门可控」服务的;**我们不需要那个约束**,所以走**两条互不相连的独立分支**——既能用上我们辛苦做的 `existsMonoSubseqThm`(否则成孤儿),又**全程避开 Lindelöf**(关键:`SeqToFinite` 列紧→紧 需 Lindelöf/可数性,我们**根本不连这条边**)。**全部依赖已审计为 Lindelöf-free(2026-06-14)。除「BW 自组装」一个新证明外,其余全是蓝本忠实翻译(~1370 行 Lean)。**
 
-**分支 A(列紧 / 聚点):**
-- [ ] **BW 列紧性 = 有界数列必有收敛子列**(**唯一的新证明**):`existsMonoSubseqThm`(Stage 4a)+ 子列继承有界 + `monoConverges{Inc,Dec}Thm`(Stage 3)。这就是「用单调子列存在 + 单调有界收敛证 BW」。
-- [ ] **聚点原理 = 列紧 → 聚点**:抄 `ClosedInterval/SeqToAccum.lean`(184 行;用 `ListInfinite` ~3 行独立谓词,本地补,非基数塔)。
+**分支 A(列紧 / 聚点)—— 全部完成 2026-06-14:**
+- [x] **BW 列紧性 = 有界数列必有收敛子列**(**唯一的新证明**):`existsMonoSubseqThm`(Stage 4a)+ 子列继承有界 + `monoConverges{Inc,Dec}Thm`(Stage 3)。这就是「用单调子列存在 + 单调有界收敛证 BW」。(`bwSequentialThm`,brief-016,commit c171e29。)
+- [x] **聚点原理 = 列紧 → 聚点**:抄 `ClosedInterval/SeqToAccum.lean`(184 行;用 `ListInfinite` ~3 行独立谓词,本地补,非基数塔)。(`accumulationPrincipleThm`,`freshList` num→list 递归 + SeqToAccum,brief-017,commit b337ff0。)
 
 **分支 B(区间套 → 有限覆盖 → 勒贝格数):**
-- [ ] **区间套原理 = 确界 → 区间套**:抄 `Principles/FromSupNested.lean`(184 行;只依赖 Supremum + Statements,**干净无可数性**)。**取「区间长度趋于零 ⇒ 公共点唯一」那版**(owner)。
-- [ ] **Heine–Borel = 区间套 → 有限覆盖**:抄 `ClosedInterval/FromNestedFinite.lean`(512 行;需 `NestedIntervalPrinciple` + `DyadicArchimedeanPrinciple`;无 Lindelöf)。`IsCompact = FiniteSubcover`(List 索引,无可数性)。
-- [ ] **勒贝格数 = 有限覆盖 → 勒贝格数**:抄 `ClosedInterval/FiniteToLebesgue.lean`(371 行;需 `RealSequence/Order` 的夹逼)。
+- [x] **区间套原理 = 确界 → 区间套**:已在**序列层 Stage 6**(brief-015,`FromSupNested`)证出 —— `nestedExistsPointThm`(公共点存在)+ `nestedUniquePointThm`(长度→0 ⇒ 公共点唯一),已随 Seq.wl 毕业进 bootstrap.mx,commit e20f696。**取「区间长度趋于零 ⇒ 公共点唯一」那版**(owner)。
+- [ ] **Heine–Borel = 区间套 → 有限覆盖**:抄 `ClosedInterval/FromNestedFinite.lean`(512 行;需 `NestedIntervalPrinciple` + `DyadicArchimedeanPrinciple`;无 Lindelöf)。`IsCompact = FiniteSubcover`(List 索引,无可数性)。**基础设施已就位**:开覆盖词汇(brief-020,commit 183353d)、子覆盖代数 `midpoint`/`combineHalfSubcover`/`rightHalfBad`(brief-021,commit 06d9a16)、**二分递归** `bisectInterval`/`lower`/`upper`/`badIntervals`/`nestedIntervals`(brief-022,THE hardest,commit 3c67f05)。**收尾 = brief-023(区间长度→0 via `dyadicArchThm`)+ brief-024(`interval_subset_open_interval` + 单点子覆盖 + 反证 → `compactnessPrinciple`)。**
+- [ ] **勒贝格数 = 有限覆盖 → 勒贝格数**:抄 `ClosedInterval/FiniteToLebesgue.lean`(371 行;需 `RealSequence/Order` 的夹逼)。(brief-025。)
 
-**配套蓝本件(待抄,全是翻译非新设计):** `ClosedInterval/Statements.lean`(紧性原理结构定义,120 行)、`Principles/Dyadic.lean`(`DyadicArchimedean`,162 行,deps Archimedean)、`Principles/NestedBasic.lean`(127 行)、`RealSequence/Order.lean`(夹逼/序极限,119 行,deps Algebra)、`ListInfinite` 谓词(~3 行)。
+**配套蓝本件(全是翻译非新设计):** ~~`Principles/Dyadic.lean`(`DyadicArchimedean`)~~ ✅ `dyadicArchThm`(SeqAux,brief-018)、~~`Principles/NestedBasic.lean`~~ ✅ `intervalPointsClose`/`lengthLtOfClose`(SeqAux,brief-019)、~~`ClosedInterval/Statements.lean`(紧性原理结构定义)~~ ✅ 开覆盖词汇(brief-020)、`RealSequence/Order.lean`(夹逼/序极限,119 行,deps Algebra,brief-023/025 用到)、`ListInfinite` 谓词(~3 行,brief-017 已本地补)。
 **两分支不相连**(无 `SeqToFinite`/`FiniteToSeq`)——这正是避开 Lindelöf 的关键,且我们无需蓝本的单一入口约束。
 
 #### M8.3 连通性（核心）
