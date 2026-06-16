@@ -27,6 +27,7 @@ setBinTyCNT = tyFun[setTyCNT, tyFun[setTyCNT, boolTy]];
 setTriTyCNT = tyFun[setTyCNT, tyFun[setTyCNT, tyFun[setTyCNT, boolTy]]];
 betweenTyCNT = tyFun[realTyCNT, tyFun[realTyCNT, tyFun[realTyCNT, boolTy]]];
 rayTyCNT = tyFun[realTyCNT, setTyCNT];
+traceTyCNT = tyFun[setTyCNT, tyFun[setTyCNT, setTyCNT]];
 
 andCNT[p_, q_] := mkComb[
   mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
@@ -108,6 +109,12 @@ isIntervalSetBodyCNT[sT_] :=
           impCNT[HOL`Stdlib`Real`betweenTm[xV, yV, zV], setAppCNT[sT, yV]]]]]]]
   ];
 
+traceBodyCNT[sT_, vT_] :=
+  Module[{xV},
+    xV = mkVar["xCNT", realTyCNT];
+    mkAbs[xV, andCNT[setAppCNT[sT, xV], setAppCNT[vT, xV]]]
+  ];
+
 emptySetCNT[] :=
   Module[{xV},
     xV = mkVar["xCNT", realTyCNT];
@@ -136,7 +143,7 @@ closedLowerSetCNT[cutT_] := mkComb[HOL`Stdlib`Real`closedLowerRayConst[], cutT];
 closedUpperSetCNT[cutT_] := mkComb[HOL`Stdlib`Real`closedUpperRayConst[], cutT];
 
 HOLTest`runTests["stdlib/Real/Connected: definitions and unfolds",
-  Module[{sV, uV, vV, xV, yV, zV, cutV, defs, checks},
+  Module[{sV, uV, vV, xV, yV, zV, cutV, th, defs, checks},
     defs = {
       {"openInDef", HOL`Stdlib`Real`openInDefThm},
       {"setNonemptyDef", HOL`Stdlib`Real`setNonemptyDefThm},
@@ -149,7 +156,8 @@ HOLTest`runTests["stdlib/Real/Connected: definitions and unfolds",
       {"openLowerRayDef", HOL`Stdlib`Real`openLowerRayDefThm},
       {"openUpperRayDef", HOL`Stdlib`Real`openUpperRayDefThm},
       {"closedLowerRayDef", HOL`Stdlib`Real`closedLowerRayDefThm},
-      {"closedUpperRayDef", HOL`Stdlib`Real`closedUpperRayDefThm}};
+      {"closedUpperRayDef", HOL`Stdlib`Real`closedUpperRayDefThm},
+      {"traceDef", HOL`Stdlib`Real`traceDefThm}};
     Scan[Function[{entry},
       HOLTest`assertTrue[isThm[entry[[2]]], entry[[1]] <> " is thm"];
       HOLTest`assertEq[hyp[entry[[2]]], {}, entry[[1]] <> " no hyps"]], defs];
@@ -162,6 +170,8 @@ HOLTest`runTests["stdlib/Real/Connected: definitions and unfolds",
       "betweenConst type"];
     HOLTest`assertEq[typeOf[HOL`Stdlib`Real`openLowerRayConst[]], rayTyCNT,
       "openLowerRayConst type"];
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`traceConst[]], traceTyCNT,
+      "traceConst type"];
 
     sV = mkVar["SCNT", setTyCNT]; uV = mkVar["UCNT", setTyCNT];
     vV = mkVar["VCNT", setTyCNT]; xV = mkVar["xCNT", realTyCNT];
@@ -191,10 +201,16 @@ HOLTest`runTests["stdlib/Real/Connected: definitions and unfolds",
       {"closedLowerRay", HOL`Stdlib`Real`unfoldClosedLowerRay[cutV, xV],
         mkEq[HOL`Stdlib`Real`closedLowerRayTm[cutV, xV], rLeCNT[xV, cutV]]},
       {"closedUpperRay", HOL`Stdlib`Real`unfoldClosedUpperRay[cutV, xV],
-        mkEq[HOL`Stdlib`Real`closedUpperRayTm[cutV, xV], rLeCNT[cutV, xV]]}};
+        mkEq[HOL`Stdlib`Real`closedUpperRayTm[cutV, xV], rLeCNT[cutV, xV]]},
+      {"trace", HOL`Stdlib`Real`unfoldTrace[sV, vV],
+        mkEq[HOL`Stdlib`Real`traceTm[sV, vV], traceBodyCNT[sV, vV]]}};
     Scan[Function[{entry},
       HOLTest`assertTrue[aconv[concl[entry[[2]]], entry[[3]]],
-        entry[[1]] <> " unfold shape"]], checks]]];
+        entry[[1]] <> " unfold shape"]], checks];
+
+    th = specAllCNT[HOL`Stdlib`Real`traceMemThm, {sV, vV, xV}];
+    HOLTest`assertTrue[aconv[concl[th], mkEq[setAppCNT[HOL`Stdlib`Real`traceTm[sV, vV], xV],
+      andCNT[setAppCNT[sV, xV], setAppCNT[vV, xV]]]], "traceMem shape"]]];
 
 HOLTest`runTests["stdlib/Real/Connected: theorem shapes",
   Module[{sV, uV, vV, xV, yV, zV, cutV, leftV, rightV, aV, th, expected,
@@ -237,6 +253,11 @@ HOLTest`runTests["stdlib/Real/Connected: theorem shapes",
 
     assertConclCNT["connectedEmpty", HOL`Stdlib`Real`connectedEmptyThm,
       HOL`Stdlib`Real`isConnectedTm[emptySetCNT[]]];
+
+    th = specAllCNT[HOL`Stdlib`Real`openInTraceThm, {sV, vV}];
+    expected = impCNT[HOL`Stdlib`Real`isOpenTm[vV],
+      HOL`Stdlib`Real`openInTm[sV, HOL`Stdlib`Real`traceTm[sV, vV]]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "openInTrace shape"];
 
     intervalThms = {
       {"interval empty", HOL`Stdlib`Real`intervalSetEmptyThm,

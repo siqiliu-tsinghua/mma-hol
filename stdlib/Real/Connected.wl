@@ -80,6 +80,12 @@ closedUpperRayTm::usage = "closedUpperRayTm[cut, x] - builds closedUpperRay cut 
 unfoldClosedUpperRay::usage = "unfoldClosedUpperRay[cut, x] - proves the beta-reduced closedUpperRay definition at cut and x.";
 closedUpperRayMemThm::usage = "closedUpperRayMemThm - |- forall cut x. closedUpperRay cut x = realLe cut x.";
 
+traceDefThm::usage = "traceDefThm - |- trace = (lambda S V. lambda x. S x /\\ V x).";
+traceConst::usage = "traceConst[] - trace : (real -> bool) -> (real -> bool) -> (real -> bool).";
+traceTm::usage = "traceTm[S, V] - builds trace S V.";
+unfoldTrace::usage = "unfoldTrace[S, V] - proves the beta-reduced trace definition at S and V.";
+traceMemThm::usage = "traceMemThm - |- forall S V x. trace S V x = (S x /\\ V x).";
+
 openInSubsetThm::usage = "openInSubsetThm - |- forall S U. openIn S U ==> forall x. U x ==> S x.";
 openLowerRayIsOpenThm::usage = "openLowerRayIsOpenThm - |- forall cut. isOpen (openLowerRay cut).";
 openUpperRayIsOpenThm::usage = "openUpperRayIsOpenThm - |- forall cut. isOpen (openUpperRay cut).";
@@ -87,6 +93,7 @@ ltOrGtOfNeThm::usage = "ltOrGtOfNeThm - |- forall x y. ~(x = y) ==> realLt x y \
 existsRightBetweenThm::usage = "existsRightBetweenThm - |- forall x y z. realLt x y ==> realLt x z ==> exists d. realLt x d /\\ realLe d y /\\ realLt d z.";
 isSeparationSymmThm::usage = "isSeparationSymmThm - |- forall S U V. isSeparation S U V ==> isSeparation S V U.";
 connectedEmptyThm::usage = "connectedEmptyThm - |- isConnected (lambda x. F).";
+openInTraceThm::usage = "openInTraceThm - |- forall S V. isOpen V ==> openIn S (trace S V).";
 
 intervalSetEmptyThm::usage = "intervalSetEmptyThm - |- isIntervalSet (lambda x. F).";
 intervalSetUniversalThm::usage = "intervalSetUniversalThm - |- isIntervalSet (lambda x. T).";
@@ -111,6 +118,7 @@ isConnectedTy = tyFun[connectedSetTy, boolTy];
 betweenTy = tyFun[connectedRealTy, tyFun[connectedRealTy, tyFun[connectedRealTy, boolTy]]];
 isIntervalSetTy = tyFun[connectedSetTy, boolTy];
 connectedRayTy = tyFun[connectedRealTy, connectedSetTy];
+traceTy = tyFun[connectedSetTy, tyFun[connectedSetTy, connectedSetTy]];
 
 connectedAndConst[] := mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
 connectedOrConst[] := mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]];
@@ -214,6 +222,12 @@ connectedIsIntervalSetBody[sT_] :=
       connectedImpTm[connectedSetApp[sT, xV],
         connectedImpTm[connectedSetApp[sT, zV],
           connectedImpTm[betweenTm[xV, yV, zV], connectedSetApp[sT, yV]]]]]]]
+  ];
+
+connectedTraceBody[sT_, vT_] :=
+  Module[{xV},
+    xV = mkVar["xCn", connectedRealTy];
+    mkAbs[xV, connectedConjTm[connectedSetApp[sT, xV], connectedSetApp[vT, xV]]]
   ];
 
 openInDefThm =
@@ -387,6 +401,26 @@ openUpperRayMemThm =
   Module[{cutV, xV},
     cutV = mkVar["cut", connectedRealTy]; xV = mkVar["x", connectedRealTy];
     HOL`Bool`GEN[cutV, HOL`Bool`GEN[xV, unfoldOpenUpperRay[cutV, xV]]]
+  ];
+
+traceDefThm =
+  Module[{sV, vV},
+    sV = mkVar["S", connectedSetTy]; vV = mkVar["V", connectedSetTy];
+    newDefinition[mkEq[mkVar["trace", traceTy],
+      mkAbs[sV, mkAbs[vV, connectedTraceBody[sV, vV]]]]]
+  ];
+
+traceConst[] := mkConst["trace", traceTy];
+traceTm[sT_, vT_] := mkComb[mkComb[traceConst[], sT], vT];
+unfoldTrace[sT_, vT_] := connectedApplyDef[traceDefThm, {sT, vT}];
+traceMemThm =
+  Module[{sV, vV, xV, traceAt},
+    sV = mkVar["S", connectedSetTy]; vV = mkVar["V", connectedSetTy];
+    xV = mkVar["x", connectedRealTy];
+    traceAt = TRANS[
+      HOL`Equal`APTHM[unfoldTrace[sV, vV], xV],
+      HOL`Equal`BETACONV[connectedSetApp[connectedTraceBody[sV, vV], xV]]];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[vV, HOL`Bool`GEN[xV, traceAt]]]
   ];
 
 closedLowerRayDefThm =
@@ -879,6 +913,22 @@ intervalSetClosedUpperRayThm =
         EQMP[HOL`Equal`SYM[unfoldClosedUpperRay[cutV, yV]], cutLeY]
       ]]];
     HOL`Bool`GEN[cutV, connectedIntervalSetFromBody[setT, body]]
+  ];
+
+connectedTraceAt[sT_, vT_, xT_] := connectedSpecAll[traceMemThm, {sT, vT, xT}];
+
+openInTraceThm =
+  Module[{sV, vV, xV, traceSet, hOpenTm, hOpen, allX, body, existsTrace,
+          folded},
+    sV = mkVar["SCn", connectedSetTy]; vV = mkVar["VCn", connectedSetTy];
+    xV = mkVar["xTraceCn", connectedRealTy];
+    traceSet = traceTm[sV, vV];
+    hOpenTm = isOpenTm[vV]; hOpen = ASSUME[hOpenTm];
+    allX = HOL`Bool`GEN[xV, connectedTraceAt[sV, vV, xV]];
+    body = HOL`Bool`CONJ[hOpen, allX];
+    existsTrace = HOL`Bool`EXISTS[connectedOpenInBody[sV, traceSet], vV, body];
+    folded = EQMP[HOL`Equal`SYM[unfoldOpenIn[sV, traceSet]], existsTrace];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[vV, HOL`Bool`DISCH[hOpenTm, folded]]]
   ];
 
 End[];
