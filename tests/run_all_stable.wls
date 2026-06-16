@@ -98,6 +98,9 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   (* M8.4 topology (closed sets) — FRONTIER, after Connected *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Topology.wl"}]];
 
+  (* M8.5 general compactness (set-level) — FRONTIER, after Topology *)
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "CompactSet.wl"}]];
+
   runGroup["post-bootstrap", postBootstrapTests];
 
   HOLTest`testExit[]
