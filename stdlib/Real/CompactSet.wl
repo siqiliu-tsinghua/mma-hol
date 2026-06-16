@@ -34,6 +34,16 @@ natSuccPosThm::usage = "natSuccPosThm - |- forall n. realLt 0 (&R(&Q(&Z(SUC n)))
 invSuccRadiusPosThm::usage = "invSuccRadiusPosThm - |- forall n. realLt 0 (invSuccRadius n).";
 invSuccRadiusAntitoneThm::usage = "invSuccRadiusAntitoneThm - |- forall m n. m <= n ==> realLe (invSuccRadius n) (invSuccRadius m).";
 invSuccRadiusTendstoZeroThm::usage = "invSuccRadiusTendstoZeroThm - |- tendsto invSuccRadius 0.";
+existsMemIntervalOfNoComplNeighborhoodThm::usage = "existsMemIntervalOfNoComplNeighborhoodThm - |- forall S x left right. ~(exists a b. realLt a x /\\ realLt x b /\\ forall y. openInterval a b y ==> compl S y) ==> realLt left x ==> realLt x right ==> exists y. S y /\\ openInterval left right y.";
+nearClosedPointDefThm::usage = "nearClosedPointDefThm - |- nearClosedPoint = (lambda S x n. @y. S y /\\ openInterval (x + --(invSuccRadius n)) (x + invSuccRadius n) y).";
+nearClosedPointConst::usage = "nearClosedPointConst[] - nearClosedPoint : (real -> bool) -> real -> num -> real.";
+nearClosedPointTm::usage = "nearClosedPointTm[S, x] - builds nearClosedPoint S x.";
+unfoldNearClosedPoint::usage = "unfoldNearClosedPoint[S, x] - proves the beta-reduced nearClosedPoint definition at S and x.";
+nearClosedPointMemThm::usage = "nearClosedPointMemThm - |- forall S x. ~(exists a b. realLt a x /\\ realLt x b /\\ forall y. openInterval a b y ==> compl S y) ==> forall n. S (nearClosedPoint S x n).";
+nearClosedPointIntervalThm::usage = "nearClosedPointIntervalThm - |- forall S x. ~(exists a b. realLt a x /\\ realLt x b /\\ forall y. openInterval a b y ==> compl S y) ==> forall n. openInterval (x + --(invSuccRadius n)) (x + invSuccRadius n) (nearClosedPoint S x n).";
+nearClosedPointTendstoThm::usage = "nearClosedPointTendstoThm - |- forall S x. ~(exists a b. realLt a x /\\ realLt x b /\\ forall y. openInterval a b y ==> compl S y) ==> tendsto (nearClosedPoint S x) x.";
+closedOfSequentiallyCompactThm::usage = "closedOfSequentiallyCompactThm - |- forall S. isSequentiallyCompact S ==> isClosed S.";
+sequentialCompactIffClosedBoundedThm::usage = "sequentialCompactIffClosedBoundedThm - |- forall S. isSequentiallyCompact S = (isClosed S /\\ setBounded S).";
 
 Begin["`Private`"];
 
@@ -764,6 +774,292 @@ invSuccRadiusTendstoZeroThm =
     folded = EQMP[HOL`Equal`SYM[unfoldTendsto[invSuccRadiusConst[], zeroRealTm[]]],
       epsBody];
     folded
+  ];
+
+csetRealAdd[aT_, bT_] := realAddTm[aT, bT];
+
+csetNeighGoal[sT_, xT_] :=
+  Module[{aV, bV, yV},
+    aV = mkVar["aNbhd", csetRealTy];
+    bV = mkVar["bNbhd", csetRealTy];
+    yV = mkVar["yNbhd", csetRealTy];
+    csetExistsTm[aV, csetExistsTm[bV,
+      csetConjTm[csetRealLt[aV, xT],
+        csetConjTm[csetRealLt[xT, bV],
+          csetForallTm[yV, csetImpTm[openIntervalTm[aV, bV, yV],
+            csetSetApp[complTm[sT], yV]]]]]]]
+  ];
+
+csetNearClosedPointLo[xT_, nT_] :=
+  csetRealAdd[xT, csetRealNeg[invSuccRadiusTm[nT]]];
+csetNearClosedPointHi[xT_, nT_] :=
+  csetRealAdd[xT, invSuccRadiusTm[nT]];
+csetNearPred[sT_, xT_, nT_] :=
+  Module[{yW, loT, hiT},
+    yW = mkVar["yCsetNear", csetRealTy];
+    loT = csetNearClosedPointLo[xT, nT];
+    hiT = csetNearClosedPointHi[xT, nT];
+    mkAbs[yW, csetConjTm[csetSetApp[sT, yW],
+      openIntervalTm[loT, hiT, yW]]]
+  ];
+csetNearClosedPointSelect[sT_, xT_, nT_] :=
+  mkComb[csetSelectConst[csetRealTy], csetNearPred[sT, xT, nT]];
+
+csetSubRadiusLtCenterThm =
+  Module[{xV, rV},
+    xV = mkVar["xCsetSubRadius", csetRealTy];
+    rV = mkVar["rCsetSubRadius", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[csetForallList[{xV, rV},
+      csetImpTm[csetRealLt[zeroRealTm[], rV],
+        csetRealLt[csetRealAdd[xV, csetRealNeg[rV]], xV]]]]
+  ];
+
+csetCenterLtAddRadiusThm =
+  Module[{xV, rV},
+    xV = mkVar["xCsetAddRadius", csetRealTy];
+    rV = mkVar["rCsetAddRadius", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[csetForallList[{xV, rV},
+      csetImpTm[csetRealLt[zeroRealTm[], rV],
+        csetRealLt[xV, csetRealAdd[xV, rV]]]]]
+  ];
+
+existsMemIntervalOfNoComplNeighborhoodThm =
+  Module[{sV, xV, leftV, rightV, zV, neighTm, goalTm, hNoTm, hNo,
+          hLeftTm, hLeft, hRightTm, hRight, body},
+    sV = mkVar["S", csetSetTy]; xV = mkVar["x", csetRealTy];
+    leftV = mkVar["left", csetRealTy]; rightV = mkVar["right", csetRealTy];
+    zV = mkVar["zNbhd", csetRealTy];
+    neighTm = csetNeighGoal[sV, xV];
+    goalTm = csetExistsTm[zV, csetConjTm[csetSetApp[sV, zV],
+      openIntervalTm[leftV, rightV, zV]]];
+    hNoTm = csetNotTm[neighTm]; hNo = ASSUME[hNoTm];
+    hLeftTm = csetRealLt[leftV, xV]; hLeft = ASSUME[hLeftTm];
+    hRightTm = csetRealLt[xV, rightV]; hRight = ASSUME[hRightTm];
+    body = HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[goalTm],
+      ASSUME[goalTm],
+      Module[{hNoGoal, hIntTm, hInt, hSzTm, hSz, exGoal, falseGoal,
+              notSz, complAtZ, allZ, betaLeft, innerEx, exRight,
+              exLeft, falseNeigh},
+        hNoGoal = ASSUME[csetNotTm[goalTm]];
+        hIntTm = openIntervalTm[leftV, rightV, zV]; hInt = ASSUME[hIntTm];
+        hSzTm = csetSetApp[sV, zV]; hSz = ASSUME[hSzTm];
+        exGoal = HOL`Bool`EXISTS[goalTm, zV, HOL`Bool`CONJ[hSz, hInt]];
+        falseGoal = HOL`Bool`MP[HOL`Bool`NOTELIM[hNoGoal], exGoal];
+        notSz = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hSzTm, falseGoal]];
+        complAtZ = EQMP[HOL`Equal`SYM[csetSpecAll[complMemThm, {sV, zV}]], notSz];
+        allZ = HOL`Bool`GEN[zV, HOL`Bool`DISCH[hIntTm, complAtZ]];
+        betaLeft = HOL`Equal`BETACONV[mkComb[neighTm[[2]], leftV]];
+        innerEx = concl[betaLeft][[2]];
+        exRight = HOL`Bool`EXISTS[innerEx, rightV,
+          HOL`Bool`CONJ[hLeft, HOL`Bool`CONJ[hRight, allZ]]];
+        exLeft = HOL`Bool`EXISTS[neighTm, leftV, exRight];
+        falseNeigh = HOL`Bool`MP[HOL`Bool`NOTELIM[hNo], exLeft];
+        HOL`Bool`CCONTR[goalTm, falseNeigh]
+      ]];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[xV, HOL`Bool`GEN[leftV,
+      HOL`Bool`GEN[rightV, HOL`Bool`DISCH[hNoTm,
+        HOL`Bool`DISCH[hLeftTm, HOL`Bool`DISCH[hRightTm, body]]]]]]]
+  ];
+
+nearClosedPointDefThm =
+  Module[{sV, xV, nV},
+    sV = mkVar["S", csetSetTy]; xV = mkVar["x", csetRealTy];
+    nV = mkVar["n", csetNumTy];
+    newDefinition[mkEq[mkVar["nearClosedPoint",
+      tyFun[csetSetTy, tyFun[csetRealTy, csetSeqTy]]],
+      mkAbs[sV, mkAbs[xV, mkAbs[nV,
+        csetNearClosedPointSelect[sV, xV, nV]]]]]]
+  ];
+
+nearClosedPointConst[] :=
+  mkConst["nearClosedPoint", tyFun[csetSetTy, tyFun[csetRealTy, csetSeqTy]]];
+nearClosedPointTm[sT_, xT_] := mkComb[mkComb[nearClosedPointConst[], sT], xT];
+unfoldNearClosedPoint[sT_, xT_] :=
+  csetBetaClean[csetApplyDef[nearClosedPointDefThm, {sT, xT}]];
+csetNearClosedPointAppEq[sT_, xT_, nT_] :=
+  Module[{unf, app},
+    unf = unfoldNearClosedPoint[sT, xT];
+    app = HOL`Equal`APTHM[unf, nT];
+    csetBetaClean[TRANS[app, HOL`Equal`BETACONV[concl[app][[2]]]]]
+  ];
+
+nearClosedPointMemThm =
+  Module[{sV, xV, nV, hNoTm, hNo, radiusT, loT, hiT, rPos, loBound,
+          hiBound, exMem, predLam, sat, memAtSelect, appEq, memEq,
+          memAtApp, allN},
+    sV = mkVar["S", csetSetTy]; xV = mkVar["x", csetRealTy];
+    nV = mkVar["n", csetNumTy];
+    hNoTm = csetNotTm[csetNeighGoal[sV, xV]]; hNo = ASSUME[hNoTm];
+    radiusT = invSuccRadiusTm[nV];
+    loT = csetNearClosedPointLo[xV, nV];
+    hiT = csetNearClosedPointHi[xV, nV];
+    rPos = HOL`Bool`SPEC[nV, invSuccRadiusPosThm];
+    loBound = HOL`Bool`MP[csetSpecAll[csetSubRadiusLtCenterThm,
+      {xV, radiusT}], rPos];
+    hiBound = HOL`Bool`MP[csetSpecAll[csetCenterLtAddRadiusThm,
+      {xV, radiusT}], rPos];
+    exMem = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[existsMemIntervalOfNoComplNeighborhoodThm,
+        {sV, xV, loT, hiT}], hNo], loBound], hiBound];
+    predLam = csetNearPred[sV, xV, nV];
+    sat = csetBetaClean[HOL`Stdlib`Num`selectOfExists[predLam, exMem]];
+    memAtSelect = HOL`Bool`CONJUNCT1[sat];
+    appEq = csetNearClosedPointAppEq[sV, xV, nV];
+    memEq = HOL`Equal`APTERM[sV, HOL`Equal`SYM[appEq]];
+    memAtApp = EQMP[memEq, memAtSelect];
+    allN = HOL`Bool`GEN[nV, memAtApp];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[xV, HOL`Bool`DISCH[hNoTm, allN]]]
+  ];
+
+nearClosedPointIntervalThm =
+  Module[{sV, xV, nV, hNoTm, hNo, radiusT, loT, hiT, rPos, loBound,
+          hiBound, exMem, predLam, sat, intAtSelect, appEq, wW, intLam,
+          intEq, intAtApp, allN},
+    sV = mkVar["S", csetSetTy]; xV = mkVar["x", csetRealTy];
+    nV = mkVar["n", csetNumTy];
+    hNoTm = csetNotTm[csetNeighGoal[sV, xV]]; hNo = ASSUME[hNoTm];
+    radiusT = invSuccRadiusTm[nV];
+    loT = csetNearClosedPointLo[xV, nV];
+    hiT = csetNearClosedPointHi[xV, nV];
+    rPos = HOL`Bool`SPEC[nV, invSuccRadiusPosThm];
+    loBound = HOL`Bool`MP[csetSpecAll[csetSubRadiusLtCenterThm,
+      {xV, radiusT}], rPos];
+    hiBound = HOL`Bool`MP[csetSpecAll[csetCenterLtAddRadiusThm,
+      {xV, radiusT}], rPos];
+    exMem = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[existsMemIntervalOfNoComplNeighborhoodThm,
+        {sV, xV, loT, hiT}], hNo], loBound], hiBound];
+    predLam = csetNearPred[sV, xV, nV];
+    sat = csetBetaClean[HOL`Stdlib`Num`selectOfExists[predLam, exMem]];
+    intAtSelect = HOL`Bool`CONJUNCT2[sat];
+    appEq = csetNearClosedPointAppEq[sV, xV, nV];
+    wW = mkVar["wCsetNearRewrite", csetRealTy];
+    intLam = mkAbs[wW, openIntervalTm[loT, hiT, wW]];
+    intEq = csetBetaClean[HOL`Equal`APTERM[intLam, HOL`Equal`SYM[appEq]]];
+    intAtApp = EQMP[intEq, intAtSelect];
+    allN = HOL`Bool`GEN[nV, intAtApp];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[xV, HOL`Bool`DISCH[hNoTm, allN]]]
+  ];
+
+nearClosedPointTendstoThm =
+  Module[{sV, xV, eV, bigNW, nV, hNoTm, hNo, uT, hEpsTm, hEps,
+          openInvTend, exN, hAllTm, hAll, hLeTm, hLe, hRadiusAbs,
+          radiusT, dropZero, absArgEq, rPos, rNonneg, absPos, absEq,
+          radiusLtE, loT, hiT, uN, hInt, intBody, loBound, hiBound,
+          absLtR, closeN, allN, exGoal, chosenN, epsBody, folded},
+    sV = mkVar["S", csetSetTy]; xV = mkVar["x", csetRealTy];
+    eV = mkVar["eCsetNear", csetRealTy];
+    bigNW = mkVar["bigN", csetNumTy];
+    nV = mkVar["nCsetNearTend", csetNumTy];
+    hNoTm = csetNotTm[csetNeighGoal[sV, xV]]; hNo = ASSUME[hNoTm];
+    uT = nearClosedPointTm[sV, xV];
+    hEpsTm = csetRealLt[zeroRealTm[], eV]; hEps = ASSUME[hEpsTm];
+    openInvTend = EQMP[unfoldTendsto[invSuccRadiusConst[], zeroRealTm[]],
+      invSuccRadiusTendstoZeroThm];
+    exN = HOL`Bool`MP[HOL`Bool`SPEC[eV, openInvTend], hEps];
+    hAllTm = concl[HOL`Equal`BETACONV[mkComb[concl[exN][[2]], bigNW]]][[2]];
+    hAll = ASSUME[hAllTm];
+    hLeTm = csetNatLe[bigNW, nV]; hLe = ASSUME[hLeTm];
+    hRadiusAbs = HOL`Bool`MP[HOL`Bool`SPEC[nV, hAll], hLe];
+    radiusT = invSuccRadiusTm[nV];
+    dropZero = HOL`Bool`SPEC[radiusT, csetAddNegZeroThm];
+    absArgEq = csetRealAbsCong[dropZero];
+    rPos = HOL`Bool`SPEC[nV, invSuccRadiusPosThm];
+    rNonneg = csetLtImpLeRule[rPos];
+    absPos = HOL`Bool`MP[HOL`Bool`SPEC[radiusT, realAbsPosThm], rNonneg];
+    absEq = TRANS[absArgEq, absPos];
+    radiusLtE = EQMP[csetRealLtCong[absEq, REFL[eV]], hRadiusAbs];
+    loT = csetNearClosedPointLo[xV, nV];
+    hiT = csetNearClosedPointHi[xV, nV];
+    uN = csetSeqApp[uT, nV];
+    hInt = HOL`Bool`SPEC[nV, HOL`Bool`MP[
+      csetSpecAll[nearClosedPointIntervalThm, {sV, xV}], hNo]];
+    intBody = EQMP[unfoldOpenInterval[loT, hiT, uN], hInt];
+    loBound = HOL`Bool`CONJUNCT1[intBody];
+    hiBound = HOL`Bool`CONJUNCT2[intBody];
+    absLtR = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realAbsSubLtThm, {uN, xV, radiusT}], loBound], hiBound];
+    closeN = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realLtTransThm,
+        {csetRealAbs[csetRealAdd[uN, csetRealNeg[xV]]], radiusT, eV}],
+      absLtR], radiusLtE];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`DISCH[hLeTm, closeN]];
+    exGoal = HOL`Bool`EXISTS[csetExistsTm[bigNW,
+      csetForallTm[nV, csetImpTm[csetNatLe[bigNW, nV],
+        csetSeqLimitAtom[uT, xV, eV, nV]]]], bigNW, allN];
+    chosenN = HOL`Bool`CHOOSE[bigNW, exN, exGoal];
+    epsBody = HOL`Bool`GEN[eV, HOL`Bool`DISCH[hEpsTm, chosenN]];
+    folded = EQMP[HOL`Equal`SYM[unfoldTendsto[uT, xV]], epsBody];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[xV, HOL`Bool`DISCH[hNoTm, folded]]]
+  ];
+
+closedOfSequentiallyCompactThm =
+  Module[{sV, xV, hSCTm, hSC, complSet, hComplXTm, hComplX, hNotSx,
+          neighTm, openAll, openCompl, closed},
+    sV = mkVar["S", csetSetTy]; xV = mkVar["xCsetClosed", csetRealTy];
+    hSCTm = isSequentiallyCompactTm[sV]; hSC = ASSUME[hSCTm];
+    complSet = complTm[sV];
+    hComplXTm = csetSetApp[complSet, xV]; hComplX = ASSUME[hComplXTm];
+    hNotSx = EQMP[csetSpecAll[complMemThm, {sV, xV}], hComplX];
+    neighTm = csetNeighGoal[sV, xV];
+    openAll = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hComplXTm,
+      HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[neighTm],
+        ASSUME[neighTm],
+        Module[{hNoTm, hNo, uT, huS, huTend, openSC, seqEx, lW,
+                hLBodyTm, hLBody, hLS, hHas, openHas, phiW, subSeq,
+                hPhiBodyTm, hPhiBody, hIdx, hTend, subTendX, lEqX,
+                hSx, falseTh, contrNeigh, choosePhi, chooseL},
+          hNoTm = csetNotTm[neighTm]; hNo = ASSUME[hNoTm];
+          uT = nearClosedPointTm[sV, xV];
+          huS = HOL`Bool`MP[csetSpecAll[nearClosedPointMemThm, {sV, xV}], hNo];
+          huTend = HOL`Bool`MP[csetSpecAll[nearClosedPointTendstoThm,
+            {sV, xV}], hNo];
+          openSC = EQMP[unfoldIsSequentiallyCompact[sV], hSC];
+          seqEx = HOL`Bool`MP[HOL`Bool`SPEC[uT, openSC], huS];
+          lW = mkVar["lClosed", csetRealTy];
+          hLBodyTm = csetConjTm[csetSetApp[sV, lW],
+            hasConvergentSubseqTm[uT, lW]];
+          hLBody = ASSUME[hLBodyTm];
+          hLS = HOL`Bool`CONJUNCT1[hLBody];
+          hHas = HOL`Bool`CONJUNCT2[hLBody];
+          openHas = EQMP[unfoldHasConvergentSubseq[uT, lW], hHas];
+          phiW = mkVar["phiClosed", csetNumFunTy];
+          subSeq = subsequenceTm[uT, phiW];
+          hPhiBodyTm = csetConjTm[subseqIndexTm[phiW], tendstoTm[subSeq, lW]];
+          hPhiBody = ASSUME[hPhiBodyTm];
+          hIdx = HOL`Bool`CONJUNCT1[hPhiBody];
+          hTend = HOL`Bool`CONJUNCT2[hPhiBody];
+          subTendX = HOL`Bool`MP[HOL`Bool`MP[
+            csetSpecAll[seqTendstoSubsequenceThm, {uT, phiW, xV}],
+            hIdx], huTend];
+          lEqX = HOL`Bool`MP[HOL`Bool`MP[
+            csetSpecAll[tendstoUniqueThm, {subSeq, lW, xV}], hTend], subTendX];
+          hSx = EQMP[HOL`Equal`APTERM[sV, lEqX], hLS];
+          falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[hNotSx], hSx];
+          contrNeigh = HOL`Bool`CONTR[neighTm, falseTh];
+          choosePhi = HOL`Bool`CHOOSE[phiW, openHas, contrNeigh];
+          chooseL = HOL`Bool`CHOOSE[lW, seqEx, choosePhi];
+          chooseL
+        ]]]];
+    openCompl = EQMP[HOL`Equal`SYM[unfoldIsOpen[complSet]], openAll];
+    closed = EQMP[HOL`Equal`SYM[unfoldIsClosed[sV]], openCompl];
+    HOL`Bool`GEN[sV, HOL`Bool`DISCH[hSCTm, closed]]
+  ];
+
+sequentialCompactIffClosedBoundedThm =
+  Module[{sV, hSCTm, hSC, hCBTm, hCB, closedBoundedFromSC, scFromCB, eqTh},
+    sV = mkVar["SIffCset", csetSetTy];
+    hSCTm = isSequentiallyCompactTm[sV]; hSC = ASSUME[hSCTm];
+    hCBTm = csetConjTm[isClosedTm[sV], setBoundedTm[sV]];
+    hCB = ASSUME[hCBTm];
+    closedBoundedFromSC = HOL`Bool`CONJ[
+      HOL`Bool`MP[HOL`Bool`SPEC[sV, closedOfSequentiallyCompactThm], hSC],
+      HOL`Bool`MP[HOL`Bool`SPEC[sV, boundedOfSequentiallyCompactThm], hSC]];
+    scFromCB = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[sV, sequentiallyCompactOfClosedBoundedThm],
+      HOL`Bool`CONJUNCT1[hCB]], HOL`Bool`CONJUNCT2[hCB]];
+    eqTh = HOL`Kernel`DEDUCTANTISYM[scFromCB, closedBoundedFromSC];
+    HOL`Bool`GEN[sV, eqTh]
   ];
 
 End[];

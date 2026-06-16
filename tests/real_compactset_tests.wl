@@ -168,3 +168,35 @@ HOLTest`runTests["stdlib/Real/CompactSet: analytic helper shapes",
       HOL`Stdlib`Real`invSuccRadiusConst[], zeroR];
     assertConclRCST["invSuccRadiusTendstoZero",
       HOL`Stdlib`Real`invSuccRadiusTendstoZeroThm, expectedTend]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: closed sequential compactness shapes",
+  Module[{sV, forallSetConst, expectedClosed, expectedIff},
+    sV = mkVar["SClosedSeqRCST", setTyRCST];
+    forallSetConst = mkConst["∀", tyFun[tyFun[setTyRCST, boolTy], boolTy]];
+
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`nearClosedPointMemThm],
+      "nearClosedPointMem is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`nearClosedPointMemThm], {},
+      "nearClosedPointMem no hyps"];
+    HOLTest`assertTrue[aconv[concl[HOL`Stdlib`Real`nearClosedPointMemThm][[1]],
+      forallSetConst], "nearClosedPointMem forall head"];
+
+    HOLTest`assertTrue[isThm[HOL`Stdlib`Real`nearClosedPointTendstoThm],
+      "nearClosedPointTendsto is thm"];
+    HOLTest`assertEq[hyp[HOL`Stdlib`Real`nearClosedPointTendstoThm], {},
+      "nearClosedPointTendsto no hyps"];
+    HOLTest`assertTrue[aconv[concl[HOL`Stdlib`Real`nearClosedPointTendstoThm][[1]],
+      forallSetConst], "nearClosedPointTendsto forall head"];
+
+    expectedClosed = forallRCST[sV,
+      impRCST[HOL`Stdlib`Real`isSequentiallyCompactTm[sV],
+        HOL`Stdlib`Real`isClosedTm[sV]]];
+    assertConclRCST["closedOfSequentiallyCompact",
+      HOL`Stdlib`Real`closedOfSequentiallyCompactThm, expectedClosed];
+
+    expectedIff = forallRCST[sV,
+      mkEq[HOL`Stdlib`Real`isSequentiallyCompactTm[sV],
+        andRCST[HOL`Stdlib`Real`isClosedTm[sV],
+          HOL`Stdlib`Real`setBoundedTm[sV]]]];
+    assertConclRCST["sequentialCompactIffClosedBounded",
+      HOL`Stdlib`Real`sequentialCompactIffClosedBoundedThm, expectedIff]]];
