@@ -35,11 +35,14 @@ closedInMemThm::usage = "closedInMemThm - |- forall S U. closedIn S U = relative
 isClosedComplOpenThm::usage = "isClosedComplOpenThm - |- forall S. isClosed S = isOpen (compl S).";
 closedInSubsetThm::usage = "closedInSubsetThm - |- forall S U. closedIn S U ==> forall x. U x ==> S x.";
 closedIntervalIsClosedThm::usage = "closedIntervalIsClosedThm - |- forall a b. isClosed (closedInterval a b).";
+pointInOpenIntervalOfTendstoThm::usage = "pointInOpenIntervalOfTendstoThm - |- forall u l left right. tendsto u l ==> realLt left l ==> realLt l right ==> eventually (lambda n. openInterval left right (u n)).";
+limitMemOfClosedThm::usage = "limitMemOfClosedThm - |- forall S u l. isClosed S ==> (forall n. S (u n)) ==> tendsto u l ==> S l.";
 
 Begin["`Private`"];
 
 topoRealTy = mkType["real", {}];
 topoSetTy = tyFun[topoRealTy, boolTy];
+topoSeqTy = tyFun[numTy, topoRealTy];
 complTy = tyFun[topoSetTy, topoSetTy];
 isClosedTy = tyFun[topoSetTy, boolTy];
 relativeClosedTy = tyFun[topoSetTy, tyFun[topoSetTy, boolTy]];
@@ -57,16 +60,19 @@ topoExistsTm[vT_, bodyT_] :=
   mkComb[mkConst["∃", tyFun[tyFun[typeOf[vT], boolTy], boolTy]], mkAbs[vT, bodyT]];
 
 topoSetApp[sT_, xT_] := mkComb[sT, xT];
+topoNatLe[aT_, bT_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], aT], bT];
 topoRealLe[aT_, bT_] := mkComb[mkComb[realLeConst[], aT], bT];
 topoRealLt[aT_, bT_] := mkComb[mkComb[realLtConst[], aT], bT];
 topoRealAdd[aT_, bT_] := mkComb[mkComb[realAddConst[], aT], bT];
 topoRealNeg[aT_] := mkComb[realNegConst[], aT];
+topoRealAbs[aT_] := mkComb[realAbsConst[], aT];
 topoZeroNum[] := HOL`Stdlib`Num`zeroConst[];
 topoSucNum[nT_] := mkComb[HOL`Stdlib`Num`sucConst[], nT];
 topoOneNum[] := topoSucNum[topoZeroNum[]];
 topoIntOfNum[nT_] := mkComb[HOL`Stdlib`Int`intOfNumConst[], nT];
 topoRatOfInt[zT_] := mkComb[HOL`Stdlib`Rat`ratOfIntConst[], zT];
 topoRealOfRat[qT_] := mkComb[realOfRatConst[], qT];
+topoZeroReal[] := topoRealOfRat[topoRatOfInt[topoIntOfNum[topoZeroNum[]]]];
 topoOneReal[] := topoRealOfRat[topoRatOfInt[topoIntOfNum[topoOneNum[]]]];
 topoRealSubOne[xT_] := topoRealAdd[xT, topoRealNeg[topoOneReal[]]];
 topoRealAddOne[xT_] := topoRealAdd[xT, topoOneReal[]];
@@ -80,10 +86,64 @@ topoApplyDef[defTh_, args_List] :=
     TRANS[stepTh, HOL`Equal`BETACONV[concl[stepTh][[2]]]]
   ]], defTh, args];
 
+topoBetaClean[th_] := HOL`Drule`CONVRULE[
+  HOL`Drule`DEPTHCONV[HOL`Drule`TRYCONV[HOL`Equal`BETACONV]], th];
+
+topoForallList[vs_List, body_] :=
+  Fold[Function[{acc, v}, topoForallTm[v, acc]], body, Reverse[vs]];
+
+topoRealLtCong[eqLeft_, eqRight_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLtConst[], eqLeft], eqRight];
+
 topoComplBody[sT_] :=
   Module[{xV},
     xV = mkVar["xTp", topoRealTy];
     mkAbs[xV, topoNotTm[topoSetApp[sT, xV]]]
+  ];
+
+topoLimitAtom[uT_, lT_, eT_, nT_] :=
+  topoRealLt[topoRealAbs[topoRealAdd[mkComb[uT, nT], topoRealNeg[lT]]], eT];
+
+topoLimitPred[uT_, lT_, eT_] :=
+  Module[{nV},
+    nV = mkVar["nLimTp", numTy];
+    mkAbs[nV, topoLimitAtom[uT, lT, eT, nV]]
+  ];
+
+topoOpenIntervalSeqPred[uT_, leftT_, rightT_] :=
+  Module[{nV},
+    nV = mkVar["nOpenTp", numTy];
+    mkAbs[nV, openIntervalTm[leftT, rightT, mkComb[uT, nV]]]
+  ];
+
+topoOpenIntervalEventuallyBody[pT_, n0T_] :=
+  Module[{nV},
+    nV = mkVar["nEvTp", numTy];
+    topoForallTm[nV, topoImpTm[topoNatLe[n0T, nV], mkComb[pT, nV]]]
+  ];
+
+topoGapPosThm =
+  Module[{aV, bV},
+    aV = mkVar["aGapTp", topoRealTy]; bV = mkVar["bGapTp", topoRealTy];
+    HOL`Auto`RealArith`realArithProve[
+      topoForallList[{aV, bV}, topoImpTm[topoRealLt[aV, bV],
+        topoRealLt[topoZeroReal[], topoRealAdd[bV, topoRealNeg[aV]]]]]]
+  ];
+
+topoSubSelfSubEqThm =
+  Module[{xV, aV},
+    xV = mkVar["xSubTp", topoRealTy]; aV = mkVar["aSubTp", topoRealTy];
+    HOL`Auto`RealArith`realArithProve[
+      topoForallList[{xV, aV},
+        mkEq[topoRealAdd[xV, topoRealNeg[topoRealAdd[xV, topoRealNeg[aV]]]], aV]]]
+  ];
+
+topoAddSubRightEqThm =
+  Module[{xV, bV},
+    xV = mkVar["xAddTp", topoRealTy]; bV = mkVar["bAddTp", topoRealTy];
+    HOL`Auto`RealArith`realArithProve[
+      topoForallList[{xV, bV},
+        mkEq[topoRealAdd[xV, topoRealAdd[bV, topoRealNeg[xV]]], bV]]]
   ];
 
 topoRelativeClosedBody[sT_, uT_] :=
@@ -300,6 +360,127 @@ closedIntervalIsClosedThm =
     opened = EQMP[HOL`Equal`SYM[unfoldIsOpen[complSet]], allX];
     closed = EQMP[HOL`Equal`SYM[unfoldIsClosed[closedSet]], opened];
     HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, closed]]
+  ];
+
+pointInOpenIntervalOfTendstoThm =
+  Module[{uV, lV, leftV, rightV, nV, gapL, gapR, leftPred, rightPred,
+          andPred, openPred, hLimTm, hLeftTm, hRightTm, hLim, hLeft, hRight,
+          hGapL, hGapR, evL, evR, andEvRaw, andEv, un, hAndTm, hAnd,
+          closeLeft, closeRight, leftRaw, rightRaw, leftEq, rightEq,
+          leftBound, rightBound, openAtN, pointImp, pointAll, monoInst,
+          evOpen},
+    uV = mkVar["u", topoSeqTy]; lV = mkVar["l", topoRealTy];
+    leftV = mkVar["left", topoRealTy]; rightV = mkVar["right", topoRealTy];
+    nV = mkVar["n", numTy];
+    gapL = topoRealAdd[lV, topoRealNeg[leftV]];
+    gapR = topoRealAdd[rightV, topoRealNeg[lV]];
+    leftPred = topoLimitPred[uV, lV, gapL];
+    rightPred = topoLimitPred[uV, lV, gapR];
+    andPred = mkAbs[nV, topoConjTm[
+      topoLimitAtom[uV, lV, gapL, nV],
+      topoLimitAtom[uV, lV, gapR, nV]]];
+    openPred = topoOpenIntervalSeqPred[uV, leftV, rightV];
+    hLimTm = tendstoTm[uV, lV];
+    hLeftTm = topoRealLt[leftV, lV];
+    hRightTm = topoRealLt[lV, rightV];
+    hLim = ASSUME[hLimTm]; hLeft = ASSUME[hLeftTm]; hRight = ASSUME[hRightTm];
+    hGapL = HOL`Bool`MP[topoSpecAll[topoGapPosThm, {leftV, lV}], hLeft];
+    hGapR = HOL`Bool`MP[topoSpecAll[topoGapPosThm, {lV, rightV}], hRight];
+    evL = HOL`Bool`MP[HOL`Bool`MP[
+      topoSpecAll[tendstoEventuallyThm, {uV, lV, gapL}], hLim], hGapL];
+    evR = HOL`Bool`MP[HOL`Bool`MP[
+      topoSpecAll[tendstoEventuallyThm, {uV, lV, gapR}], hLim], hGapR];
+    andEvRaw = HOL`Bool`MP[HOL`Bool`MP[
+      topoSpecAll[eventuallyAndThm, {leftPred, rightPred}], evL], evR];
+    andEv = topoBetaClean[andEvRaw];
+    un = mkComb[uV, nV];
+    hAndTm = topoConjTm[topoLimitAtom[uV, lV, gapL, nV],
+      topoLimitAtom[uV, lV, gapR, nV]];
+    hAnd = ASSUME[hAndTm];
+    closeLeft = HOL`Bool`CONJUNCT1[hAnd];
+    closeRight = HOL`Bool`CONJUNCT2[hAnd];
+    leftRaw = HOL`Bool`MP[
+      topoSpecAll[realAbsSubLtLeftThm, {un, lV, gapL}], closeLeft];
+    rightRaw = HOL`Bool`MP[
+      topoSpecAll[realAbsSubLtRightThm, {un, lV, gapR}], closeRight];
+    leftEq = topoSpecAll[topoSubSelfSubEqThm, {lV, leftV}];
+    rightEq = topoSpecAll[topoAddSubRightEqThm, {lV, rightV}];
+    leftBound = EQMP[topoRealLtCong[leftEq, REFL[un]], leftRaw];
+    rightBound = EQMP[topoRealLtCong[REFL[un], rightEq], rightRaw];
+    openAtN = EQMP[HOL`Equal`SYM[unfoldOpenInterval[leftV, rightV, un]],
+      HOL`Bool`CONJ[leftBound, rightBound]];
+    pointImp = HOL`Bool`DISCH[hAndTm, openAtN];
+    pointAll = HOL`Bool`GEN[nV, pointImp];
+    monoInst = topoBetaClean[topoSpecAll[eventuallyMonoThm, {andPred, openPred}]];
+    evOpen = HOL`Bool`MP[HOL`Bool`MP[monoInst, pointAll], andEv];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[lV, HOL`Bool`GEN[leftV,
+      HOL`Bool`GEN[rightV, HOL`Bool`DISCH[hLimTm,
+        HOL`Bool`DISCH[hLeftTm, HOL`Bool`DISCH[hRightTm, evOpen]]]]]]]
+  ];
+
+limitMemOfClosedThm =
+  Module[{sV, uV, lV, nV, leftV, rightV, yV, bigNV, complSet, goalTm,
+          hClosedTm, hAllTm, hLimTm, hClosed, hAll, hLim, em, trueBranch,
+          hNotGoalTm, hNotGoal, complAtL, openCompl, openAll, openEx,
+          hBodyTm, hBody, hLeft, hRest, hRight, hInside, openPred, ev,
+          exEvRaw, hAllOpenTm, hAllOpen, nRefl, openAtNRedex, openAtN, uN,
+          complAtN, notSN, sN, falseTh, falseBranchN, chosenN, hRightExTm,
+          hRightEx, chosenRight, falseBranch, result},
+    sV = mkVar["S", topoSetTy]; uV = mkVar["u", topoSeqTy];
+    lV = mkVar["l", topoRealTy]; nV = mkVar["n", numTy];
+    leftV = mkVar["leftClosedTp", topoRealTy];
+    rightV = mkVar["rightClosedTp", topoRealTy];
+    yV = mkVar["yClosedTp", topoRealTy];
+    bigNV = mkVar["NClosedTp", numTy];
+    complSet = complTm[sV];
+    goalTm = topoSetApp[sV, lV];
+    hClosedTm = isClosedTm[sV];
+    hAllTm = topoForallTm[nV, topoSetApp[sV, mkComb[uV, nV]]];
+    hLimTm = tendstoTm[uV, lV];
+    hClosed = ASSUME[hClosedTm]; hAll = ASSUME[hAllTm]; hLim = ASSUME[hLimTm];
+    em = HOL`Bool`EXCLUDEDMIDDLE[goalTm];
+    trueBranch = ASSUME[goalTm];
+    hNotGoalTm = topoNotTm[goalTm]; hNotGoal = ASSUME[hNotGoalTm];
+    complAtL = EQMP[HOL`Equal`SYM[topoSpecAll[complMemThm, {sV, lV}]], hNotGoal];
+    openCompl = EQMP[topoSpecAll[isClosedComplOpenThm, {sV}], hClosed];
+    openAll = EQMP[unfoldIsOpen[complSet], openCompl];
+    openEx = HOL`Bool`MP[HOL`Bool`SPEC[lV, openAll], complAtL];
+
+    hBodyTm = topoConjTm[topoRealLt[leftV, lV],
+      topoConjTm[topoRealLt[lV, rightV],
+        topoForallTm[yV, topoImpTm[openIntervalTm[leftV, rightV, yV],
+          topoSetApp[complSet, yV]]]]];
+    hBody = ASSUME[hBodyTm];
+    hLeft = HOL`Bool`CONJUNCT1[hBody];
+    hRest = HOL`Bool`CONJUNCT2[hBody];
+    hRight = HOL`Bool`CONJUNCT1[hRest];
+    hInside = HOL`Bool`CONJUNCT2[hRest];
+    openPred = topoOpenIntervalSeqPred[uV, leftV, rightV];
+    ev = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      topoSpecAll[pointInOpenIntervalOfTendstoThm, {uV, lV, leftV, rightV}],
+      hLim], hLeft], hRight];
+    exEvRaw = EQMP[unfoldEventually[openPred], ev];
+    hAllOpenTm = topoOpenIntervalEventuallyBody[openPred, bigNV];
+    hAllOpen = ASSUME[hAllOpenTm];
+    nRefl = HOL`Bool`SPEC[bigNV, HOL`Stdlib`Num`leqReflThm];
+    openAtNRedex = HOL`Bool`MP[HOL`Bool`SPEC[bigNV, hAllOpen], nRefl];
+    openAtN = EQMP[HOL`Equal`BETACONV[mkComb[openPred, bigNV]], openAtNRedex];
+    uN = mkComb[uV, bigNV];
+    complAtN = HOL`Bool`MP[HOL`Bool`SPEC[uN, hInside], openAtN];
+    notSN = EQMP[topoSpecAll[complMemThm, {sV, uN}], complAtN];
+    sN = HOL`Bool`SPEC[bigNV, hAll];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notSN], sN];
+    falseBranchN = HOL`Bool`CONTR[goalTm, falseTh];
+    chosenN = HOL`Bool`CHOOSE[bigNV, exEvRaw, falseBranchN];
+
+    hRightExTm = topoExistsTm[rightV, hBodyTm];
+    hRightEx = ASSUME[hRightExTm];
+    chosenRight = HOL`Bool`CHOOSE[rightV, hRightEx, chosenN];
+    falseBranch = HOL`Bool`CHOOSE[leftV, openEx, chosenRight];
+    result = HOL`Bool`DISJCASES[em, trueBranch, falseBranch];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[uV, HOL`Bool`GEN[lV,
+      HOL`Bool`DISCH[hClosedTm, HOL`Bool`DISCH[hAllTm,
+        HOL`Bool`DISCH[hLimTm, result]]]]]]
   ];
 
 End[];

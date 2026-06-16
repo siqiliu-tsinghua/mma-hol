@@ -20,7 +20,9 @@ Needs["HOL`Auto`Arith`"];
 Needs["HOL`Auto`RealArith`"];
 
 realTyRTT = mkType["real", {}];
+numTyRTT = mkType["num", {}];
 setTyRTT = tyFun[realTyRTT, boolTy];
+seqTyRTT = tyFun[numTyRTT, realTyRTT];
 complTyRTT = tyFun[setTyRTT, setTyRTT];
 setPredTyRTT = tyFun[setTyRTT, boolTy];
 setBinTyRTT = tyFun[setTyRTT, tyFun[setTyRTT, boolTy]];
@@ -35,7 +37,13 @@ forallRTT[v : var[_, ty_], body_] :=
 existsRTT[v : var[_, ty_], body_] :=
   mkComb[mkConst["∃", tyFun[tyFun[ty, boolTy], boolTy]], mkAbs[v, body]];
 setAppRTT[s_, x_] := mkComb[s, x];
+seqAppRTT[u_, n_] := mkComb[u, n];
+natLeRTT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], a], b];
 realLeRTT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLeConst[], a], b];
+realLtRTT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], a], b];
+realAddRTT[a_, b_] := mkComb[mkComb[HOL`Stdlib`Real`realAddConst[], a], b];
+realNegRTT[a_] := mkComb[HOL`Stdlib`Real`realNegConst[], a];
+realAbsRTT[a_] := mkComb[HOL`Stdlib`Real`realAbsConst[], a];
 closedIntervalSetRTT[a_, b_] :=
   mkComb[mkComb[HOL`Stdlib`Real`closedIntervalConst[], a], b];
 
@@ -59,6 +67,12 @@ relativeClosedBodyRTT[sT_, uT_] :=
     existsRTT[vV, andRTT[HOL`Stdlib`Real`isClosedTm[vV],
       forallRTT[xV, mkEq[setAppRTT[uT, xV],
         andRTT[setAppRTT[sT, xV], setAppRTT[vV, xV]]]]]]
+  ];
+
+openSeqPredRTT[uT_, leftT_, rightT_] :=
+  Module[{nV},
+    nV = mkVar["nOpenRTT", numTyRTT];
+    mkAbs[nV, HOL`Stdlib`Real`openIntervalTm[leftT, rightT, seqAppRTT[uT, nV]]]
   ];
 
 HOLTest`runTests["stdlib/Real/Topology: definitions and unfolds",
@@ -138,3 +152,27 @@ HOLTest`runTests["stdlib/Real/Topology: theorem shapes",
     assertConclRTT["closedIntervalIsClosed",
       specAllRTT[HOL`Stdlib`Real`closedIntervalIsClosedThm, {aV, bV}],
       HOL`Stdlib`Real`isClosedTm[closedIntervalSetRTT[aV, bV]]]]];
+
+HOLTest`runTests["stdlib/Real/Topology: sequential closed-set bridge shapes",
+  Module[{sV, uV, lV, leftV, rightV, nV, pointExpected, limitExpected},
+    sV = mkVar["SSeqRTT", setTyRTT];
+    uV = mkVar["uSeqRTT", seqTyRTT];
+    lV = mkVar["lSeqRTT", realTyRTT];
+    leftV = mkVar["leftSeqRTT", realTyRTT];
+    rightV = mkVar["rightSeqRTT", realTyRTT];
+    nV = mkVar["nSeqRTT", numTyRTT];
+    pointExpected = forallRTT[uV, forallRTT[lV, forallRTT[leftV, forallRTT[rightV,
+      impRTT[HOL`Stdlib`Real`tendstoTm[uV, lV],
+        impRTT[realLtRTT[leftV, lV],
+          impRTT[realLtRTT[lV, rightV],
+            HOL`Stdlib`Real`eventuallyTm[openSeqPredRTT[uV, leftV, rightV]]]]]]]]];
+    assertConclRTT["pointInOpenIntervalOfTendsto",
+      HOL`Stdlib`Real`pointInOpenIntervalOfTendstoThm, pointExpected];
+
+    limitExpected = forallRTT[sV, forallRTT[uV, forallRTT[lV,
+      impRTT[HOL`Stdlib`Real`isClosedTm[sV],
+        impRTT[forallRTT[nV, setAppRTT[sV, seqAppRTT[uV, nV]]],
+          impRTT[HOL`Stdlib`Real`tendstoTm[uV, lV],
+            setAppRTT[sV, lV]]]]]]];
+    assertConclRTT["limitMemOfClosed",
+      HOL`Stdlib`Real`limitMemOfClosedThm, limitExpected]]];
