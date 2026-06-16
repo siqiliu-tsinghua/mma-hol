@@ -87,6 +87,9 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
      2026-06-16, loads after SeqAux *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Compact.wl"}]];
 
+  (* M8.3 connectedness — FRONTIER (not yet in build_snapshot.wls), after Compact *)
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Connected.wl"}]];
+
   runGroup["post-bootstrap", postBootstrapTests];
 
   HOLTest`testExit[]
