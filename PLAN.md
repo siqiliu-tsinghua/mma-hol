@@ -524,14 +524,16 @@ EndPackage[];
 - [x] connected ⟺ 区间；介值定理味道的核心结论（`connectedIffIntervalSetThm` + `notSeparationOfIntervalOrderedPoints` sup-论证 + 8 个 `connected_*` 推论）。
 - 蓝本 `RealConnectedness/Connected.lean`(纯谓词 + sup,无记录无可数性)。跳过 `OpenIntervalClassification`/`OpenDecomposition`/`ConnectedComponents`。
 
-#### M8.4 配套点集拓扑（`Topology.wl`，并行于主线，服务连通性 + 一般紧性）
-- [ ] `compl`(补集 `λx. ¬S x`)+ `isClosed`(= `isOpen (compl S)`)+ `limit_mem_of_closed`(闭集含其收敛序列极限,seq-compact 方向的桥)+ 闭区间是闭 + `relativeClosed`/`closedIn`(子空间闭,类比已有的 `openIn`/`relativeOpen`,HeineBorel 用 8 次)。**只移植一般紧性实际消费的部分**:`RealTopology/{SetOps(Compl),Closed(IsClosed),Subspace(RelativeClosed),Intervals(闭区间是闭)}`。**跳过** `ClosureAlgebra`/`IntervalClosure`/`Sequential`/`RationalBasis`/`Lindelof`(闭包/内部/可数基——一般紧性的双等价 grep 零命中 `Closure`/`Interior`)。
+#### M8.4 配套点集拓扑（`Topology.wl`，并行于主线，服务连通性 + 一般紧性）✅ DONE 2026-06-16（FRONTIER,未毕业;cold run_all 3045/0）
+- [x] `compl`(补集)+ `isClosed`(= `isOpen (compl S)`)+ `relativeClosed`/`closedIn`(子空间闭)+ `closedInSubset` + `closedIntervalIsClosed`（brief-029,70b88a2）;`pointInOpenIntervalOfTendsto`（收敛列最终落在极限的开邻域内）+ `limitMemOfClosed`（闭集含其收敛序列极限,seq-compact 方向的桥）(brief-030,281d774)。只移植一般紧性消费的部分;**跳过** `ClosureAlgebra`/`IntervalClosure`/`Sequential`/`RationalBasis`/`Lindelof`(闭包/内部/可数基)。
 
-#### M8.5 一般紧性刻画（终点站,`CompactSet.wl`）—— **范围决定 2026-06-16(owner):列紧 ⟺ 有界闭 ⟺ 紧 重新纳入**
-- 当初 M8.2 把两分支(列紧 / 有限覆盖)留作不相连、以避开 Lindelöf。**现以「有界闭」作桥重连**:不走 Lindelöf 的「列紧 ⇒ 紧」,而是分别证「一般列紧 ⟺ 有界闭」「一般紧 ⟺ 有界闭」,两者合得「紧 ⟺ 列紧」。可数性非阻塞(仅 `IsLimitPointCompact` 需 `ListInfinite`,已 brief-017 本地补;该第三等价**可跳过**)。
-- [ ] `setBounded` + `seqBounded_of_setBounded`;一般 `isCompact`/`isSequentiallyCompact` 定义。
-- [ ] **`sequentialCompact_iff_closed_bounded`**(`sequentiallyCompact_of_closed_bounded` 用 `bwSequentialThm` + `limit_mem_of_closed` + `bounded_of_sequentiallyCompact` + `closed_of_sequentiallyCompact`)。蓝本 `RealCompactness/SequentialCompactness.lean`(437 行,无 Lindelöf)。
-- [ ] **`compact_iff_closed_bounded`**(`compact_of_closed_bounded` 用 `compactnessPrincipleThm` + 闭子集 + `centerList` 有限覆盖索引,**brief-024 同族**,无 ULift;+ `bounded_of_compact` + `closed_of_compact`)。蓝本 `RealCompactness/HeineBorel.lean`(457 行)。
+#### M8.5 一般紧性刻画（终点站,`CompactSet.wl`,FRONTIER）—— **范围决定 2026-06-16(owner):列紧 ⟺ 有界闭 ⟺ 紧 重新纳入**
+- 当初 M8.2 把两分支(列紧 / 有限覆盖)留作不相连、以避开 Lindelöf。**现以「有界闭」作桥重连**:不走 Lindelöf 的「列紧 ⇒ 紧」,而是分别证「一般列紧 ⟺ 有界闭」「一般紧 ⟺ 有界闭」,两者合得「紧 ⟺ 列紧」。可数性非阻塞(仅 `IsLimitPointCompact` 需 `ListInfinite`;该第三等价**可跳过**)。**进度:cold run_all 3079/0。**
+- [x] `isSequentiallyCompact` 定义 + `seqBoundedOfSetBounded` + `sequentiallyCompactOfClosedBounded`(有界闭⇒列紧,BW+`limitMemOfClosed`)。brief-031,ee8a537。（`setBounded`/`seqBounded`/`bwSequentialThm`/`hasConvergentSubseq` 复用自已毕业的 Compact.wl。）
+- [x] `boundedOfSequentiallyCompact`(列紧⇒有界,逃逸序列 `unboundedEscapePoint` + `realArch`;`natRealLe`/`existsOutside`/`ltAbsOfOutside`)。brief-032,0943d95。
+- [x] 分析前置 `seqTendstoSubsequence`(收敛列的子列同极限)+ `invSuccRadius`(=1/(n+1))pos/antitone/`invSuccRadiusTendstoZero`(1/(n+1)→0)。brief-033,e75f4a0。
+- [ ] **brief-034:** `closedOfSequentiallyCompact`(列紧⇒闭,`nearClosedPoint` ε-序列 + `seqTendstoSubsequence`+`tendstoUnique`)+ **`sequentialCompact_iff_closed_bounded`** 打包三向 —— 收口序列侧「列紧⟺有界闭」。蓝本 `RealCompactness/SequentialCompactness.lean`(437 行,无 Lindelöf)。
+- [ ] **开覆盖侧:** `isCompact` 需 **集合-之-集合覆盖编码** `C:(real→bool)→bool`(蓝图 `∀{ι}` 类型量化 HOL 无对应,Claude 设计;把多态 `compactnessPrincipleThm` instantiate 在 ι:=real→bool)→ **`compact_iff_closed_bounded`**(`compact_of_closed_bounded` 用 `compactnessPrincipleThm` + 闭子集 + `centerList`,**brief-024 同族**,无 ULift)。蓝本 `RealCompactness/HeineBorel.lean`(457 行)。
 - [ ] **`compact_iff_sequentialCompact`**(两者皆 ⟺ 有界闭 ⇒ 推论;蓝本 `CompactSequential.lean` 52 行)。
 
 **M8 capstone（一组够得着的经典定理，取代旧的遥远 Lebesgue 判据）：**
