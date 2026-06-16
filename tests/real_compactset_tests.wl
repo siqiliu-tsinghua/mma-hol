@@ -29,12 +29,18 @@ andRCST[p_, q_] := mkComb[
   mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
 impRCST[p_, q_] := mkComb[
   mkComb[mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
+orRCST[p_, q_] := mkComb[
+  mkComb[mkConst["∨", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
+notRCST[p_] := mkComb[mkConst["¬", tyFun[boolTy, boolTy]], p];
 forallRCST[v_, body_] :=
   mkComb[mkConst["∀", tyFun[tyFun[typeOf[v], boolTy], boolTy]], mkAbs[v, body]];
 existsRCST[v_, body_] :=
   mkComb[mkConst["∃", tyFun[tyFun[typeOf[v], boolTy], boolTy]], mkAbs[v, body]];
 setAppRCST[s_, x_] := mkComb[s, x];
 seqAppRCST[u_, n_] := mkComb[u, n];
+realLtRCST[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], x], y];
+realNegRCST[x_] := mkComb[HOL`Stdlib`Real`realNegConst[], x];
+realAbsRCST[x_] := mkComb[HOL`Stdlib`Real`realAbsConst[], x];
 
 allInSetRCST[sT_, uT_] :=
   Module[{nV},
@@ -89,3 +95,29 @@ HOLTest`runTests["stdlib/Real/CompactSet: theorem shapes",
           HOL`Stdlib`Real`isSequentiallyCompactTm[sV]]]];
     assertConclRCST["sequentiallyCompactOfClosedBounded",
       HOL`Stdlib`Real`sequentiallyCompactOfClosedBoundedThm, expectedSeq]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: bounded sequential direction shapes",
+  Module[{sV, bV, xV, expectedExists, expectedLtAbs, expectedBounded},
+    sV = mkVar["SBoundRCST", setTyRCST];
+    bV = mkVar["BBoundRCST", realTyRCST];
+    xV = mkVar["xBoundRCST", realTyRCST];
+
+    expectedExists = forallRCST[sV, forallRCST[bV,
+      impRCST[notRCST[HOL`Stdlib`Real`setBoundedTm[sV]],
+        existsRCST[xV, andRCST[setAppRCST[sV, xV],
+          orRCST[realLtRCST[xV, realNegRCST[bV]],
+            realLtRCST[bV, xV]]]]]]];
+    assertConclRCST["existsOutsideOfNotSetBounded",
+      HOL`Stdlib`Real`existsOutsideOfNotSetBoundedThm, expectedExists];
+
+    expectedLtAbs = forallRCST[xV, forallRCST[bV,
+      impRCST[orRCST[realLtRCST[xV, realNegRCST[bV]], realLtRCST[bV, xV]],
+        realLtRCST[bV, realAbsRCST[xV]]]]];
+    assertConclRCST["ltAbsOfOutside",
+      HOL`Stdlib`Real`ltAbsOfOutsideThm, expectedLtAbs];
+
+    expectedBounded = forallRCST[sV,
+      impRCST[HOL`Stdlib`Real`isSequentiallyCompactTm[sV],
+        HOL`Stdlib`Real`setBoundedTm[sV]]];
+    assertConclRCST["boundedOfSequentiallyCompact",
+      HOL`Stdlib`Real`boundedOfSequentiallyCompactThm, expectedBounded]]];
