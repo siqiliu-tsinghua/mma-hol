@@ -90,6 +90,9 @@ Module[{repoRoot, preBootstrapTests, postBootstrapTests, runGroup},
   (* M8.3 connectedness — FRONTIER (not yet in build_snapshot.wls), after Compact *)
   Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Connected.wl"}]];
 
+  (* M8.4 topology (closed sets) — FRONTIER, after Connected *)
+  Get[FileNameJoin[{repoRoot, "stdlib", "Real", "Topology.wl"}]];
+
   runGroup["post-bootstrap", postBootstrapTests];
 
   HOLTest`testExit[]
