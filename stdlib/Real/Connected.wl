@@ -94,6 +94,7 @@ existsRightBetweenThm::usage = "existsRightBetweenThm - |- forall x y z. realLt 
 isSeparationSymmThm::usage = "isSeparationSymmThm - |- forall S U V. isSeparation S U V ==> isSeparation S V U.";
 connectedEmptyThm::usage = "connectedEmptyThm - |- isConnected (lambda x. F).";
 openInTraceThm::usage = "openInTraceThm - |- forall S V. isOpen V ==> openIn S (trace S V).";
+intervalSetOfConnectedThm::usage = "intervalSetOfConnectedThm - |- forall S. isConnected S ==> isIntervalSet S.";
 
 intervalSetEmptyThm::usage = "intervalSetEmptyThm - |- isIntervalSet (lambda x. F).";
 intervalSetUniversalThm::usage = "intervalSetUniversalThm - |- isIntervalSet (lambda x. T).";
@@ -929,6 +930,123 @@ openInTraceThm =
     existsTrace = HOL`Bool`EXISTS[connectedOpenInBody[sV, traceSet], vV, body];
     folded = EQMP[HOL`Equal`SYM[unfoldOpenIn[sV, traceSet]], existsTrace];
     HOL`Bool`GEN[sV, HOL`Bool`GEN[vV, HOL`Bool`DISCH[hOpenTm, folded]]]
+  ];
+
+intervalSetOfConnectedThm =
+  Module[{sV, hConnTm, hConn, body, folded},
+    sV = mkVar["SConnIvCn", connectedSetTy];
+    hConnTm = isConnectedTm[sV]; hConn = ASSUME[hConnTm];
+    body = connectedIntervalBody[sV,
+      Function[{xV, yV, zV, hxTm, hzTm, hbTm, hx, hz, hb},
+        Module[{syTm, em, hNotSyTm, hNotSy, andCong, lowerSet, upperSet, uSet, vSet,
+                uMemEqAt, vMemEqAt, uIntro, uElimS, uElimLt, vIntro, vElimS, vElimGt,
+                betweenParts, hxy, hyz, xNeY, yNeZ, notYleX, notZleY, xLtY, yLtZ,
+                openInU, openInV, neU, neV, tV, hStTm, hSt, tNeY, ltOrGt, fwdDisj,
+                hUVTm, hUV, bwdS, eqAt, coversInner, coversThm, hConjTm, hConj,
+                tLtY2, yLtT2, tLtT, fConj, notConj, disjInner, disjThm, sepBody, sep,
+                connUnfold, notSep, falseTh},
+          syTm = connectedSetApp[sV, yV];
+          em = HOL`Bool`EXCLUDEDMIDDLE[syTm];
+          hNotSyTm = concl[em][[2]]; hNotSy = ASSUME[hNotSyTm];
+          andCong = Function[{eqL, eqR},
+            HOL`Kernel`MKCOMB[HOL`Equal`APTERM[connectedAndConst[], eqL], eqR]];
+          lowerSet = connectedOpenLowerSet[yV]; upperSet = connectedOpenUpperSet[yV];
+          uSet = traceTm[sV, lowerSet]; vSet = traceTm[sV, upperSet];
+          uMemEqAt = Function[tT, TRANS[connectedTraceAt[sV, lowerSet, tT],
+            andCong[REFL[connectedSetApp[sV, tT]], unfoldOpenLowerRay[yV, tT]]]];
+          vMemEqAt = Function[tT, TRANS[connectedTraceAt[sV, upperSet, tT],
+            andCong[REFL[connectedSetApp[sV, tT]], unfoldOpenUpperRay[yV, tT]]]];
+          uIntro = Function[{tT, hStTh, hLtTh},
+            EQMP[HOL`Equal`SYM[uMemEqAt[tT]], HOL`Bool`CONJ[hStTh, hLtTh]]];
+          uElimS = Function[{tT, hMem}, HOL`Bool`CONJUNCT1[EQMP[uMemEqAt[tT], hMem]]];
+          uElimLt = Function[{tT, hMem}, HOL`Bool`CONJUNCT2[EQMP[uMemEqAt[tT], hMem]]];
+          vIntro = Function[{tT, hStTh, hGtTh},
+            EQMP[HOL`Equal`SYM[vMemEqAt[tT]], HOL`Bool`CONJ[hStTh, hGtTh]]];
+          vElimS = Function[{tT, hMem}, HOL`Bool`CONJUNCT1[EQMP[vMemEqAt[tT], hMem]]];
+          vElimGt = Function[{tT, hMem}, HOL`Bool`CONJUNCT2[EQMP[vMemEqAt[tT], hMem]]];
+
+          betweenParts = EQMP[unfoldBetween[xV, yV, zV], hb];
+          hxy = HOL`Bool`CONJUNCT1[betweenParts]; hyz = HOL`Bool`CONJUNCT2[betweenParts];
+          xNeY = Module[{tm, h, syFromX},
+            tm = mkEq[xV, yV]; h = ASSUME[tm];
+            syFromX = EQMP[HOL`Equal`APTERM[sV, h], hx];
+            HOL`Bool`NOTINTRO[HOL`Bool`DISCH[tm,
+              HOL`Bool`MP[HOL`Bool`NOTELIM[hNotSy], syFromX]]]];
+          yNeZ = Module[{tm, h, syFromZ},
+            tm = mkEq[yV, zV]; h = ASSUME[tm];
+            syFromZ = EQMP[HOL`Equal`APTERM[sV, HOL`Equal`SYM[h]], hz];
+            HOL`Bool`NOTINTRO[HOL`Bool`DISCH[tm,
+              HOL`Bool`MP[HOL`Bool`NOTELIM[hNotSy], syFromZ]]]];
+          notYleX = Module[{tm, h, eqv},
+            tm = realLeTm[yV, xV]; h = ASSUME[tm];
+            eqv = HOL`Bool`MP[HOL`Bool`MP[
+              connectedSpecAll[realLeAntisymThm, {xV, yV}], hxy], h];
+            HOL`Bool`NOTINTRO[HOL`Bool`DISCH[tm,
+              HOL`Bool`MP[HOL`Bool`NOTELIM[xNeY], eqv]]]];
+          notZleY = Module[{tm, h, eqv},
+            tm = realLeTm[zV, yV]; h = ASSUME[tm];
+            eqv = HOL`Bool`MP[HOL`Bool`MP[
+              connectedSpecAll[realLeAntisymThm, {yV, zV}], hyz], h];
+            HOL`Bool`NOTINTRO[HOL`Bool`DISCH[tm,
+              HOL`Bool`MP[HOL`Bool`NOTELIM[yNeZ], eqv]]]];
+          xLtY = EQMP[HOL`Equal`SYM[connectedSpecAll[realLtNotLeThm, {xV, yV}]], notYleX];
+          yLtZ = EQMP[HOL`Equal`SYM[connectedSpecAll[realLtNotLeThm, {yV, zV}]], notZleY];
+
+          openInU = HOL`Bool`MP[connectedSpecAll[openInTraceThm, {sV, lowerSet}],
+            connectedSpecAll[openLowerRayIsOpenThm, {yV}]];
+          openInV = HOL`Bool`MP[connectedSpecAll[openInTraceThm, {sV, upperSet}],
+            connectedSpecAll[openUpperRayIsOpenThm, {yV}]];
+          neU = EQMP[HOL`Equal`SYM[unfoldSetNonempty[uSet]],
+            HOL`Bool`EXISTS[connectedSetNonemptyBody[uSet], xV, uIntro[xV, hx, xLtY]]];
+          neV = EQMP[HOL`Equal`SYM[unfoldSetNonempty[vSet]],
+            HOL`Bool`EXISTS[connectedSetNonemptyBody[vSet], zV, vIntro[zV, hz, yLtZ]]];
+
+          tV = mkVar["tConnCn", connectedRealTy];
+          hStTm = connectedSetApp[sV, tV]; hSt = ASSUME[hStTm];
+          tNeY = Module[{tm, h, syFromT},
+            tm = mkEq[tV, yV]; h = ASSUME[tm];
+            syFromT = EQMP[HOL`Equal`APTERM[sV, h], hSt];
+            HOL`Bool`NOTINTRO[HOL`Bool`DISCH[tm,
+              HOL`Bool`MP[HOL`Bool`NOTELIM[hNotSy], syFromT]]]];
+          ltOrGt = HOL`Bool`MP[connectedSpecAll[ltOrGtOfNeThm, {tV, yV}], tNeY];
+          fwdDisj = HOL`Bool`DISJCASES[ltOrGt,
+            HOL`Bool`DISJ1[uIntro[tV, hSt, ASSUME[realLtTm[tV, yV]]],
+              connectedSetApp[vSet, tV]],
+            HOL`Bool`DISJ2[vIntro[tV, hSt, ASSUME[realLtTm[yV, tV]]],
+              connectedSetApp[uSet, tV]]];
+          hUVTm = connectedDisjTm[connectedSetApp[uSet, tV], connectedSetApp[vSet, tV]];
+          hUV = ASSUME[hUVTm];
+          bwdS = HOL`Bool`DISJCASES[hUV,
+            uElimS[tV, ASSUME[connectedSetApp[uSet, tV]]],
+            vElimS[tV, ASSUME[connectedSetApp[vSet, tV]]]];
+          eqAt = HOL`Kernel`DEDUCTANTISYM[bwdS, fwdDisj];
+          coversInner = HOL`Bool`GEN[tV, eqAt];
+          coversThm = EQMP[HOL`Equal`SYM[unfoldCoversByTwo[sV, uSet, vSet]], coversInner];
+
+          hConjTm = connectedConjTm[connectedSetApp[uSet, tV], connectedSetApp[vSet, tV]];
+          hConj = ASSUME[hConjTm];
+          tLtY2 = uElimLt[tV, HOL`Bool`CONJUNCT1[hConj]];
+          yLtT2 = vElimGt[tV, HOL`Bool`CONJUNCT2[hConj]];
+          tLtT = HOL`Bool`MP[HOL`Bool`MP[
+            connectedSpecAll[realLtTransThm, {tV, yV, tV}], tLtY2], yLtT2];
+          fConj = HOL`Bool`MP[HOL`Bool`NOTELIM[
+            connectedSpecAll[realLtIrreflThm, {tV}]], tLtT];
+          notConj = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hConjTm, fConj]];
+          disjInner = HOL`Bool`GEN[tV, notConj];
+          disjThm = EQMP[HOL`Equal`SYM[unfoldSetDisjoint[uSet, vSet]], disjInner];
+
+          sepBody = HOL`Bool`CONJ[openInU, HOL`Bool`CONJ[openInV,
+            HOL`Bool`CONJ[neU, HOL`Bool`CONJ[neV,
+              HOL`Bool`CONJ[coversThm, disjThm]]]]];
+          sep = EQMP[HOL`Equal`SYM[unfoldIsSeparation[sV, uSet, vSet]], sepBody];
+          connUnfold = EQMP[unfoldIsConnected[sV], hConn];
+          notSep = connectedSpecAll[connUnfold, {uSet, vSet}];
+          falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notSep], sep];
+
+          HOL`Bool`DISJCASES[em, ASSUME[syTm], HOL`Bool`CONTR[syTm, falseTh]]
+        ]]];
+    folded = connectedIntervalSetFromBody[sV, body];
+    HOL`Bool`GEN[sV, HOL`Bool`DISCH[hConnTm, folded]]
   ];
 
 End[];

@@ -259,6 +259,11 @@ HOLTest`runTests["stdlib/Real/Connected: theorem shapes",
       HOL`Stdlib`Real`openInTm[sV, HOL`Stdlib`Real`traceTm[sV, vV]]];
     HOLTest`assertTrue[aconv[concl[th], expected], "openInTrace shape"];
 
+    assertConclCNT["intervalSetOfConnected",
+      specAllCNT[HOL`Stdlib`Real`intervalSetOfConnectedThm, {sV}],
+      impCNT[HOL`Stdlib`Real`isConnectedTm[sV],
+        HOL`Stdlib`Real`isIntervalSetTm[sV]]];
+
     intervalThms = {
       {"interval empty", HOL`Stdlib`Real`intervalSetEmptyThm,
         HOL`Stdlib`Real`isIntervalSetTm[emptySetCNT[]]},
