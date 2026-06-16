@@ -106,6 +106,18 @@ intervalSetOpenUpperRayThm::usage = "intervalSetOpenUpperRayThm - |- forall cut.
 intervalSetClosedLowerRayThm::usage = "intervalSetClosedLowerRayThm - |- forall cut. isIntervalSet (closedLowerRay cut).";
 intervalSetClosedUpperRayThm::usage = "intervalSetClosedUpperRayThm - |- forall cut. isIntervalSet (closedUpperRay cut).";
 
+notSeparationOfIntervalOrderedPointsThm::usage = "notSeparationOfIntervalOrderedPointsThm - |- forall S U V a b. isIntervalSet S ==> isSeparation S U V ==> U a ==> V b ==> realLt a b ==> F.";
+connectedOfIntervalSetThm::usage = "connectedOfIntervalSetThm - |- forall S. isIntervalSet S ==> isConnected S.";
+connectedIffIntervalSetThm::usage = "connectedIffIntervalSetThm - |- forall S. isConnected S = isIntervalSet S.";
+connectedUniversalThm::usage = "connectedUniversalThm - |- isConnected (lambda x. T).";
+connectedSingletonThm::usage = "connectedSingletonThm - |- forall a. isConnected (lambda x. x = a).";
+connectedOpenIntervalThm::usage = "connectedOpenIntervalThm - |- forall left right. isConnected (openInterval left right).";
+connectedClosedIntervalThm::usage = "connectedClosedIntervalThm - |- forall left right. isConnected (closedInterval left right).";
+connectedOpenLowerRayThm::usage = "connectedOpenLowerRayThm - |- forall cut. isConnected (openLowerRay cut).";
+connectedOpenUpperRayThm::usage = "connectedOpenUpperRayThm - |- forall cut. isConnected (openUpperRay cut).";
+connectedClosedLowerRayThm::usage = "connectedClosedLowerRayThm - |- forall cut. isConnected (closedLowerRay cut).";
+connectedClosedUpperRayThm::usage = "connectedClosedUpperRayThm - |- forall cut. isConnected (closedUpperRay cut).";
+
 Begin["`Private`"];
 
 connectedRealTy = mkType["real", {}];
@@ -1047,6 +1059,392 @@ intervalSetOfConnectedThm =
         ]]];
     folded = connectedIntervalSetFromBody[sV, body];
     HOL`Bool`GEN[sV, HOL`Bool`DISCH[hConnTm, folded]]
+  ];
+
+connectedOpenInWitnessBody[sT_, uT_, wT_] :=
+  Module[{xV},
+    xV = mkVar["xOpenInCn", connectedRealTy];
+    connectedConjTm[isOpenTm[wT],
+      connectedForallTm[xV, mkEq[connectedSetApp[uT, xV],
+        connectedConjTm[connectedSetApp[sT, xV], connectedSetApp[wT, xV]]]]]
+  ];
+
+connectedIsOpenWitnessBody[wT_, xT_, leftT_, rightT_] :=
+  Module[{yV},
+    yV = mkVar["yOpenCn", connectedRealTy];
+    connectedConjTm[connectedRealLt[leftT, xT],
+      connectedConjTm[connectedRealLt[xT, rightT],
+        connectedForallTm[yV, connectedImpTm[openIntervalTm[leftT, rightT, yV],
+          connectedSetApp[wT, yV]]]]]
+  ];
+
+connectedIsOpenRightExists[wT_, xT_, leftT_] :=
+  Module[{rightV},
+    rightV = mkVar["rightOpenCn", connectedRealTy];
+    connectedExistsTm[rightV, connectedIsOpenWitnessBody[wT, xT, leftT, rightV]]
+  ];
+
+connectedSupSegmentSet[sT_, uT_, aT_, bT_] :=
+  Module[{tA},
+    tA = mkVar["tA", connectedRealTy];
+    mkAbs[tA, connectedConjTm[connectedSetApp[sT, tA],
+      connectedConjTm[connectedRealLe[aT, tA],
+        connectedConjTm[connectedRealLe[tA, bT], connectedSetApp[uT, tA]]]]]
+  ];
+
+connectedSupSegmentMemEq[setT_, tT_] := HOL`Equal`BETACONV[connectedSetApp[setT, tT]];
+
+connectedSupSegmentIntro[setT_, tT_, hST_, hALeT_, hTLeB_, hUT_] :=
+  EQMP[HOL`Equal`SYM[connectedSupSegmentMemEq[setT, tT]],
+    HOL`Bool`CONJ[hST, HOL`Bool`CONJ[hALeT, HOL`Bool`CONJ[hTLeB, hUT]]]];
+
+connectedSupSegmentParts[setT_, tT_, hMem_] :=
+  Module[{body, tailA, tailB},
+    body = EQMP[connectedSupSegmentMemEq[setT, tT], hMem];
+    tailA = HOL`Bool`CONJUNCT2[body];
+    tailB = HOL`Bool`CONJUNCT2[tailA];
+    {HOL`Bool`CONJUNCT1[body],
+      HOL`Bool`CONJUNCT1[tailA],
+      HOL`Bool`CONJUNCT1[tailB],
+      HOL`Bool`CONJUNCT2[tailB]}
+  ];
+
+connectedBetweenIntro[xT_, yT_, zT_, hXY_, hYZ_] :=
+  EQMP[HOL`Equal`SYM[unfoldBetween[xT, yT, zT]], HOL`Bool`CONJ[hXY, hYZ]];
+
+connectedIntervalPoint[intervalBody_, xT_, yT_, zT_, hSX_, hSZ_, hBetween_] :=
+  HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+    connectedSpecAll[intervalBody, {xT, yT, zT}], hSX], hSZ], hBetween];
+
+connectedSetDisjointFalse[uT_, vT_, hDisj_, tT_, hU_, hV_] :=
+  Module[{allDisj, notAt},
+    allDisj = EQMP[unfoldSetDisjoint[uT, vT], hDisj];
+    notAt = HOL`Bool`SPEC[tT, allDisj];
+    HOL`Bool`MP[HOL`Bool`NOTELIM[notAt], HOL`Bool`CONJ[hU, hV]]
+  ];
+
+connectedSupUpperAt[setT_, hNe_, hBdd_, tT_, hMem_] :=
+  HOL`Bool`MP[HOL`Bool`SPEC[tT,
+    HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[setT, realSupUpperThm], hNe], hBdd]], hMem];
+
+connectedSupLtMemFrom[setT_, tT_, hNe_, hBdd_, hLt_] :=
+  Module[{aV, aB, goalTm, hNotGoalTm, hNotGoal, hSaTm, hSa, hNotLeTm,
+          hNotLe, notLeLt, ltTa, conjA, exA, falseA, leAt, ubAll, least,
+          badLt, falseTh},
+    aV = mkVar["dSupCn", connectedRealTy]; aB = mkVar["aSupCn", connectedRealTy];
+    goalTm = connectedExistsTm[aV,
+      connectedConjTm[connectedSetApp[setT, aV], connectedRealLt[tT, aV]]];
+    hNotGoalTm = connectedNotTm[goalTm]; hNotGoal = ASSUME[hNotGoalTm];
+    hSaTm = connectedSetApp[setT, aB]; hSa = ASSUME[hSaTm];
+    hNotLeTm = connectedNotTm[connectedRealLe[aB, tT]]; hNotLe = ASSUME[hNotLeTm];
+    notLeLt = connectedSpecAll[HOL`Auto`RealArith`realNotLeLtThm, {aB, tT}];
+    ltTa = EQMP[notLeLt, hNotLe];
+    conjA = HOL`Bool`CONJ[hSa, ltTa];
+    exA = HOL`Bool`EXISTS[goalTm, aB, conjA];
+    falseA = HOL`Bool`MP[HOL`Bool`NOTELIM[hNotGoal], exA];
+    leAt = HOL`Bool`CCONTR[connectedRealLe[aB, tT], falseA];
+    ubAll = HOL`Bool`GEN[aB, HOL`Bool`DISCH[hSaTm, leAt]];
+    least = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      connectedSpecAll[realSupLeastThm, {setT, tT}], hNe], hBdd], ubAll];
+    badLt = HOL`Bool`MP[HOL`Bool`MP[
+      connectedSpecAll[realLtLeTransThm, {tT, realSupTm[setT], tT}], hLt], least];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[
+      connectedSpecAll[realLtIrreflThm, {tT}]], badLt];
+    HOL`Bool`CCONTR[goalTm, falseTh]
+  ];
+
+notSeparationOfIntervalOrderedPointsThm =
+  Module[{sV, uV, vV, aV, bV, hIntervalTm, hSepTm, hATm, hBTm, hABTm,
+          hInterval, hSep, hA, hB, hAB, sepBody, parts, hOpU, hOpV, hCov,
+          hDisj, haS, hbS, segSet, tNeV, aMemA, hNeA, tUpper, hUpperTm,
+          hUpper, upperParts, hUpperB, uBddV, hBddA, supT, haLeSup, hSupLeB,
+          intervalBody, hsS, covAll, covAt, leftBranch, rightBranch,
+          body},
+    sV = mkVar["S", connectedSetTy]; uV = mkVar["U", connectedSetTy];
+    vV = mkVar["V", connectedSetTy]; aV = mkVar["a", connectedRealTy];
+    bV = mkVar["b", connectedRealTy];
+    hIntervalTm = isIntervalSetTm[sV]; hSepTm = isSeparationTm[sV, uV, vV];
+    hATm = connectedSetApp[uV, aV]; hBTm = connectedSetApp[vV, bV];
+    hABTm = connectedRealLt[aV, bV];
+    hInterval = ASSUME[hIntervalTm]; hSep = ASSUME[hSepTm];
+    hA = ASSUME[hATm]; hB = ASSUME[hBTm]; hAB = ASSUME[hABTm];
+    sepBody = EQMP[unfoldIsSeparation[sV, uV, vV], hSep];
+    parts = connectedSeparationParts[sepBody];
+    hOpU = parts[[1]]; hOpV = parts[[2]]; hCov = parts[[5]]; hDisj = parts[[6]];
+    haS = HOL`Bool`MP[HOL`Bool`SPEC[aV,
+      HOL`Bool`MP[connectedSpecAll[openInSubsetThm, {sV, uV}], hOpU]], hA];
+    hbS = HOL`Bool`MP[HOL`Bool`SPEC[bV,
+      HOL`Bool`MP[connectedSpecAll[openInSubsetThm, {sV, vV}], hOpV]], hB];
+
+    segSet = connectedSupSegmentSet[sV, uV, aV, bV];
+    aMemA = connectedSupSegmentIntro[segSet, aV, haS,
+      connectedSpecAll[realLeReflThm, {aV}],
+      HOL`Bool`MP[connectedSpecAll[realLtImpLeThm, {aV, bV}], hAB], hA];
+    tNeV = mkVar["tNeCn", connectedRealTy];
+    hNeA = HOL`Bool`EXISTS[connectedExistsTm[tNeV, connectedSetApp[segSet, tNeV]],
+      aV, aMemA];
+    tUpper = mkVar["tUpperCn", connectedRealTy];
+    hUpperTm = connectedSetApp[segSet, tUpper]; hUpper = ASSUME[hUpperTm];
+    upperParts = connectedSupSegmentParts[segSet, tUpper, hUpper];
+    hUpperB = HOL`Bool`GEN[tUpper,
+      HOL`Bool`DISCH[hUpperTm, upperParts[[3]]]];
+    uBddV = mkVar["uBddCn", connectedRealTy];
+    hBddA = HOL`Bool`EXISTS[
+      connectedExistsTm[uBddV, connectedForallTm[tUpper,
+        connectedImpTm[connectedSetApp[segSet, tUpper], connectedRealLe[tUpper, uBddV]]]],
+      bV, hUpperB];
+    supT = realSupTm[segSet];
+    haLeSup = connectedSupUpperAt[segSet, hNeA, hBddA, aV, aMemA];
+    hSupLeB = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      connectedSpecAll[realSupLeastThm, {segSet, bV}], hNeA], hBddA], hUpperB];
+    intervalBody = EQMP[unfoldIsIntervalSet[sV], hInterval];
+    hsS = connectedIntervalPoint[intervalBody, aV, supT, bV, haS, hbS,
+      connectedBetweenIntro[aV, supT, bV, haLeSup, hSupLeB]];
+    covAll = EQMP[unfoldCoversByTwo[sV, uV, vV], hCov];
+    covAt = EQMP[HOL`Bool`SPEC[supT, covAll], hsS];
+
+    leftBranch =
+      Module[{hsUTm, hsU, eqTm, hEq, hbU, falseEq, hNeTm, hNe, hBLeSTm, hBLeS,
+              eqSB, falseNe, notBLeS, hsLtB, openedU, u0V, hU0BodyTm,
+              hU0Body, hU0Open, hU0All, eqAtS, hsU0, openAll, openAt, lU,
+              rU, hLeftTm, hLeft, hRightTm, hRight, hLltS, hSltR, hAllY,
+              rightBetween, dU, hDTm, hD, hSltD, dTail, hdLeB, hdLtR, sLeD,
+              haLeD, hdS, lLtD, hdOpen, hdU0, eqAtD, hdU, hdA, hdLeSup,
+              notDLeSup, falseD, chooseD, chooseR, chooseL, chooseU0,
+              branchNe},
+        hsUTm = connectedSetApp[uV, supT]; hsU = ASSUME[hsUTm];
+        eqTm = mkEq[supT, bV];
+        hEq = ASSUME[eqTm];
+        hbU = EQMP[HOL`Equal`APTERM[uV, hEq], hsU];
+        falseEq = connectedSetDisjointFalse[uV, vV, hDisj, bV, hbU, hB];
+
+        hNeTm = connectedNotTm[eqTm]; hNe = ASSUME[hNeTm];
+        hBLeSTm = connectedRealLe[bV, supT]; hBLeS = ASSUME[hBLeSTm];
+        eqSB = HOL`Bool`MP[HOL`Bool`MP[
+          connectedSpecAll[realLeAntisymThm, {supT, bV}], hSupLeB], hBLeS];
+        falseNe = HOL`Bool`MP[HOL`Bool`NOTELIM[hNe], eqSB];
+        notBLeS = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hBLeSTm, falseNe]];
+        hsLtB = EQMP[HOL`Equal`SYM[connectedSpecAll[realLtNotLeThm, {supT, bV}]],
+          notBLeS];
+
+        openedU = EQMP[unfoldOpenIn[sV, uV], hOpU];
+        u0V = mkVar["U0Cn", connectedSetTy];
+        hU0BodyTm = connectedOpenInWitnessBody[sV, uV, u0V];
+        hU0Body = ASSUME[hU0BodyTm];
+        hU0Open = HOL`Bool`CONJUNCT1[hU0Body];
+        hU0All = HOL`Bool`CONJUNCT2[hU0Body];
+        eqAtS = HOL`Bool`SPEC[supT, hU0All];
+        hsU0 = HOL`Bool`CONJUNCT2[EQMP[eqAtS, hsU]];
+        openAll = EQMP[unfoldIsOpen[u0V], hU0Open];
+        openAt = HOL`Bool`MP[HOL`Bool`SPEC[supT, openAll], hsU0];
+        lU = mkVar["lUCn", connectedRealTy]; rU = mkVar["rUCn", connectedRealTy];
+        hLeftTm = connectedIsOpenRightExists[u0V, supT, lU]; hLeft = ASSUME[hLeftTm];
+        hRightTm = connectedIsOpenWitnessBody[u0V, supT, lU, rU];
+        hRight = ASSUME[hRightTm];
+        hLltS = HOL`Bool`CONJUNCT1[hRight];
+        hSltR = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[hRight]];
+        hAllY = HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[hRight]];
+        rightBetween = HOL`Bool`MP[HOL`Bool`MP[
+          connectedSpecAll[existsRightBetweenThm, {supT, bV, rU}], hsLtB], hSltR];
+        dU = mkVar["dUCn", connectedRealTy];
+        hDTm = connectedConjTm[connectedRealLt[supT, dU],
+          connectedConjTm[connectedRealLe[dU, bV], connectedRealLt[dU, rU]]];
+        hD = ASSUME[hDTm];
+        hSltD = HOL`Bool`CONJUNCT1[hD];
+        dTail = HOL`Bool`CONJUNCT2[hD];
+        hdLeB = HOL`Bool`CONJUNCT1[dTail];
+        hdLtR = HOL`Bool`CONJUNCT2[dTail];
+        sLeD = HOL`Bool`MP[connectedSpecAll[realLtImpLeThm, {supT, dU}], hSltD];
+        haLeD = HOL`Bool`MP[HOL`Bool`MP[
+          connectedSpecAll[realLeTransThm, {aV, supT, dU}], haLeSup], sLeD];
+        hdS = connectedIntervalPoint[intervalBody, aV, dU, bV, haS, hbS,
+          connectedBetweenIntro[aV, dU, bV, haLeD, hdLeB]];
+        lLtD = HOL`Bool`MP[HOL`Bool`MP[
+          connectedSpecAll[realLtTransThm, {lU, supT, dU}], hLltS], hSltD];
+        hdOpen = EQMP[HOL`Equal`SYM[unfoldOpenInterval[lU, rU, dU]],
+          HOL`Bool`CONJ[lLtD, hdLtR]];
+        hdU0 = HOL`Bool`MP[HOL`Bool`SPEC[dU, hAllY], hdOpen];
+        eqAtD = HOL`Bool`SPEC[dU, hU0All];
+        hdU = EQMP[HOL`Equal`SYM[eqAtD], HOL`Bool`CONJ[hdS, hdU0]];
+        hdA = connectedSupSegmentIntro[segSet, dU, hdS, haLeD, hdLeB, hdU];
+        hdLeSup = connectedSupUpperAt[segSet, hNeA, hBddA, dU, hdA];
+        notDLeSup = EQMP[connectedSpecAll[realLtNotLeThm, {supT, dU}], hSltD];
+        falseD = HOL`Bool`MP[HOL`Bool`NOTELIM[notDLeSup], hdLeSup];
+        chooseD = HOL`Bool`CHOOSE[dU, rightBetween, falseD];
+        chooseR = HOL`Bool`CHOOSE[rU, hLeft, chooseD];
+        chooseL = HOL`Bool`CHOOSE[lU, openAt, chooseR];
+        chooseU0 = HOL`Bool`CHOOSE[u0V, openedU, chooseL];
+        branchNe = chooseU0;
+        HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[eqTm], falseEq, branchNe]
+      ];
+
+    rightBranch =
+      Module[{hsVTm, hsV, openedV, v0V, hV0BodyTm, hV0Body, hV0Open, hV0All,
+              eqAtS, hsV0, openAll, openAt, lV, rV, hLeftTm, hLeft, hRightTm,
+              hRight, hLltS, hSltR, hAllY, supLtMem, dV, hDTm, hD, hdA, hLltD,
+              hdParts, hdLeSup, hdLtR, hdOpen, hdV0, eqAtD, hdV, falseD,
+              chooseD, chooseR, chooseL, chooseV0},
+        hsVTm = connectedSetApp[vV, supT]; hsV = ASSUME[hsVTm];
+        openedV = EQMP[unfoldOpenIn[sV, vV], hOpV];
+        v0V = mkVar["V0Cn", connectedSetTy];
+        hV0BodyTm = connectedOpenInWitnessBody[sV, vV, v0V];
+        hV0Body = ASSUME[hV0BodyTm];
+        hV0Open = HOL`Bool`CONJUNCT1[hV0Body];
+        hV0All = HOL`Bool`CONJUNCT2[hV0Body];
+        eqAtS = HOL`Bool`SPEC[supT, hV0All];
+        hsV0 = HOL`Bool`CONJUNCT2[EQMP[eqAtS, hsV]];
+        openAll = EQMP[unfoldIsOpen[v0V], hV0Open];
+        openAt = HOL`Bool`MP[HOL`Bool`SPEC[supT, openAll], hsV0];
+        lV = mkVar["lVCn", connectedRealTy]; rV = mkVar["rVCn", connectedRealTy];
+        hLeftTm = connectedIsOpenRightExists[v0V, supT, lV]; hLeft = ASSUME[hLeftTm];
+        hRightTm = connectedIsOpenWitnessBody[v0V, supT, lV, rV];
+        hRight = ASSUME[hRightTm];
+        hLltS = HOL`Bool`CONJUNCT1[hRight];
+        hSltR = HOL`Bool`CONJUNCT1[HOL`Bool`CONJUNCT2[hRight]];
+        hAllY = HOL`Bool`CONJUNCT2[HOL`Bool`CONJUNCT2[hRight]];
+        supLtMem = connectedSupLtMemFrom[segSet, lV, hNeA, hBddA, hLltS];
+        dV = mkVar["dVCn", connectedRealTy];
+        hDTm = connectedConjTm[connectedSetApp[segSet, dV], connectedRealLt[lV, dV]];
+        hD = ASSUME[hDTm];
+        hdA = HOL`Bool`CONJUNCT1[hD];
+        hLltD = HOL`Bool`CONJUNCT2[hD];
+        hdParts = connectedSupSegmentParts[segSet, dV, hdA];
+        hdLeSup = connectedSupUpperAt[segSet, hNeA, hBddA, dV, hdA];
+        hdLtR = HOL`Bool`MP[HOL`Bool`MP[
+          connectedSpecAll[realLeLtTransThm, {dV, supT, rV}], hdLeSup], hSltR];
+        hdOpen = EQMP[HOL`Equal`SYM[unfoldOpenInterval[lV, rV, dV]],
+          HOL`Bool`CONJ[hLltD, hdLtR]];
+        hdV0 = HOL`Bool`MP[HOL`Bool`SPEC[dV, hAllY], hdOpen];
+        eqAtD = HOL`Bool`SPEC[dV, hV0All];
+        hdV = EQMP[HOL`Equal`SYM[eqAtD], HOL`Bool`CONJ[hdParts[[1]], hdV0]];
+        falseD = connectedSetDisjointFalse[uV, vV, hDisj, dV, hdParts[[4]], hdV];
+        chooseD = HOL`Bool`CHOOSE[dV, supLtMem, falseD];
+        chooseR = HOL`Bool`CHOOSE[rV, hLeft, chooseD];
+        chooseL = HOL`Bool`CHOOSE[lV, openAt, chooseR];
+        chooseV0 = HOL`Bool`CHOOSE[v0V, openedV, chooseL];
+        chooseV0
+      ];
+
+    body = HOL`Bool`DISJCASES[covAt, leftBranch, rightBranch];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[uV, HOL`Bool`GEN[vV, HOL`Bool`GEN[aV,
+      HOL`Bool`GEN[bV, HOL`Bool`DISCH[hIntervalTm,
+        HOL`Bool`DISCH[hSepTm, HOL`Bool`DISCH[hATm,
+          HOL`Bool`DISCH[hBTm, HOL`Bool`DISCH[hABTm, body]]]]]]]]]]
+  ];
+
+connectedOfIntervalSetThm =
+  Module[{sV, uV, vV, hIntervalTm, hInterval, hSepTm, hSep, sepBody, parts,
+          existsU, existsV, aW, bW, hATm, hA, hBTm, hB, eqABTm, hEqAB, hbU,
+          falseEq, hNeAB, ltOrGt, branchAB, branchBA, falseBody, chooseB,
+          chooseA, notSep, allUV, folded},
+    sV = mkVar["SConnCn", connectedSetTy]; uV = mkVar["UConnCn", connectedSetTy];
+    vV = mkVar["VConnCn", connectedSetTy];
+    hIntervalTm = isIntervalSetTm[sV]; hInterval = ASSUME[hIntervalTm];
+    hSepTm = isSeparationTm[sV, uV, vV]; hSep = ASSUME[hSepTm];
+    sepBody = EQMP[unfoldIsSeparation[sV, uV, vV], hSep];
+    parts = connectedSeparationParts[sepBody];
+    existsU = EQMP[unfoldSetNonempty[uV], parts[[3]]];
+    existsV = EQMP[unfoldSetNonempty[vV], parts[[4]]];
+    aW = mkVar["aConnCn", connectedRealTy]; bW = mkVar["bConnCn", connectedRealTy];
+    hATm = connectedSetApp[uV, aW]; hA = ASSUME[hATm];
+    hBTm = connectedSetApp[vV, bW]; hB = ASSUME[hBTm];
+    eqABTm = mkEq[aW, bW]; hEqAB = ASSUME[eqABTm];
+    hbU = EQMP[HOL`Equal`APTERM[uV, hEqAB], hA];
+    falseEq = connectedSetDisjointFalse[uV, vV, parts[[6]], bW, hbU, hB];
+    hNeAB = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[eqABTm, falseEq]];
+    ltOrGt = HOL`Bool`MP[connectedSpecAll[ltOrGtOfNeThm, {aW, bW}], hNeAB];
+    branchAB = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      connectedSpecAll[notSeparationOfIntervalOrderedPointsThm,
+        {sV, uV, vV, aW, bW}], hInterval], hSep], hA], hB],
+      ASSUME[connectedRealLt[aW, bW]]];
+    branchBA = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      connectedSpecAll[notSeparationOfIntervalOrderedPointsThm,
+        {sV, vV, uV, bW, aW}], hInterval],
+      HOL`Bool`MP[connectedSpecAll[isSeparationSymmThm, {sV, uV, vV}], hSep]],
+      hB], hA], ASSUME[connectedRealLt[bW, aW]]];
+    falseBody = HOL`Bool`DISJCASES[ltOrGt, branchAB, branchBA];
+    chooseB = HOL`Bool`CHOOSE[bW, existsV, falseBody];
+    chooseA = HOL`Bool`CHOOSE[aW, existsU, chooseB];
+    notSep = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hSepTm, chooseA]];
+    allUV = HOL`Bool`GEN[uV, HOL`Bool`GEN[vV, notSep]];
+    folded = EQMP[HOL`Equal`SYM[unfoldIsConnected[sV]], allUV];
+    HOL`Bool`GEN[sV, HOL`Bool`DISCH[hIntervalTm, folded]]
+  ];
+
+connectedIffIntervalSetThm =
+  Module[{sV, hConnTm, hConn, hIntervalTm, hInterval, intervalFromConn,
+          connFromInterval, eqTh},
+    sV = mkVar["SIffCn", connectedSetTy];
+    hConnTm = isConnectedTm[sV]; hConn = ASSUME[hConnTm];
+    hIntervalTm = isIntervalSetTm[sV]; hInterval = ASSUME[hIntervalTm];
+    intervalFromConn = HOL`Bool`MP[HOL`Bool`SPEC[sV, intervalSetOfConnectedThm], hConn];
+    connFromInterval = HOL`Bool`MP[HOL`Bool`SPEC[sV, connectedOfIntervalSetThm], hInterval];
+    eqTh = HOL`Kernel`DEDUCTANTISYM[connFromInterval, intervalFromConn];
+    HOL`Bool`GEN[sV, eqTh]
+  ];
+
+connectedUniversalThm =
+  HOL`Bool`MP[HOL`Bool`SPEC[connectedUniversalSet[], connectedOfIntervalSetThm],
+    intervalSetUniversalThm];
+
+connectedSingletonThm =
+  Module[{aV},
+    aV = mkVar["aConnSetCn", connectedRealTy];
+    HOL`Bool`GEN[aV,
+      HOL`Bool`MP[HOL`Bool`SPEC[connectedSingletonSet[aV], connectedOfIntervalSetThm],
+        HOL`Bool`SPEC[aV, intervalSetSingletonThm]]]
+  ];
+
+connectedOpenIntervalThm =
+  Module[{leftV, rightV, setT},
+    leftV = mkVar["leftConnCn", connectedRealTy];
+    rightV = mkVar["rightConnCn", connectedRealTy];
+    setT = connectedOpenIntervalSet[leftV, rightV];
+    HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`MP[HOL`Bool`SPEC[setT, connectedOfIntervalSetThm],
+        connectedSpecAll[intervalSetOpenIntervalThm, {leftV, rightV}]]]]
+  ];
+
+connectedClosedIntervalThm =
+  Module[{leftV, rightV, setT},
+    leftV = mkVar["leftConnCn", connectedRealTy];
+    rightV = mkVar["rightConnCn", connectedRealTy];
+    setT = connectedClosedIntervalSet[leftV, rightV];
+    HOL`Bool`GEN[leftV, HOL`Bool`GEN[rightV,
+      HOL`Bool`MP[HOL`Bool`SPEC[setT, connectedOfIntervalSetThm],
+        connectedSpecAll[intervalSetClosedIntervalThm, {leftV, rightV}]]]]
+  ];
+
+connectedOpenLowerRayThm =
+  Module[{cutV, setT},
+    cutV = mkVar["cutConnCn", connectedRealTy]; setT = connectedOpenLowerSet[cutV];
+    HOL`Bool`GEN[cutV,
+      HOL`Bool`MP[HOL`Bool`SPEC[setT, connectedOfIntervalSetThm],
+        HOL`Bool`SPEC[cutV, intervalSetOpenLowerRayThm]]]
+  ];
+
+connectedOpenUpperRayThm =
+  Module[{cutV, setT},
+    cutV = mkVar["cutConnCn", connectedRealTy]; setT = connectedOpenUpperSet[cutV];
+    HOL`Bool`GEN[cutV,
+      HOL`Bool`MP[HOL`Bool`SPEC[setT, connectedOfIntervalSetThm],
+        HOL`Bool`SPEC[cutV, intervalSetOpenUpperRayThm]]]
+  ];
+
+connectedClosedLowerRayThm =
+  Module[{cutV, setT},
+    cutV = mkVar["cutConnCn", connectedRealTy]; setT = connectedClosedLowerSet[cutV];
+    HOL`Bool`GEN[cutV,
+      HOL`Bool`MP[HOL`Bool`SPEC[setT, connectedOfIntervalSetThm],
+        HOL`Bool`SPEC[cutV, intervalSetClosedLowerRayThm]]]
+  ];
+
+connectedClosedUpperRayThm =
+  Module[{cutV, setT},
+    cutV = mkVar["cutConnCn", connectedRealTy]; setT = connectedClosedUpperSet[cutV];
+    HOL`Bool`GEN[cutV,
+      HOL`Bool`MP[HOL`Bool`SPEC[setT, connectedOfIntervalSetThm],
+        HOL`Bool`SPEC[cutV, intervalSetClosedUpperRayThm]]]
   ];
 
 End[];

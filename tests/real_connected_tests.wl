@@ -284,4 +284,36 @@ HOLTest`runTests["stdlib/Real/Connected: theorem shapes",
       {"interval closed upper", HOL`Bool`SPEC[cutV, HOL`Stdlib`Real`intervalSetClosedUpperRayThm],
         HOL`Stdlib`Real`isIntervalSetTm[closedUpperSetCNT[cutV]]}};
     Scan[Function[{entry}, assertConclCNT[entry[[1]], entry[[2]], entry[[3]]]],
-      intervalThms]]];
+      intervalThms];
+
+    th = specAllCNT[HOL`Stdlib`Real`notSeparationOfIntervalOrderedPointsThm,
+      {sV, uV, vV, aV, rightV}];
+    expected = impCNT[HOL`Stdlib`Real`isIntervalSetTm[sV],
+      impCNT[HOL`Stdlib`Real`isSeparationTm[sV, uV, vV],
+        impCNT[setAppCNT[uV, aV],
+          impCNT[setAppCNT[vV, rightV],
+            impCNT[rLtCNT[aV, rightV], mkConst["F", boolTy]]]]]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "notSeparationOfIntervalOrderedPoints shape"];
+
+    assertConclCNT["connectedOfIntervalSet",
+      HOL`Bool`SPEC[sV, HOL`Stdlib`Real`connectedOfIntervalSetThm],
+      impCNT[HOL`Stdlib`Real`isIntervalSetTm[sV],
+        HOL`Stdlib`Real`isConnectedTm[sV]]];
+
+    assertConclCNT["connectedIffIntervalSet",
+      HOL`Bool`SPEC[sV, HOL`Stdlib`Real`connectedIffIntervalSetThm],
+      mkEq[HOL`Stdlib`Real`isConnectedTm[sV],
+        HOL`Stdlib`Real`isIntervalSetTm[sV]]];
+
+    assertConclCNT["connected universal", HOL`Stdlib`Real`connectedUniversalThm,
+      HOL`Stdlib`Real`isConnectedTm[universalSetCNT[]]];
+    assertConclCNT["connected singleton",
+      HOL`Bool`SPEC[aV, HOL`Stdlib`Real`connectedSingletonThm],
+      HOL`Stdlib`Real`isConnectedTm[singletonSetCNT[aV]]];
+    assertConclCNT["connected open interval",
+      specAllCNT[HOL`Stdlib`Real`connectedOpenIntervalThm, {leftV, rightV}],
+      HOL`Stdlib`Real`isConnectedTm[openIntervalSetCNT[leftV, rightV]]];
+    assertConclCNT["connected closed upper",
+      HOL`Bool`SPEC[cutV, HOL`Stdlib`Real`connectedClosedUpperRayThm],
+      HOL`Stdlib`Real`isConnectedTm[closedUpperSetCNT[cutV]]]]];
