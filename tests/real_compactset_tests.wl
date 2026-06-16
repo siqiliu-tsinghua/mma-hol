@@ -39,8 +39,15 @@ existsRCST[v_, body_] :=
 setAppRCST[s_, x_] := mkComb[s, x];
 seqAppRCST[u_, n_] := mkComb[u, n];
 realLtRCST[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], x], y];
+realLeRCST[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realLeConst[], x], y];
 realNegRCST[x_] := mkComb[HOL`Stdlib`Real`realNegConst[], x];
 realAbsRCST[x_] := mkComb[HOL`Stdlib`Real`realAbsConst[], x];
+realInvRCST[x_] := mkComb[HOL`Stdlib`Real`realInvConst[], x];
+natLeRCST[m_, n_] := mkComb[mkComb[HOL`Stdlib`Num`leqConst[], m], n];
+sucRCST[n_] := mkComb[HOL`Stdlib`Num`sucConst[], n];
+rnumNatRCST[n_] := mkComb[HOL`Stdlib`Real`realOfRatConst[],
+  mkComb[HOL`Stdlib`Rat`ratOfIntConst[],
+    mkComb[HOL`Stdlib`Int`intOfNumConst[], n]]];
 
 allInSetRCST[sT_, uT_] :=
   Module[{nV},
@@ -121,3 +128,43 @@ HOLTest`runTests["stdlib/Real/CompactSet: bounded sequential direction shapes",
         HOL`Stdlib`Real`setBoundedTm[sV]]];
     assertConclRCST["boundedOfSequentiallyCompact",
       HOL`Stdlib`Real`boundedOfSequentiallyCompactThm, expectedBounded]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: analytic helper shapes",
+  Module[{uV, phiV, lV, nV, mV, zeroR, expectedSubseq, expectedDef,
+          expectedPos, expectedAnti, expectedTend},
+    uV = mkVar["uAnalyticRCST", seqTyRCST];
+    phiV = mkVar["phiAnalyticRCST", tyFun[numTyRCST, numTyRCST]];
+    lV = mkVar["lAnalyticRCST", realTyRCST];
+    nV = mkVar["nAnalyticRCST", numTyRCST];
+    mV = mkVar["mAnalyticRCST", numTyRCST];
+    zeroR = rnumNatRCST[HOL`Stdlib`Num`zeroConst[]];
+
+    expectedSubseq = forallRCST[uV, forallRCST[phiV, forallRCST[lV,
+      impRCST[HOL`Stdlib`Real`subseqIndexTm[phiV],
+        impRCST[HOL`Stdlib`Real`tendstoTm[uV, lV],
+          HOL`Stdlib`Real`tendstoTm[
+            HOL`Stdlib`Real`subsequenceTm[uV, phiV], lV]]]]]];
+    assertConclRCST["seqTendstoSubsequence",
+      HOL`Stdlib`Real`seqTendstoSubsequenceThm, expectedSubseq];
+
+    expectedDef = mkEq[HOL`Stdlib`Real`invSuccRadiusConst[],
+      mkAbs[nV, realInvRCST[rnumNatRCST[sucRCST[nV]]]]];
+    assertConclRCST["invSuccRadiusDef",
+      HOL`Stdlib`Real`invSuccRadiusDefThm, expectedDef];
+
+    expectedPos = forallRCST[nV,
+      realLtRCST[zeroR, HOL`Stdlib`Real`invSuccRadiusTm[nV]]];
+    assertConclRCST["invSuccRadiusPos",
+      HOL`Stdlib`Real`invSuccRadiusPosThm, expectedPos];
+
+    expectedAnti = forallRCST[mV, forallRCST[nV,
+      impRCST[natLeRCST[mV, nV],
+        realLeRCST[HOL`Stdlib`Real`invSuccRadiusTm[nV],
+          HOL`Stdlib`Real`invSuccRadiusTm[mV]]]]];
+    assertConclRCST["invSuccRadiusAntitone",
+      HOL`Stdlib`Real`invSuccRadiusAntitoneThm, expectedAnti];
+
+    expectedTend = HOL`Stdlib`Real`tendstoTm[
+      HOL`Stdlib`Real`invSuccRadiusConst[], zeroR];
+    assertConclRCST["invSuccRadiusTendstoZero",
+      HOL`Stdlib`Real`invSuccRadiusTendstoZeroThm, expectedTend]]];

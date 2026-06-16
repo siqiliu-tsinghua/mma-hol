@@ -25,6 +25,15 @@ unfoldUnboundedEscapePoint::usage = "unfoldUnboundedEscapePoint[S] - proves the 
 unboundedEscapePointMemThm::usage = "unboundedEscapePointMemThm - |- forall S. ~(setBounded S) ==> forall n. S (unboundedEscapePoint S n).";
 unboundedEscapePointOutsideThm::usage = "unboundedEscapePointOutsideThm - |- forall S. ~(setBounded S) ==> forall n. realLt (unboundedEscapePoint S n) (realNeg (&R(&Q(&Z(SUC n))))) \\/ realLt (&R(&Q(&Z(SUC n)))) (unboundedEscapePoint S n).";
 boundedOfSequentiallyCompactThm::usage = "boundedOfSequentiallyCompactThm - |- forall S. isSequentiallyCompact S ==> setBounded S.";
+seqTendstoSubsequenceThm::usage = "seqTendstoSubsequenceThm - |- forall u phi l. subseqIndex phi ==> tendsto u l ==> tendsto (subsequence u phi) l.";
+invSuccRadiusDefThm::usage = "invSuccRadiusDefThm - |- invSuccRadius = (lambda n. realInv (&R(&Q(&Z(SUC n))))).";
+invSuccRadiusConst::usage = "invSuccRadiusConst[] - invSuccRadius : num -> real.";
+invSuccRadiusTm::usage = "invSuccRadiusTm[n] - builds invSuccRadius n.";
+unfoldInvSuccRadius::usage = "unfoldInvSuccRadius[n] - proves the beta-reduced invSuccRadius definition at n.";
+natSuccPosThm::usage = "natSuccPosThm - |- forall n. realLt 0 (&R(&Q(&Z(SUC n)))).";
+invSuccRadiusPosThm::usage = "invSuccRadiusPosThm - |- forall n. realLt 0 (invSuccRadius n).";
+invSuccRadiusAntitoneThm::usage = "invSuccRadiusAntitoneThm - |- forall m n. m <= n ==> realLe (invSuccRadius n) (invSuccRadius m).";
+invSuccRadiusTendstoZeroThm::usage = "invSuccRadiusTendstoZeroThm - |- tendsto invSuccRadius 0.";
 
 Begin["`Private`"];
 
@@ -494,6 +503,267 @@ boundedOfSequentiallyCompactThm =
         HOL`Bool`CONTR[boundTm, chooseL]
       ]];
     HOL`Bool`GEN[sV, HOL`Bool`DISCH[hSCTm, body]]
+  ];
+
+csetNatLt[aT_, bT_] := mkComb[mkComb[HOL`Stdlib`Num`ltConst[], aT], bT];
+csetRealInv[xT_] := mkComb[realInvConst[], xT];
+csetRealMul[aT_, bT_] := realMulTm[aT, bT];
+csetOneReal[] := realOfRatTm[oneQ[]];
+
+csetRealAddCongLeft[eq_, cT_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], eq], REFL[cT]];
+csetRealMulCongLeft[eq_, cT_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realMulConst[], eq], REFL[cT]];
+csetRealMulCongRight[cT_, eq_] :=
+  HOL`Equal`APTERM[mkComb[realMulConst[], cT], eq];
+csetRealAbsCong[eq_] := HOL`Equal`APTERM[realAbsConst[], eq];
+
+csetSeqLimitAtom[aT_, lT_, epsT_, nT_] :=
+  csetRealLt[csetRealAbs[realAddTm[csetSeqApp[aT, nT], realNegTm[lT]]], epsT];
+
+csetLtImpLeRule[ltTh_] :=
+  Module[{aT, bT},
+    aT = concl[ltTh][[1, 2]]; bT = concl[ltTh][[2]];
+    HOL`Bool`MP[csetSpecAll[realLtImpLeThm, {aT, bT}], ltTh]
+  ];
+
+csetMulLeRightRule[leTh_, cNonneg_] :=
+  Module[{aT, bT, cT, mono, leftComm, rightComm},
+    aT = concl[leTh][[1, 2]]; bT = concl[leTh][[2]]; cT = concl[cNonneg][[2]];
+    mono = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realLeMulMonoThm, {aT, bT, cT}], cNonneg], leTh];
+    leftComm = csetSpecAll[realMulCommThm, {cT, aT}];
+    rightComm = csetSpecAll[realMulCommThm, {cT, bT}];
+    EQMP[csetRealLeCong[leftComm, rightComm], mono]
+  ];
+
+csetMulLtRightRule[ltTh_, cPos_] :=
+  Module[{aT, bT, cT, mono, leftComm, rightComm},
+    aT = concl[ltTh][[1, 2]]; bT = concl[ltTh][[2]]; cT = concl[cPos][[2]];
+    mono = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realLtMulMonoThm, {aT, bT, cT}], cPos], ltTh];
+    leftComm = csetSpecAll[realMulCommThm, {cT, aT}];
+    rightComm = csetSpecAll[realMulCommThm, {cT, bT}];
+    EQMP[csetRealLtCong[leftComm, rightComm], mono]
+  ];
+
+csetMulOneLeft[xT_] :=
+  TRANS[csetSpecAll[realMulCommThm, {csetOneReal[], xT}],
+    HOL`Bool`SPEC[xT, realMulOneThm]];
+
+csetAddNegZeroThm =
+  Module[{zV},
+    zV = mkVar["zCsetDropZero", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[
+      csetForallTm[zV, mkEq[realAddTm[zV, realNegTm[zeroRealTm[]]], zV]]]
+  ];
+
+csetNatZeroLtSuccThm =
+  Module[{nV},
+    nV = mkVar["nCsetZeroLtSucc", csetNumTy];
+    HOL`Auto`Arith`arithProve[
+      csetForallTm[nV, csetNatLt[zeroN[], csetSucNum[nV]]]]
+  ];
+
+csetNatLeTransThm =
+  Module[{aV, bV, cV},
+    aV = mkVar["aCsetNatLeTrans", csetNumTy];
+    bV = mkVar["bCsetNatLeTrans", csetNumTy];
+    cV = mkVar["cCsetNatLeTrans", csetNumTy];
+    HOL`Auto`Arith`arithProve[csetForallList[{aV, bV, cV},
+      csetImpTm[csetNatLe[aV, bV],
+        csetImpTm[csetNatLe[bV, cV], csetNatLe[aV, cV]]]]]
+  ];
+
+csetNatLeToLeSuccThm =
+  Module[{mV, nV},
+    mV = mkVar["mCsetLeSucc", csetNumTy];
+    nV = mkVar["nCsetLeSucc", csetNumTy];
+    HOL`Auto`Arith`arithProve[csetForallList[{mV, nV},
+      csetImpTm[csetNatLe[mV, nV], csetNatLe[mV, csetSucNum[nV]]]]]
+  ];
+
+csetNatSuccLeMonoThm =
+  Module[{mV, nV},
+    mV = mkVar["mCsetSuccLe", csetNumTy];
+    nV = mkVar["nCsetSuccLe", csetNumTy];
+    HOL`Auto`Arith`arithProve[csetForallList[{mV, nV},
+      csetImpTm[csetNatLe[mV, nV], csetNatLe[csetSucNum[mV], csetSucNum[nV]]]]]
+  ];
+
+seqTendstoSubsequenceThm =
+  Module[{uV, phiV, lV, eV, nV, n0W, pW, hIdxTm, hIdx, hTendTm,
+          hTend, subSeq, openTend, hEpsTm, hEps, exN, hAllTm, hAll,
+          hLeTm, hLe, phiN, hNLePhiStep, hNLePhi, closeRaw, subEq,
+          argEq, absEq, closeSub, allN, exGoal, chosenN, epsBody, folded},
+    uV = mkVar["u", csetSeqTy]; phiV = mkVar["phi", csetNumFunTy];
+    lV = mkVar["l", csetRealTy]; eV = mkVar["eCsetSubseq", csetRealTy];
+    nV = mkVar["nCsetSubseq", csetNumTy]; n0W = mkVar["NCsetSubseq", csetNumTy];
+    pW = mkVar["pCsetSubseq", csetNumTy];
+    hIdxTm = subseqIndexTm[phiV]; hIdx = ASSUME[hIdxTm];
+    hTendTm = tendstoTm[uV, lV]; hTend = ASSUME[hTendTm];
+    subSeq = subsequenceTm[uV, phiV];
+    openTend = EQMP[unfoldTendsto[uV, lV], hTend];
+    hEpsTm = csetRealLt[zeroRealTm[], eV]; hEps = ASSUME[hEpsTm];
+    exN = HOL`Bool`MP[HOL`Bool`SPEC[eV, openTend], hEps];
+    hAllTm = concl[HOL`Equal`BETACONV[mkComb[concl[exN][[2]], n0W]]][[2]];
+    hAll = ASSUME[hAllTm];
+    hLeTm = csetNatLe[n0W, nV]; hLe = ASSUME[hLeTm];
+    phiN = csetSeqApp[phiV, nV];
+    hNLePhiStep = csetSpecAll[csetNatLeTransThm, {n0W, nV, phiN}];
+    hNLePhi = HOL`Bool`MP[HOL`Bool`MP[hNLePhiStep, hLe],
+      HOL`Bool`SPEC[nV, HOL`Bool`MP[HOL`Bool`SPEC[phiV, subseqIndexGeSelfThm], hIdx]]];
+    closeRaw = HOL`Bool`MP[HOL`Bool`SPEC[phiN, hAll], hNLePhi];
+    subEq = csetSubsequenceAppEq[uV, phiV, nV];
+    argEq = csetRealAddCongLeft[HOL`Equal`SYM[subEq], realNegTm[lV]];
+    absEq = csetRealAbsCong[argEq];
+    closeSub = EQMP[csetRealLtCong[absEq, REFL[eV]], closeRaw];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`DISCH[hLeTm, closeSub]];
+    exGoal = HOL`Bool`EXISTS[csetExistsTm[n0W,
+      csetForallTm[nV, csetImpTm[csetNatLe[n0W, nV],
+        csetSeqLimitAtom[subSeq, lV, eV, nV]]]], n0W, allN];
+    chosenN = HOL`Bool`CHOOSE[n0W, exN, exGoal];
+    epsBody = HOL`Bool`GEN[eV, HOL`Bool`DISCH[hEpsTm, chosenN]];
+    folded = EQMP[HOL`Equal`SYM[unfoldTendsto[subSeq, lV]], epsBody];
+    HOL`Bool`GEN[uV, HOL`Bool`GEN[phiV, HOL`Bool`GEN[lV,
+      HOL`Bool`DISCH[hIdxTm, HOL`Bool`DISCH[hTendTm, folded]]]]]
+  ];
+
+invSuccRadiusDefThm =
+  Module[{nV},
+    nV = mkVar["n", csetNumTy];
+    newDefinition[mkEq[mkVar["invSuccRadius", csetSeqTy],
+      mkAbs[nV, csetRealInv[csetRnumNat[csetSucNum[nV]]]]]]
+  ];
+
+invSuccRadiusConst[] := mkConst["invSuccRadius", csetSeqTy];
+invSuccRadiusTm[nT_] := csetSeqApp[invSuccRadiusConst[], nT];
+unfoldInvSuccRadius[nT_] :=
+  Module[{app},
+    app = HOL`Equal`APTHM[invSuccRadiusDefThm, nT];
+    TRANS[app, HOL`Equal`BETACONV[concl[app][[2]]]]
+  ];
+
+natSuccPosThm =
+  Module[{nV, sucN, intLtEq, ratLtEq, realLtEq, natLt, intLt, ratLt,
+          realLt},
+    nV = mkVar["n", csetNumTy]; sucN = csetSucNum[nV];
+    intLtEq = csetSpecAll[intOfNumLtThm, {zeroN[], sucN}];
+    ratLtEq = csetSpecAll[ratOfIntLtThm, {intOfNumTm[zeroN[]], intOfNumTm[sucN]}];
+    realLtEq = csetSpecAll[realOfRatLtThm,
+      {ratOfIntTm[intOfNumTm[zeroN[]]], ratOfIntTm[intOfNumTm[sucN]]}];
+    natLt = HOL`Bool`SPEC[nV, csetNatZeroLtSuccThm];
+    intLt = EQMP[HOL`Equal`SYM[intLtEq], natLt];
+    ratLt = EQMP[HOL`Equal`SYM[ratLtEq], intLt];
+    realLt = EQMP[HOL`Equal`SYM[realLtEq], ratLt];
+    HOL`Bool`GEN[nV, realLt]
+  ];
+
+invSuccRadiusPosThm =
+  Module[{nV, mT, posM, invPos, unfoldN, body},
+    nV = mkVar["n", csetNumTy]; mT = csetRnumNat[csetSucNum[nV]];
+    posM = HOL`Bool`SPEC[nV, natSuccPosThm];
+    invPos = HOL`Bool`MP[HOL`Bool`SPEC[mT, seqRealInvPositiveThm], posM];
+    unfoldN = unfoldInvSuccRadius[nV];
+    body = EQMP[csetRealLtCong[REFL[zeroRealTm[]], HOL`Equal`SYM[unfoldN]], invPos];
+    HOL`Bool`GEN[nV, body]
+  ];
+
+invSuccRadiusAntitoneThm =
+  Module[{mV, nV, hLeTm, hLe, aT, bT, invA, invB, hSucLe, hAB, aPos,
+          bPos, aNe, bNe, invAPos, invBPos, invANonneg, invBNonneg,
+          leAInvBInvB, bInv, leAInvBOne, leScaledRaw, lhsAssoc,
+          invAAToOne, lhsPair, lhsEq, rhsEq, leInvBInvA, unfoldM,
+          unfoldN, body},
+    mV = mkVar["m", csetNumTy]; nV = mkVar["n", csetNumTy];
+    hLeTm = csetNatLe[mV, nV]; hLe = ASSUME[hLeTm];
+    aT = csetRnumNat[csetSucNum[mV]]; bT = csetRnumNat[csetSucNum[nV]];
+    invA = csetRealInv[aT]; invB = csetRealInv[bT];
+    hSucLe = HOL`Bool`MP[csetSpecAll[csetNatSuccLeMonoThm, {mV, nV}], hLe];
+    hAB = HOL`Bool`MP[csetSpecAll[natRealLeThm,
+      {csetSucNum[mV], csetSucNum[nV]}], hSucLe];
+    aPos = HOL`Bool`SPEC[mV, natSuccPosThm];
+    bPos = HOL`Bool`SPEC[nV, natSuccPosThm];
+    aNe = HOL`Bool`MP[HOL`Bool`SPEC[aT, seqArithPosNeZeroThm], aPos];
+    bNe = HOL`Bool`MP[HOL`Bool`SPEC[bT, seqArithPosNeZeroThm], bPos];
+    invAPos = HOL`Bool`MP[HOL`Bool`SPEC[aT, seqRealInvPositiveThm], aPos];
+    invBPos = HOL`Bool`MP[HOL`Bool`SPEC[bT, seqRealInvPositiveThm], bPos];
+    invANonneg = csetLtImpLeRule[invAPos];
+    invBNonneg = csetLtImpLeRule[invBPos];
+    leAInvBInvB = csetMulLeRightRule[hAB, invBNonneg];
+    bInv = HOL`Bool`MP[HOL`Bool`SPEC[bT, realMulInvThm], bNe];
+    leAInvBOne = EQMP[csetRealLeCong[REFL[csetRealMul[aT, invB]], bInv],
+      leAInvBInvB];
+    leScaledRaw = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realLeMulMonoThm,
+        {csetRealMul[aT, invB], csetOneReal[], invA}], invANonneg], leAInvBOne];
+    lhsAssoc = HOL`Equal`SYM[csetSpecAll[realMulAssocThm, {invA, aT, invB}]];
+    invAAToOne = TRANS[csetSpecAll[realMulCommThm, {invA, aT}],
+      HOL`Bool`MP[HOL`Bool`SPEC[aT, realMulInvThm], aNe]];
+    lhsPair = csetRealMulCongLeft[invAAToOne, invB];
+    lhsEq = TRANS[lhsAssoc, TRANS[lhsPair, csetMulOneLeft[invB]]];
+    rhsEq = HOL`Bool`SPEC[invA, realMulOneThm];
+    leInvBInvA = EQMP[csetRealLeCong[lhsEq, rhsEq], leScaledRaw];
+    unfoldM = unfoldInvSuccRadius[mV];
+    unfoldN = unfoldInvSuccRadius[nV];
+    body = EQMP[csetRealLeCong[HOL`Equal`SYM[unfoldN], HOL`Equal`SYM[unfoldM]],
+      leInvBInvA];
+    HOL`Bool`GEN[mV, HOL`Bool`GEN[nV, HOL`Bool`DISCH[hLeTm, body]]]
+  ];
+
+invSuccRadiusTendstoZeroThm =
+  Module[{eV, mW, nV, hEpsTm, hEps, archEx, hArchTm, hArch, hLeTm,
+          hLe, mLeSucN, mRealLe, bigM, invBigM, bigMPos, bigMNe,
+          epsNe, invE, hInvELtM, mulLt, oneLtEM, invBigMPos,
+          finalLtRaw, leftEq, rhsAssoc, rhsInv, rhsCong, rhsEq,
+          invBigMLtE, invNonneg, absInv, unfoldN, dropZero, argEq,
+          absEq, closeN, allN, exN, chosenM, epsBody, folded},
+    eV = mkVar["eCsetInvSucc", csetRealTy]; mW = mkVar["mCsetInvSucc", csetNumTy];
+    nV = mkVar["nCsetInvSucc", csetNumTy];
+    hEpsTm = csetRealLt[zeroRealTm[], eV]; hEps = ASSUME[hEpsTm];
+    invE = csetRealInv[eV];
+    archEx = HOL`Bool`SPEC[invE, realArchThm];
+    hArchTm = csetRealLt[invE, csetRnumNat[mW]]; hArch = ASSUME[hArchTm];
+    hLeTm = csetNatLe[mW, nV]; hLe = ASSUME[hLeTm];
+    bigM = csetRnumNat[csetSucNum[nV]]; invBigM = csetRealInv[bigM];
+    mLeSucN = HOL`Bool`MP[csetSpecAll[csetNatLeToLeSuccThm, {mW, nV}], hLe];
+    mRealLe = HOL`Bool`MP[csetSpecAll[natRealLeThm, {mW, csetSucNum[nV]}],
+      mLeSucN];
+    hInvELtM = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realLtLeTransThm, {invE, csetRnumNat[mW], bigM}],
+      hArch], mRealLe];
+    epsNe = HOL`Bool`MP[HOL`Bool`SPEC[eV, seqArithPosNeZeroThm], hEps];
+    bigMPos = HOL`Bool`SPEC[nV, natSuccPosThm];
+    bigMNe = HOL`Bool`MP[HOL`Bool`SPEC[bigM, seqArithPosNeZeroThm], bigMPos];
+    mulLt = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realLtMulMonoThm, {invE, bigM, eV}], hEps], hInvELtM];
+    oneLtEM = EQMP[csetRealLtCong[
+      HOL`Bool`MP[HOL`Bool`SPEC[eV, realMulInvThm], epsNe],
+      REFL[csetRealMul[eV, bigM]]], mulLt];
+    invBigMPos = HOL`Bool`MP[HOL`Bool`SPEC[bigM, seqRealInvPositiveThm], bigMPos];
+    finalLtRaw = csetMulLtRightRule[oneLtEM, invBigMPos];
+    leftEq = csetMulOneLeft[invBigM];
+    rhsAssoc = csetSpecAll[realMulAssocThm, {eV, bigM, invBigM}];
+    rhsInv = HOL`Bool`MP[HOL`Bool`SPEC[bigM, realMulInvThm], bigMNe];
+    rhsCong = csetRealMulCongRight[eV, rhsInv];
+    rhsEq = TRANS[rhsAssoc, TRANS[rhsCong, HOL`Bool`SPEC[eV, realMulOneThm]]];
+    invBigMLtE = EQMP[csetRealLtCong[leftEq, rhsEq], finalLtRaw];
+    invNonneg = csetLtImpLeRule[invBigMPos];
+    absInv = HOL`Bool`MP[HOL`Bool`SPEC[invBigM, realAbsPosThm], invNonneg];
+    unfoldN = unfoldInvSuccRadius[nV];
+    dropZero = HOL`Bool`SPEC[invBigM, csetAddNegZeroThm];
+    argEq = TRANS[csetRealAddCongLeft[unfoldN, realNegTm[zeroRealTm[]]], dropZero];
+    absEq = TRANS[csetRealAbsCong[argEq], absInv];
+    closeN = EQMP[csetRealLtCong[HOL`Equal`SYM[absEq], REFL[eV]], invBigMLtE];
+    allN = HOL`Bool`GEN[nV, HOL`Bool`DISCH[hLeTm, closeN]];
+    exN = HOL`Bool`EXISTS[csetExistsTm[mW,
+      csetForallTm[nV, csetImpTm[csetNatLe[mW, nV],
+        csetSeqLimitAtom[invSuccRadiusConst[], zeroRealTm[], eV, nV]]]], mW, allN];
+    chosenM = HOL`Bool`CHOOSE[mW, archEx, exN];
+    epsBody = HOL`Bool`GEN[eV, HOL`Bool`DISCH[hEpsTm, chosenM]];
+    folded = EQMP[HOL`Equal`SYM[unfoldTendsto[invSuccRadiusConst[], zeroRealTm[]]],
+      epsBody];
+    folded
   ];
 
 End[];
