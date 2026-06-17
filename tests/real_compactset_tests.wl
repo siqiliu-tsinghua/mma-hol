@@ -307,3 +307,28 @@ HOLTest`runTests["stdlib/Real/CompactSet: memFilter",
       mkEq[memTm[xV, filterTm[pV, lV]],
         andRCST[mkComb[pV, xV], memTm[xV, lV]]]]]];
     assertConclRCST["memFilter", HOL`Stdlib`Real`memFilterThm, expected]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: Heine-Borel producer shapes",
+  Module[{aV, bV, cV, sV, vV, ivSet, expectedBridge, expectedCompact},
+    aV = mkVar["aHBRCST", realTyRCST];
+    bV = mkVar["bHBRCST", realTyRCST];
+    cV = mkVar["CHBRCST", setOfSetsTyRCST];
+    sV = mkVar["SHBRCST", setTyRCST];
+    vV = mkVar["vHBRCST", setTyRCST];
+    ivSet = mkComb[mkComb[HOL`Stdlib`Real`closedIntervalConst[], aV], bV];
+
+    expectedBridge = forallRCST[aV, forallRCST[bV, forallRCST[cV,
+      impRCST[realLeRCST[aV, bV],
+        impRCST[forallRCST[vV,
+            impRCST[setMemRCST[cV, vV], HOL`Stdlib`Real`isOpenTm[vV]]],
+          impRCST[HOL`Stdlib`Real`setCoversTm[cV, ivSet],
+            HOL`Stdlib`Real`setFiniteSubcoverTm[cV, ivSet]]]]]]];
+    assertConclRCST["closedIntervalSetCompact",
+      HOL`Stdlib`Real`closedIntervalSetCompactThm, expectedBridge];
+
+    expectedCompact = forallRCST[sV,
+      impRCST[HOL`Stdlib`Real`isClosedTm[sV],
+        impRCST[HOL`Stdlib`Real`setBoundedTm[sV],
+          HOL`Stdlib`Real`isCompactTm[sV]]]];
+    assertConclRCST["compactOfClosedBounded",
+      HOL`Stdlib`Real`compactOfClosedBoundedThm, expectedCompact]]];

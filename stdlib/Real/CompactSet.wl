@@ -63,6 +63,8 @@ unfoldIsCompact::usage = "unfoldIsCompact[S] - proves the beta-reduced isCompact
 isOpenEmptyThm::usage = "isOpenEmptyThm - |- isOpen (lambda x. F).";
 openIntervalIsOpenThm::usage = "openIntervalIsOpenThm - |- forall l r. isOpen (openInterval l r).";
 memFilterThm::usage = "memFilterThm - |- forall p x l. MEM x (FILTER p l) = (p x /\\ MEM x l) (at element type real->bool).";
+closedIntervalSetCompactThm::usage = "closedIntervalSetCompactThm - |- forall a b C. realLe a b ==> (forall V. C V ==> isOpen V) ==> setCovers C (closedInterval a b) ==> setFiniteSubcover C (closedInterval a b).";
+compactOfClosedBoundedThm::usage = "compactOfClosedBoundedThm - |- forall S. isClosed S ==> setBounded S ==> isCompact S.";
 
 Begin["`Private`"];
 
@@ -1330,6 +1332,386 @@ memFilterThm =
     bodyL = HOL`Bool`GEN[lV, EQMP[HOL`Equal`BETACONV[mkComb[predLam, lV]],
       HOL`Bool`SPEC[lV, allL]]];
     HOL`Bool`GEN[pV, HOL`Bool`GEN[xV, bodyL]]
+  ];
+
+csetClosedIntervalSet[aT_, bT_] := mkComb[mkComb[closedIntervalConst[], aT], bT];
+csetCondSetConst[] := HOL`Bool`condConst[csetSetTy];
+csetClampFamily[cT_] :=
+  Module[{vCl},
+    vCl = mkVar["vCl", csetSetTy];
+    mkAbs[vCl, mkComb[mkComb[mkComb[csetCondSetConst[],
+      csetSetMem[cT, vCl]], vCl], csetEmptyRealSet[]]]
+  ];
+csetEqfIntro[thNotP_] :=
+  Module[{pT, pToF, fToP},
+    pT = concl[thNotP][[2]];
+    pToF = HOL`Bool`MP[HOL`Bool`NOTELIM[thNotP], ASSUME[pT]];
+    fToP = HOL`Bool`CONTR[pT, ASSUME[csetFalseTm[]]];
+    HOL`Kernel`DEDUCTANTISYM[fToP, pToF]
+  ];
+csetClampHit[cT_, vT_, hCV_] :=
+  Module[{clampT, beta, condEq},
+    clampT = csetClampFamily[cT];
+    beta = HOL`Equal`BETACONV[mkComb[clampT, vT]];
+    condEq = TRANS[HOL`Equal`APTHM[HOL`Equal`APTHM[
+        HOL`Equal`APTERM[csetCondSetConst[], HOL`Bool`EQTINTRO[hCV]],
+        vT], csetEmptyRealSet[]],
+      HOL`Bool`ISPEC[csetEmptyRealSet[],
+        HOL`Bool`ISPEC[vT, HOL`Bool`condTThm]]];
+    TRANS[beta, condEq]
+  ];
+csetClampMiss[cT_, vT_, hNotCV_] :=
+  Module[{clampT, beta, condEq},
+    clampT = csetClampFamily[cT];
+    beta = HOL`Equal`BETACONV[mkComb[clampT, vT]];
+    condEq = TRANS[HOL`Equal`APTHM[HOL`Equal`APTHM[
+        HOL`Equal`APTERM[csetCondSetConst[], csetEqfIntro[hNotCV]],
+        vT], csetEmptyRealSet[]],
+      HOL`Bool`ISPEC[csetEmptyRealSet[],
+        HOL`Bool`ISPEC[vT, HOL`Bool`condFThm]]];
+    TRANS[beta, condEq]
+  ];
+csetFilterMemEq[cT_, vT_, vsT_] :=
+  csetSpecAll[memFilterThm, {cT, vT, vsT}];
+csetFilterMemIntro[cT_, vT_, vsT_, hCV_, hMem_] :=
+  EQMP[HOL`Equal`SYM[csetFilterMemEq[cT, vT, vsT]],
+    HOL`Bool`CONJ[hCV, hMem]];
+csetFilteredMembersInC[cT_, vsT_] :=
+  Module[{vF, hMemTm, hMem, memEq, memConj, cV},
+    vF = mkVar["vFilterMember", csetSetTy];
+    hMemTm = csetMemTmAt[csetSetTy, vF, csetFilterTmAt[cT, vsT]];
+    hMem = ASSUME[hMemTm];
+    memEq = csetFilterMemEq[cT, vF, vsT];
+    memConj = EQMP[memEq, hMem];
+    cV = HOL`Bool`CONJUNCT1[memConj];
+    HOL`Bool`GEN[vF, HOL`Bool`DISCH[hMemTm, cV]]
+  ];
+csetPrimeCover[sT_, cT_] :=
+  Module[{vCp},
+    vCp = mkVar["vCp", csetSetTy];
+    mkAbs[vCp, csetOrTm[mkEq[vCp, complTm[sT]], csetSetMem[cT, vCp]]]
+  ];
+
+closedIntervalSetCompactThm =
+  Module[{aV, bV, cV, vOpen, hLeTm, hLe, hCopenTm, hCopen, ivSet,
+          hCovTm, hCov, clampT, hUopen, hUcov, hFin, openFin, jsBridge,
+          hListTm, hList, filterJs, memberAll, coverAll, listBody,
+          listFolded, cleanFinite, exFinite, result},
+    aV = mkVar["aHBBridge", csetRealTy]; bV = mkVar["bHBBridge", csetRealTy];
+    cV = mkVar["CHBBridge", csetSetOfSetsTy];
+    vOpen = mkVar["vOpenHBBridge", csetSetTy];
+    hLeTm = csetRealLe[aV, bV]; hLe = ASSUME[hLeTm];
+    hCopenTm = csetForallTm[vOpen,
+      csetImpTm[csetSetMem[cV, vOpen], isOpenTm[vOpen]]];
+    hCopen = ASSUME[hCopenTm];
+    ivSet = csetClosedIntervalSet[aV, bV];
+    hCovTm = setCoversTm[cV, ivSet]; hCov = ASSUME[hCovTm];
+    clampT = csetClampFamily[cV];
+
+    hUopen = Module[{vU, cvTm, hCv, hNotCvTm, hNotCv, em, hitEq,
+        missEq, openV, trueBranch, falseBranch},
+      vU = mkVar["vClampOpen", csetSetTy];
+      cvTm = csetSetMem[cV, vU]; hCv = ASSUME[cvTm];
+      hNotCvTm = csetNotTm[cvTm]; hNotCv = ASSUME[hNotCvTm];
+      hitEq = csetClampHit[cV, vU, hCv];
+      missEq = csetClampMiss[cV, vU, hNotCv];
+      openV = HOL`Bool`MP[HOL`Bool`SPEC[vU, hCopen], hCv];
+      trueBranch = EQMP[HOL`Equal`SYM[
+        HOL`Equal`APTERM[isOpenConst[], hitEq]], openV];
+      falseBranch = EQMP[HOL`Equal`SYM[
+        HOL`Equal`APTERM[isOpenConst[], missEq]], isOpenEmptyThm];
+      em = HOL`Bool`EXCLUDEDMIDDLE[cvTm];
+      HOL`Bool`GEN[vU, HOL`Bool`DISJCASES[em, trueBranch, falseBranch]]
+    ];
+
+    hUcov = Module[{xCov, vCov, hIvTm, hIv, setCovBody, covEx,
+        hBodyTm, hBody, hCV, hVX, hitEq, clampVX, exBody, exCov,
+        chooseV, allX},
+      xCov = mkVar["xClampCover", csetRealTy];
+      vCov = mkVar["vCovHBBridge", csetSetTy];
+      hIvTm = csetSetApp[ivSet, xCov]; hIv = ASSUME[hIvTm];
+      setCovBody = EQMP[unfoldSetCovers[cV, ivSet], hCov];
+      covEx = HOL`Bool`MP[HOL`Bool`SPEC[xCov, setCovBody], hIv];
+      hBodyTm = csetConjTm[csetSetMem[cV, vCov],
+        csetSetAppV[vCov, xCov]];
+      hBody = ASSUME[hBodyTm];
+      hCV = HOL`Bool`CONJUNCT1[hBody];
+      hVX = HOL`Bool`CONJUNCT2[hBody];
+      hitEq = csetClampHit[cV, vCov, hCV];
+      clampVX = EQMP[HOL`Equal`SYM[HOL`Equal`APTHM[hitEq, xCov]], hVX];
+      exBody = csetExistsTm[vCov, csetSetAppV[mkComb[clampT, vCov], xCov]];
+      exCov = HOL`Bool`EXISTS[exBody, vCov, clampVX];
+      chooseV = HOL`Bool`CHOOSE[vCov, covEx, exCov];
+      allX = HOL`Bool`GEN[xCov, HOL`Bool`DISCH[hIvTm, chooseV]];
+      EQMP[HOL`Equal`SYM[unfoldCovers[clampT, ivSet]], allX]
+    ];
+
+    hFin = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[bV, HOL`Bool`SPEC[aV,
+        HOL`Bool`ISPEC[clampT, compactnessPrincipleThm]]], hLe],
+      hUopen], hUcov];
+    openFin = EQMP[unfoldFiniteSubcover[clampT, ivSet], hFin];
+    jsBridge = mkVar["jsBridge", csetSetListTy];
+    hListTm = listSubcoverTm[clampT, ivSet, jsBridge];
+    hList = ASSUME[hListTm];
+    filterJs = csetFilterTmAt[cV, jsBridge];
+    memberAll = csetFilteredMembersInC[cV, jsBridge];
+
+    coverAll = Module[{xList, iBridge, hIvTm, hIv, listBodyOld,
+        listEx, hOldTm, hOld, hMemI, hClampIx, ciTm, hCi, hitEq,
+        ixTh, memFilter, exGoal, exI},
+      xList = mkVar["xBridgeCover", csetRealTy];
+      iBridge = mkVar["iBridge", csetSetTy];
+      hIvTm = csetSetApp[ivSet, xList]; hIv = ASSUME[hIvTm];
+      listBodyOld = EQMP[unfoldListSubcover[clampT, ivSet, jsBridge], hList];
+      listEx = HOL`Bool`MP[HOL`Bool`SPEC[xList, listBodyOld], hIv];
+      hOldTm = csetConjTm[csetMemTmAt[csetSetTy, iBridge, jsBridge],
+        csetSetAppV[mkComb[clampT, iBridge], xList]];
+      hOld = ASSUME[hOldTm];
+      hMemI = HOL`Bool`CONJUNCT1[hOld];
+      hClampIx = HOL`Bool`CONJUNCT2[hOld];
+      ciTm = csetSetMem[cV, iBridge];
+      hCi = HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[ciTm],
+        ASSUME[ciTm],
+        Module[{hNotCiTm, hNotCi, missEq, emptyIx, emptyFalse, falseTh},
+          hNotCiTm = csetNotTm[ciTm]; hNotCi = ASSUME[hNotCiTm];
+          missEq = csetClampMiss[cV, iBridge, hNotCi];
+          emptyIx = EQMP[HOL`Equal`APTHM[missEq, xList], hClampIx];
+          emptyFalse = HOL`Equal`BETACONV[csetSetAppV[csetEmptyRealSet[], xList]];
+          falseTh = EQMP[emptyFalse, emptyIx];
+          HOL`Bool`CONTR[ciTm, falseTh]
+        ]];
+      hitEq = csetClampHit[cV, iBridge, hCi];
+      ixTh = EQMP[HOL`Equal`APTHM[hitEq, xList], hClampIx];
+      memFilter = csetFilterMemIntro[cV, iBridge, jsBridge, hCi, hMemI];
+      exGoal = csetExistsTm[iBridge, csetConjTm[
+        csetMemTmAt[csetSetTy, iBridge, filterJs],
+        csetSetAppV[iBridge, xList]]];
+      exI = HOL`Bool`EXISTS[exGoal, iBridge,
+        HOL`Bool`CONJ[memFilter, ixTh]];
+      HOL`Bool`GEN[xList, HOL`Bool`DISCH[hIvTm,
+        HOL`Bool`CHOOSE[iBridge, listEx, exI]]]
+    ];
+
+    listBody = HOL`Bool`CONJ[memberAll, coverAll];
+    listFolded = EQMP[HOL`Equal`SYM[
+      unfoldSetListSubcover[cV, ivSet, filterJs]], listBody];
+    cleanFinite = unfoldSetFiniteSubcover[cV, ivSet];
+    exFinite = HOL`Bool`EXISTS[concl[cleanFinite][[2]], filterJs, listFolded];
+    result = HOL`Bool`CHOOSE[jsBridge, openFin,
+      EQMP[HOL`Equal`SYM[cleanFinite], exFinite]];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[cV,
+      HOL`Bool`DISCH[hLeTm, HOL`Bool`DISCH[hCopenTm,
+        HOL`Bool`DISCH[hCovTm, result]]]]]]
+  ];
+
+compactOfClosedBoundedThm =
+  Module[{sV, cV, vOpen, xNon, hClosedTm, hClosed, hBddTm, hBdd,
+          hCopenTm, hCopen, hCovTm, hCov, nonemptyTm, emptyBranch,
+          nonemptyBranch, finiteBody, compactBody, folded},
+    sV = mkVar["SCompactProd", csetSetTy];
+    cV = mkVar["CCompactProd", csetSetOfSetsTy];
+    vOpen = mkVar["vOpenCompactProd", csetSetTy];
+    hClosedTm = isClosedTm[sV]; hClosed = ASSUME[hClosedTm];
+    hBddTm = setBoundedTm[sV]; hBdd = ASSUME[hBddTm];
+    hCopenTm = csetForallTm[vOpen,
+      csetImpTm[csetSetMem[cV, vOpen], isOpenTm[vOpen]]];
+    hCopen = ASSUME[hCopenTm];
+    hCovTm = setCoversTm[cV, sV]; hCov = ASSUME[hCovTm];
+    xNon = mkVar["xNonemptyCompact", csetRealTy];
+    nonemptyTm = csetExistsTm[xNon, csetSetApp[sV, xNon]];
+
+    emptyBranch = Module[{hEmptyTm, hEmpty, nilT, memberAll, coverAll,
+        listBody, listFolded, cleanFinite, exFinite},
+      hEmptyTm = csetNotTm[nonemptyTm]; hEmpty = ASSUME[hEmptyTm];
+      nilT = csetNilAt[];
+      memberAll = Module[{vNil, hMemTm, hMem, memNil, falseTh},
+        vNil = mkVar["vNilCompact", csetSetTy];
+        hMemTm = csetMemTmAt[csetSetTy, vNil, nilT]; hMem = ASSUME[hMemTm];
+        memNil = HOL`Bool`ISPEC[vNil, HOL`Stdlib`List`memNilThm];
+        falseTh = EQMP[memNil, hMem];
+        HOL`Bool`GEN[vNil, HOL`Bool`DISCH[hMemTm,
+          HOL`Bool`CONTR[csetSetMem[cV, vNil], falseTh]]]
+      ];
+      coverAll = Module[{xEmpty, vEmpty, hSxTm, hSx, exS, falseTh, exCover},
+        xEmpty = mkVar["xEmptyCompact", csetRealTy];
+        vEmpty = mkVar["vEmptyCompact", csetSetTy];
+        hSxTm = csetSetApp[sV, xEmpty]; hSx = ASSUME[hSxTm];
+        exS = HOL`Bool`EXISTS[nonemptyTm, xEmpty, hSx];
+        falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[hEmpty], exS];
+        exCover = csetExistsTm[vEmpty, csetConjTm[
+          csetMemTmAt[csetSetTy, vEmpty, nilT],
+          csetSetAppV[vEmpty, xEmpty]]];
+        HOL`Bool`GEN[xEmpty, HOL`Bool`DISCH[hSxTm,
+          HOL`Bool`CONTR[exCover, falseTh]]]
+      ];
+      listBody = HOL`Bool`CONJ[memberAll, coverAll];
+      listFolded = EQMP[HOL`Equal`SYM[
+        unfoldSetListSubcover[cV, sV, nilT]], listBody];
+      cleanFinite = unfoldSetFiniteSubcover[cV, sV];
+      exFinite = HOL`Bool`EXISTS[concl[cleanFinite][[2]], nilT, listFolded];
+      EQMP[HOL`Equal`SYM[cleanFinite], exFinite]
+    ];
+
+    nonemptyBranch = Module[{hNonempty, openBound, loW, hiW, xS, hBoundsTm,
+        hBounds, hXSTm, hXS, boundsXS, loLeXS, xsLeHi, loLeHi, ivSet,
+        cPrime, hPrimeOpen, hPrimeCov, primeFinite, openPrimeFin, vsProd,
+        hPrimeListTm, hPrimeList, filterVs, memberAll, coverAll, listBody,
+        listFolded, cleanFinite, exFinite, result, chooseXS, chooseHi,
+        chooseLo},
+      hNonempty = ASSUME[nonemptyTm];
+      openBound = EQMP[unfoldSetBounded[sV], hBdd];
+      loW = mkVar["loCompactProd", csetRealTy];
+      hiW = mkVar["hiCompactProd", csetRealTy];
+      xS = mkVar["xS", csetRealTy];
+      hBoundsTm = csetSetBoundedAll[sV, loW, hiW];
+      hBounds = ASSUME[hBoundsTm];
+      hXSTm = csetSetApp[sV, xS]; hXS = ASSUME[hXSTm];
+      boundsXS = HOL`Bool`MP[HOL`Bool`SPEC[xS, hBounds], hXS];
+      loLeXS = HOL`Bool`CONJUNCT1[boundsXS];
+      xsLeHi = HOL`Bool`CONJUNCT2[boundsXS];
+      loLeHi = HOL`Bool`MP[HOL`Bool`MP[
+        csetSpecAll[realLeTransThm, {loW, xS, hiW}], loLeXS], xsLeHi];
+      ivSet = csetClosedIntervalSet[loW, hiW];
+      cPrime = csetPrimeCover[sV, cV];
+
+      hPrimeOpen = Module[{vPrime, hCpTm, hCp, cpEq, disj, leftTm,
+          rightTm, leftBranch, rightBranch},
+        vPrime = mkVar["vPrimeOpen", csetSetTy];
+        hCpTm = csetSetMem[cPrime, vPrime]; hCp = ASSUME[hCpTm];
+        cpEq = HOL`Equal`BETACONV[mkComb[cPrime, vPrime]];
+        disj = EQMP[cpEq, hCp];
+        leftTm = mkEq[vPrime, complTm[sV]];
+        rightTm = csetSetMem[cV, vPrime];
+        leftBranch = Module[{hEq, openCompl},
+          hEq = ASSUME[leftTm];
+          openCompl = EQMP[csetSpecAll[isClosedComplOpenThm, {sV}], hClosed];
+          EQMP[HOL`Equal`SYM[HOL`Equal`APTERM[isOpenConst[], hEq]], openCompl]
+        ];
+        rightBranch = HOL`Bool`MP[HOL`Bool`SPEC[vPrime, hCopen],
+          ASSUME[rightTm]];
+        HOL`Bool`GEN[vPrime, HOL`Bool`DISCH[hCpTm,
+          HOL`Bool`DISJCASES[disj, leftBranch, rightBranch]]]
+      ];
+
+      hPrimeCov = Module[{xCov, vCov, hIvTm, hIv, sxTm, emS,
+          trueBranch, falseBranch, allX},
+        xCov = mkVar["xPrimeCover", csetRealTy];
+        vCov = mkVar["vPrimeCov", csetSetTy];
+        hIvTm = csetSetApp[ivSet, xCov]; hIv = ASSUME[hIvTm];
+        sxTm = csetSetApp[sV, xCov];
+        trueBranch = Module[{hSx, setCovBody, covEx, hBodyTm, hBody,
+            hCV, hVX, cpEq, cPrimeV, exGoal},
+          hSx = ASSUME[sxTm];
+          setCovBody = EQMP[unfoldSetCovers[cV, sV], hCov];
+          covEx = HOL`Bool`MP[HOL`Bool`SPEC[xCov, setCovBody], hSx];
+          hBodyTm = csetConjTm[csetSetMem[cV, vCov],
+            csetSetAppV[vCov, xCov]];
+          hBody = ASSUME[hBodyTm];
+          hCV = HOL`Bool`CONJUNCT1[hBody];
+          hVX = HOL`Bool`CONJUNCT2[hBody];
+          cpEq = HOL`Equal`BETACONV[mkComb[cPrime, vCov]];
+          cPrimeV = EQMP[HOL`Equal`SYM[cpEq],
+            HOL`Bool`DISJ2[hCV, mkEq[vCov, complTm[sV]]]];
+          exGoal = csetExistsTm[vCov, csetConjTm[
+            csetSetMem[cPrime, vCov], csetSetAppV[vCov, xCov]]];
+          HOL`Bool`CHOOSE[vCov, covEx, HOL`Bool`EXISTS[exGoal, vCov,
+            HOL`Bool`CONJ[cPrimeV, hVX]]]
+        ];
+        falseBranch = Module[{hNotSxTm, hNotSx, complAtX, cpEq, cPrimeCompl,
+            complS, exGoal},
+          hNotSxTm = csetNotTm[sxTm]; hNotSx = ASSUME[hNotSxTm];
+          complS = complTm[sV];
+          complAtX = EQMP[HOL`Equal`SYM[csetSpecAll[complMemThm,
+            {sV, xCov}]], hNotSx];
+          cpEq = HOL`Equal`BETACONV[mkComb[cPrime, complS]];
+          cPrimeCompl = EQMP[HOL`Equal`SYM[cpEq],
+            HOL`Bool`DISJ1[REFL[complS], csetSetMem[cV, complS]]];
+          exGoal = csetExistsTm[vCov, csetConjTm[
+            csetSetMem[cPrime, vCov], csetSetAppV[vCov, xCov]]];
+          HOL`Bool`EXISTS[exGoal, complS,
+            HOL`Bool`CONJ[cPrimeCompl, complAtX]]
+        ];
+        emS = HOL`Bool`EXCLUDEDMIDDLE[sxTm];
+        allX = HOL`Bool`GEN[xCov, HOL`Bool`DISCH[hIvTm,
+          HOL`Bool`DISJCASES[emS, trueBranch, falseBranch]]];
+        EQMP[HOL`Equal`SYM[unfoldSetCovers[cPrime, ivSet]], allX]
+      ];
+
+      primeFinite = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+        csetSpecAll[closedIntervalSetCompactThm, {loW, hiW, cPrime}],
+        loLeHi], hPrimeOpen], hPrimeCov];
+      openPrimeFin = EQMP[unfoldSetFiniteSubcover[cPrime, ivSet], primeFinite];
+      vsProd = mkVar["vsProd", csetSetListTy];
+      hPrimeListTm = setListSubcoverTm[cPrime, ivSet, vsProd];
+      hPrimeList = ASSUME[hPrimeListTm];
+      filterVs = csetFilterTmAt[cV, vsProd];
+      memberAll = csetFilteredMembersInC[cV, vsProd];
+      coverAll = Module[{xCover, vProd, hSxTm, hSx, boundsX, ivX,
+          primeListBody, primeMembers, primeCovers, exPrime, hBodyTm,
+          hBody, hMemV, hVX, cPrimeV, cpEq, disj, leftTm, rightTm,
+          leftBranch, rightBranch, goalEx},
+        xCover = mkVar["xProdCover", csetRealTy];
+        vProd = mkVar["vProd", csetSetTy];
+        hSxTm = csetSetApp[sV, xCover]; hSx = ASSUME[hSxTm];
+        boundsX = HOL`Bool`MP[HOL`Bool`SPEC[xCover, hBounds], hSx];
+        ivX = EQMP[HOL`Equal`SYM[unfoldClosedInterval[loW, hiW, xCover]],
+          boundsX];
+        primeListBody = EQMP[
+          unfoldSetListSubcover[cPrime, ivSet, vsProd], hPrimeList];
+        primeMembers = HOL`Bool`CONJUNCT1[primeListBody];
+        primeCovers = HOL`Bool`CONJUNCT2[primeListBody];
+        exPrime = HOL`Bool`MP[HOL`Bool`SPEC[xCover, primeCovers], ivX];
+        hBodyTm = csetConjTm[csetMemTmAt[csetSetTy, vProd, vsProd],
+          csetSetAppV[vProd, xCover]];
+        hBody = ASSUME[hBodyTm];
+        hMemV = HOL`Bool`CONJUNCT1[hBody];
+        hVX = HOL`Bool`CONJUNCT2[hBody];
+        cPrimeV = HOL`Bool`MP[HOL`Bool`SPEC[vProd, primeMembers], hMemV];
+        cpEq = HOL`Equal`BETACONV[mkComb[cPrime, vProd]];
+        disj = EQMP[cpEq, cPrimeV];
+        leftTm = mkEq[vProd, complTm[sV]];
+        rightTm = csetSetMem[cV, vProd];
+        goalEx = csetExistsTm[vProd, csetConjTm[
+          csetMemTmAt[csetSetTy, vProd, filterVs],
+          csetSetAppV[vProd, xCover]]];
+        leftBranch = Module[{hEq, complVX, notSX, falseTh},
+          hEq = ASSUME[leftTm];
+          complVX = EQMP[HOL`Equal`APTHM[hEq, xCover], hVX];
+          notSX = EQMP[csetSpecAll[complMemThm, {sV, xCover}], complVX];
+          falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[notSX], hSx];
+          HOL`Bool`CONTR[goalEx, falseTh]
+        ];
+        rightBranch = Module[{hCV, memFilter},
+          hCV = ASSUME[rightTm];
+          memFilter = csetFilterMemIntro[cV, vProd, vsProd, hCV, hMemV];
+          HOL`Bool`EXISTS[goalEx, vProd, HOL`Bool`CONJ[memFilter, hVX]]
+        ];
+        HOL`Bool`GEN[xCover, HOL`Bool`DISCH[hSxTm,
+          HOL`Bool`CHOOSE[vProd, exPrime,
+            HOL`Bool`DISJCASES[disj, leftBranch, rightBranch]]]]
+      ];
+      listBody = HOL`Bool`CONJ[memberAll, coverAll];
+      listFolded = EQMP[HOL`Equal`SYM[
+        unfoldSetListSubcover[cV, sV, filterVs]], listBody];
+      cleanFinite = unfoldSetFiniteSubcover[cV, sV];
+      exFinite = HOL`Bool`EXISTS[concl[cleanFinite][[2]], filterVs, listFolded];
+      result = HOL`Bool`CHOOSE[vsProd, openPrimeFin,
+        EQMP[HOL`Equal`SYM[cleanFinite], exFinite]];
+      chooseXS = HOL`Bool`CHOOSE[xS, hNonempty, result];
+      chooseHi = HOL`Bool`CHOOSE[hiW,
+        ASSUME[csetExistsTm[hiW, hBoundsTm]], chooseXS];
+      chooseLo = HOL`Bool`CHOOSE[loW, openBound, chooseHi];
+      chooseLo
+    ];
+
+    finiteBody = HOL`Bool`DISJCASES[HOL`Bool`EXCLUDEDMIDDLE[nonemptyTm],
+      nonemptyBranch, emptyBranch];
+    compactBody = HOL`Bool`GEN[cV, HOL`Bool`DISCH[hCopenTm,
+      HOL`Bool`DISCH[hCovTm, finiteBody]]];
+    folded = EQMP[HOL`Equal`SYM[unfoldIsCompact[sV]], compactBody];
+    HOL`Bool`GEN[sV, HOL`Bool`DISCH[hClosedTm,
+      HOL`Bool`DISCH[hBddTm, folded]]]
   ];
 
 End[];
