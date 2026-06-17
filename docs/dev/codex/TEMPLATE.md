@@ -1,10 +1,10 @@
 # Codex Task Brief Template (mma-hol)
 
-Copy this template to `codex/brief-NNN-<slug>.md`, fill every section, then run:
+Copy this template to `docs/dev/codex/brief-NNN-<slug>.md`, fill every section, then run:
 
 ```
 cdx exec -C /Users/fft/Developments/mma-hol -s danger-full-access \
-  "Read codex/brief-NNN-<slug>.md and execute it exactly. Follow its Hard rules." \
+  "Read docs/dev/codex/brief-NNN-<slug>.md and execute it exactly. Follow its Hard rules." \
   > /tmp/cdx_brief_NNN.log 2>&1
 ```
 
