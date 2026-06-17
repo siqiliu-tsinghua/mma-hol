@@ -51,7 +51,8 @@ stdlib/      — Pair, Sum, Option, Set, Num, Int, Rat, List, Finite, FTA
 stdlib/Real/ — M7 ℝ construction (Cut/RatAux/Field/Mul/Inv/Complete/Abs/MinMax)
                + M8 Seq/SeqAux/Compact/Connected/Topology/CompactSet  [stdlib — COMPLETE]
 tests/       — runners (run_all / run_all_stable / build_snapshot / dev / run_fast) + *_tests.wl
-docs/dev/    — PLAN.md (design doc) · PROGRESS.md (per-stage history) · TODO.md (closed audit) · codex/ (delegation briefs)
+demos/       — examples.nb (double-click runnable) + build_examples_nb.wls (its generator)
+docs/        — USER_GUIDE.md (public) · dev/ (PLAN.md design doc · PROGRESS.md history · TODO.md closed audit · codex/ briefs)
 ```
 
 ## Milestones (`docs/dev/PLAN.md` §7 has the detail)

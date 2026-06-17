@@ -1,0 +1,176 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 14.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[      7443,        167]
+NotebookOptionsPosition[      5014,        131]
+NotebookOutlinePosition[      5367,        146]
+CellTagsIndexPosition[      5324,        143]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+Cell["mma-hol \[Dash] Runnable Examples", "Title",ExpressionUUID->"f5bf0ce3-a704-480d-bdb8-178e279edb74"],
+
+Cell[TextData[{
+ "An LCF-style HOL theorem prover in the Wolfram Language. Evaluate the ",
+ "cells top to bottom with Shift+Enter. The first cell loads the prebuilt ",
+ "snapshot (",
+ Cell[BoxData[
+  RowBox[{"bootstrap", ".", "mx"}]],ExpressionUUID->
+  "3c73a8ea-15ed-47b3-99e3-a1fad52908c3"],
+ "); if it is missing, run ",
+ Cell[BoxData[
+  RowBox[{"wolframscript", " ", "-", 
+   RowBox[{"file", " ", 
+    RowBox[{"tests", "/", 
+     RowBox[{"build_snapshot", ".", "wls"}]}]}]}]],ExpressionUUID->
+  "f1c28235-13aa-4578-9991-a6fcaedf8d59"],
+ " in the repo root first."
+}], "Text",ExpressionUUID->"4969b4ac-0c82-45b0-bad0-a280efdcf4b9"],
+
+Cell["Setup", "Section",ExpressionUUID->"8ed0fb17-fcf9-4c78-b971-cb019607ef1f"],
+
+Cell["Load the kernel + the full standard library:", "Text",ExpressionUUID->"c6e3baba-4bc6-40b6-980f-8ba0c8c9e241"],
+
+Cell["\<\
+(* Load the library: Stable mode + restore the prebuilt snapshot. *)
+root = ParentDirectory[NotebookDirectory[]];
+Global`$HOLEncapsulationMode = \"Stable\";
+Get[FileNameJoin[{root, \"bootstrap.mx\"}]];
+$ContextPath = Join[
+  Select[Contexts[], StringMatchQ[#, \"HOL`*\"] && ! StringContainsQ[#, \
+\"Private`\"] &],
+  $ContextPath];\
+\>", "Input",ExpressionUUID->"f2ecdbd8-c753-4466-a299-84e19e1e899f"],
+
+Cell["1. The trusted kernel", "Section",ExpressionUUID->"6fea07d0-4144-4581-b123-4fb70808b274"],
+
+Cell["\<\
+Every value of theorem type is built by the 10 primitive rules. formatThm \
+renders a theorem as \[RightTee] p.\
+\>", "Text",ExpressionUUID->"0a72d8da-9318-447d-a6dd-d9101faf649c"],
+
+Cell["formatThm[TRUTH]", "Input",ExpressionUUID->"121865d4-cede-440d-81fa-4d7661ffd872"],
+
+Cell["2. Propositional automation", "Section",ExpressionUUID->"bb075049-b8df-4e8a-864b-f8ce2ef65173"],
+
+Cell["\<\
+propTaut decides propositional tautologies and returns a kernel-checked \
+theorem. parseTerm reads HOL syntax (==> implication, \\/ or, ~ not).\
+\>", "Text",ExpressionUUID->"a3c6a52d-2620-4f92-8472-e30cd54688ae"],
+
+Cell["formatThm[propTaut[parseTerm[\"p ==> p\"]]]", "Input",ExpressionUUID->"b53c3d00-1635-4b0b-a138-41b6d606e324"],
+
+Cell["formatThm[propTaut[parseTerm[\"p \\\\/ ~p\"]]]", "Input",ExpressionUUID->"2e24181d-073c-4f27-936e-ad4dd622c478"],
+
+Cell["3. Proving with tactics", "Section",ExpressionUUID->"55072fee-f830-4ffb-b193-8fb13fe329e3"],
+
+Cell["\<\
+prove[goal, tactic] runs a tactic against a goal and returns the discharged \
+theorem.\
+\>", "Text",ExpressionUUID->"4cf9379a-1f5c-4db2-8c6e-fa78312317e5"],
+
+Cell["formatThm[prove[parseTerm[\"T\"], acceptTac[TRUTH]]]", "Input",ExpressionUUID->"5e924b5d-fdf1-432f-a166-a39b797da587"],
+
+Cell["4. The standard library: marquee theorems", "Section",ExpressionUUID->"84cb7af8-2b45-4683-ad9a-5333cd207853"],
+
+Cell["\<\
+The real numbers are built from Dedekind cuts; these are the proven capstones \
+of stdlib/Real/ (all 0-sorry, rechecked by the kernel).\
+\>", "Text",ExpressionUUID->"8f053778-7f07-427b-93cf-ccf493105f3b"],
+
+Cell["\<\
+(* Dedekind completeness: every nonempty bounded-above set has a least upper \
+bound *)
+formatThm[HOL`Stdlib`Real`dedekindCompleteThm]\
+\>", "Input",ExpressionUUID->"bb06566c-0534-40f4-b6fc-8854f83df4f9"],
+
+Cell["\<\
+(* Bolzano-Weierstrass *)
+formatThm[HOL`Stdlib`Real`bwSequentialThm]\
+\>", "Input",ExpressionUUID->"fb135c3f-8507-44df-b221-6a0b595b0934"],
+
+Cell["\<\
+(* Heine-Borel for a closed interval *)
+formatThm[HOL`Stdlib`Real`compactnessPrincipleThm]\
+\>", "Input",ExpressionUUID->"9c8d46b2-26af-43a3-8ca4-f96d97354dce"],
+
+Cell["\<\
+(* compact <=> sequentially compact (general real sets) *)
+formatThm[HOL`Stdlib`Real`compactIffSequentialCompactThm]\
+\>", "Input",ExpressionUUID->"2dd2e3c7-bc51-4f2a-acab-bc1dab2b69af"],
+
+Cell["\<\
+(* connected <=> interval *)
+formatThm[HOL`Stdlib`Real`connectedIffIntervalSetThm]\
+\>", "Input",ExpressionUUID->"859f6da1-e6e8-405f-a791-0e9444ab68bb"],
+
+Cell["Next steps", "Section",ExpressionUUID->"a885f0c8-666e-4ae7-af56-c5abcbdd6089"],
+
+Cell[TextData[{
+ "See ",
+ Cell[BoxData[
+  RowBox[{"README", ".", "md"}]],ExpressionUUID->
+  "ac630f3f-595f-42bb-ae8a-1d57fde16872"],
+ " for the project overview and ",
+ Cell[BoxData[
+  RowBox[{"docs", "/", 
+   RowBox[{"USER_GUIDE", ".", "md"}]}]],ExpressionUUID->
+  "70b774d9-b924-4641-9521-53643ea3427d"],
+ " for the API and how to develop your own proofs."
+}], "Text",ExpressionUUID->"5247948c-99b1-4a54-b30c-86a32e59907f"]
+},
+WindowSize->{800, 700},
+FrontEndVersion->"14.3 for Mac OS X x86 (64-bit) (2025\:5e747\:67088\:65e5)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"f1efc12f-0940-4a18-b07e-d48b1d776ee3"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[554, 20, 105, 0, 70, "Title",ExpressionUUID->"f5bf0ce3-a704-480d-bdb8-178e279edb74"],
+Cell[662, 22, 634, 15, 70, "Text",ExpressionUUID->"4969b4ac-0c82-45b0-bad0-a280efdcf4b9"],
+Cell[1299, 39, 79, 0, 70, "Section",ExpressionUUID->"8ed0fb17-fcf9-4c78-b971-cb019607ef1f"],
+Cell[1381, 41, 115, 0, 70, "Text",ExpressionUUID->"c6e3baba-4bc6-40b6-980f-8ba0c8c9e241"],
+Cell[1499, 43, 411, 9, 70, "Input",ExpressionUUID->"f2ecdbd8-c753-4466-a299-84e19e1e899f"],
+Cell[1913, 54, 95, 0, 70, "Section",ExpressionUUID->"6fea07d0-4144-4581-b123-4fb70808b274"],
+Cell[2011, 56, 190, 3, 70, "Text",ExpressionUUID->"0a72d8da-9318-447d-a6dd-d9101faf649c"],
+Cell[2204, 61, 88, 0, 70, "Input",ExpressionUUID->"121865d4-cede-440d-81fa-4d7661ffd872"],
+Cell[2295, 63, 101, 0, 70, "Section",ExpressionUUID->"bb075049-b8df-4e8a-864b-f8ce2ef65173"],
+Cell[2399, 65, 222, 3, 70, "Text",ExpressionUUID->"a3c6a52d-2620-4f92-8472-e30cd54688ae"],
+Cell[2624, 70, 115, 0, 70, "Input",ExpressionUUID->"b53c3d00-1635-4b0b-a138-41b6d606e324"],
+Cell[2742, 72, 118, 0, 70, "Input",ExpressionUUID->"2e24181d-073c-4f27-936e-ad4dd622c478"],
+Cell[2863, 74, 97, 0, 70, "Section",ExpressionUUID->"55072fee-f830-4ffb-b193-8fb13fe329e3"],
+Cell[2963, 76, 165, 3, 70, "Text",ExpressionUUID->"4cf9379a-1f5c-4db2-8c6e-fa78312317e5"],
+Cell[3131, 81, 124, 0, 70, "Input",ExpressionUUID->"5e924b5d-fdf1-432f-a166-a39b797da587"],
+Cell[3258, 83, 115, 0, 70, "Section",ExpressionUUID->"84cb7af8-2b45-4683-ad9a-5333cd207853"],
+Cell[3376, 85, 214, 3, 70, "Text",ExpressionUUID->"8f053778-7f07-427b-93cf-ccf493105f3b"],
+Cell[3593, 90, 214, 4, 70, "Input",ExpressionUUID->"bb06566c-0534-40f4-b6fc-8854f83df4f9"],
+Cell[3810, 96, 148, 3, 70, "Input",ExpressionUUID->"fb135c3f-8507-44df-b221-6a0b595b0934"],
+Cell[3961, 101, 170, 3, 70, "Input",ExpressionUUID->"9c8d46b2-26af-43a3-8ca4-f96d97354dce"],
+Cell[4134, 106, 196, 3, 70, "Input",ExpressionUUID->"2dd2e3c7-bc51-4f2a-acab-bc1dab2b69af"],
+Cell[4333, 111, 162, 3, 70, "Input",ExpressionUUID->"859f6da1-e6e8-405f-a791-0e9444ab68bb"],
+Cell[4498, 116, 84, 0, 70, "Section",ExpressionUUID->"a885f0c8-666e-4ae7-af56-c5abcbdd6089"],
+Cell[4585, 118, 425, 11, 70, "Text",ExpressionUUID->"5247948c-99b1-4a54-b30c-86a32e59907f"]
+}
+]
+*)
+
+(* End of internal cache information *)
