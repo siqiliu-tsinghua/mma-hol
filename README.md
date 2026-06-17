@@ -6,8 +6,8 @@ A kernel-minimal, **LCF-style higher-order logic theorem prover written in the W
 Language**, modeled on [HOL Light](https://github.com/jrh13/hol-light). Its standard library
 builds the real numbers from Dedekind cuts and proves a spine of classical real-analysis
 theorems — monotone convergence, Cauchy completeness, Bolzano–Weierstrass, Heine–Borel, and
-the intermediate value theorem — entirely from a 10-rule trusted kernel, with **zero
-`sorry`/axioms beyond the three standard HOL axioms**.
+the connectedness characterization of intervals — entirely from a 10-rule trusted kernel,
+with **zero `sorry`/axioms beyond the three standard HOL axioms**.
 
 Status: **complete** — the full suite passes `3126/0` (cold, in both encapsulation modes).
 
@@ -103,7 +103,10 @@ countability machinery):
   **Heine–Borel** (via "the set of partially-coverable points has a supremum = the right
   endpoint"); and, for general real sets, the open-cover predicate `isCompact` with the full
   equivalence **`isCompact ⟺ isClosed ∧ setBounded ⟺ isSequentiallyCompact`**.
-- **Connectedness** (`Connected`): **connected ⟺ interval**, and the intermediate value theorem.
+- **Connectedness** (`Connected`): **connected ⟺ interval** — the order-topological heart of
+  the intermediate value theorem. (The library stops at point-set topology: there is no
+  continuous-function layer, so the *function-form* IVT, `f(a)<0<f(b) ⇒ ∃c. f(c)=0`, is out
+  of scope.)
 - **Topology** (`Topology`): open/closed sets, complements, relative (subspace) closedness.
 
 Interested readers can follow these routes directly in the source — each file is one

@@ -5,7 +5,7 @@
 一个**用 Wolfram 语言编写的、内核极小的 LCF 式高阶逻辑（HOL）定理证明器**，以
 [HOL Light](https://github.com/jrh13/hol-light) 为蓝本。它的标准库从 Dedekind 割构造实数，
 并完全基于一个 10 条规则的可信内核证明了一批经典实分析定理——单调收敛、Cauchy 完备性、
-Bolzano–Weierstrass、Heine–Borel、介值定理——除三条标准 HOL 公理外**零 `sorry`、零额外公理**。
+Bolzano–Weierstrass、Heine–Borel、区间的连通性刻画——除三条标准 HOL 公理外**零 `sorry`、零额外公理**。
 
 状态：**已完成**——完整测试套件冷启动通过 `3126/0`（两种封装模式下均通过）。
 
@@ -84,7 +84,8 @@ WL-`Module` 信任边界就有了一项明确的职责，"它成功了吗"也就
 - **紧性**（`Compact`、`CompactSet`）：**Bolzano–Weierstrass**；闭区间 **Heine–Borel**
   （经"可被部分覆盖的点集有确界 = 右端点"）；以及对一般实集的开覆盖谓词 `isCompact`，
   含完整等价 **`isCompact ⟺ isClosed ∧ setBounded ⟺ isSequentiallyCompact`**。
-- **连通性**（`Connected`）：**连通 ⟺ 区间**，以及介值定理。
+- **连通性**（`Connected`）：**连通 ⟺ 区间**——介值定理的序-拓扑内核。（本库止于点集拓扑，
+  没有连续函数层，所以**函数形式**的介值定理 `f(a)<0<f(b) ⇒ ∃c. f(c)=0` 不在范围内。）
 - **拓扑**（`Topology`）：开/闭集、补集、相对（子空间）闭。
 
 感兴趣的读者可直接在源码里追这些路线——每个文件是一个按依赖排序的定义/引理闭包，导出显式。

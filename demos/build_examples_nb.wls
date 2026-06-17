@@ -58,6 +58,45 @@ formatThm[HOL`Stdlib`Real`compactIffSequentialCompactThm]", "Input"],
   Cell["(* connected <=> interval *)\n\
 formatThm[HOL`Stdlib`Real`connectedIffIntervalSetThm]", "Input"],
 
+  Cell["5. A proof from scratch, checked live", "Section"],
+  Cell["The cells above only displayed finished theorems. Here we BUILD one: prove \
+sets a goal, a tactic discharges it, and the kernel rechecks every step. We prove \
+p /\\ q ==> q /\\ p (note the swap).", "Text"],
+  Cell["goalA = parseTerm[\"p /\\\\ q ==> q /\\\\ p\"];\n\
+thmA = prove[goalA,\n\
+  THEN[dischTac,\n\
+    THENL[conjTac, {\n\
+      acceptTac[CONJUNCT2[ASSUME[goalA[[1, 2]]]]],\n\
+      acceptTac[CONJUNCT1[ASSUME[goalA[[1, 2]]]]]}]]];\n\
+formatThm[thmA]", "Input"],
+
+  Cell["6. Real analysis, proved automatically", "Section"],
+  Cell["realArithProve decides linear real arithmetic and emits a Farkas certificate the \
+kernel replays. A few builders state the goal as a HOL term (we lift the forall/imp \
+constants out of parseTerm to avoid typing Unicode), then the prover proves the midpoint \
+inequality  a < b ==> a < (a+b)/2  by itself.", "Text"],
+  Cell["realTy = mkType[\"real\", {}];\n\
+forallName = parseTerm[\"!z. z\"][[1, 1]];\n\
+impName = parseTerm[\"a ==> b\"][[1, 1, 1]];\n\
+all[v_, body_] := mkComb[mkConst[forallName, tyFun[tyFun[typeOf[v], boolTy], boolTy]], mkAbs[v, body]];\n\
+imp[p_, q_] := mkComb[mkComb[mkConst[impName, tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];\n\
+nat[n_] := Nest[mkComb[HOL`Stdlib`Num`sucConst[], #] &, HOL`Stdlib`Num`zeroConst[], n];\n\
+rnum[n_] := mkComb[HOL`Stdlib`Real`realOfRatConst[], mkComb[HOL`Stdlib`Rat`ratOfIntConst[], mkComb[HOL`Stdlib`Int`intOfNumConst[], nat[n]]]];\n\
+rLt[u_, v_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], u], v];\n\
+rAdd[u_, v_] := mkComb[mkComb[HOL`Stdlib`Real`realAddConst[], u], v];\n\
+rMul[u_, v_] := mkComb[mkComb[HOL`Stdlib`Real`realMulConst[], u], v];\n\
+rInv[u_] := mkComb[HOL`Stdlib`Real`realInvConst[], u];\n\
+a = mkVar[\"a\", realTy]; b = mkVar[\"b\", realTy];\n\
+midpoint = all[a, all[b, imp[rLt[a, b], rLt[a, rMul[rAdd[a, b], rInv[rnum[2]]]]]]];\n\
+formatThm[HOL`Auto`RealArith`realArithProve[midpoint]]", "Input"],
+
+  Cell["7. \[Dash] and the kernel will not be fooled", "Section"],
+  Cell["The same prover refuses a false statement. Asked to prove  forall x y. x < y  it \
+throws rather than return a theorem: that is the LCF trust boundary in action.", "Text"],
+  Cell["x = mkVar[\"x\", realTy]; y = mkVar[\"y\", realTy];\n\
+Catch[HOL`Auto`RealArith`realArithProve[all[x, all[y, rLt[x, y]]]], _,\n\
+  Function[{v, t}, \"refused: the prover threw rather than return a theorem\"]]", "Input"],
+
   Cell["Next steps", "Section"],
   Cell[TextData[{
      "See ", Cell[BoxData["README.md"]], " for the project overview and ",

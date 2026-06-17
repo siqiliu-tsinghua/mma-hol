@@ -537,7 +537,7 @@ EndPackage[];
 - [x] **`compactIffSequentialCompactThm`**(与 `sequentialCompactIffClosedBounded` 传递得;brief-038 尾,Claude 直接做)。**HEINE–BOREL: isCompact ⟺ isClosed ∧ setBounded ⟺ isSequentiallyCompact 全部证出。**
 
 **M8 capstone（一组够得着的经典定理，取代旧的遥远 Lebesgue 判据）：**
-- 单调有界收敛定理 ✅ · **柯西完备性** ✅ · **Bolzano–Weierstrass** ✅ · **Heine–Borel**（闭区间 `compactnessPrincipleThm` ✅ + 开覆盖 `isCompact` ✅）· 连通性 / 介值定理 ✅（M8.3）· **列紧 ⟺ 有界闭 ⟺ 紧** ✅（M8.5/M8.6,终点站）—— **全部证出 2026-06-17**
+- 单调有界收敛定理 ✅ · **柯西完备性** ✅ · **Bolzano–Weierstrass** ✅ · **Heine–Borel**（闭区间 `compactnessPrincipleThm` ✅ + 开覆盖 `isCompact` ✅）· 连通性（连通 ⟺ 区间,IVT 的序-拓扑内核;无连续函数层,故无函数版 IVT）✅（M8.3）· **列紧 ⟺ 有界闭 ⟺ 紧** ✅（M8.5/M8.6,终点站）—— **全部证出 2026-06-17**
 - （勒贝格数引理已移出范围 2026-06-16 —— 见分支 B）
 
 **验收 + 收官 ✅ 2026-06-17**：`Connected.wl`/`Topology.wl`/`CompactSet.wl` 已 graduate 进 `bootstrap.mx`（commit b21fb63，冷重建 1432 KB，无 frontier 文件残留），cold Strict run_all + cold Stable run_all_stable 双 3124/0。**stdlib（M8 ℝ 理论）完成。** 发布到 GitHub 待 owner 推送（当前无远程仓库）。
