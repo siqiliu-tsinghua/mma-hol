@@ -44,6 +44,25 @@ nearClosedPointIntervalThm::usage = "nearClosedPointIntervalThm - |- forall S x.
 nearClosedPointTendstoThm::usage = "nearClosedPointTendstoThm - |- forall S x. ~(exists a b. realLt a x /\\ realLt x b /\\ forall y. openInterval a b y ==> compl S y) ==> tendsto (nearClosedPoint S x) x.";
 closedOfSequentiallyCompactThm::usage = "closedOfSequentiallyCompactThm - |- forall S. isSequentiallyCompact S ==> isClosed S.";
 sequentialCompactIffClosedBoundedThm::usage = "sequentialCompactIffClosedBoundedThm - |- forall S. isSequentiallyCompact S = (isClosed S /\\ setBounded S).";
+setCoversDefThm::usage = "setCoversDefThm - |- setCovers = (lambda C S. forall x. S x ==> exists V. C V /\\ V x).";
+setCoversConst::usage = "setCoversConst[] - setCovers : ((real -> bool) -> bool) -> (real -> bool) -> bool.";
+setCoversTm::usage = "setCoversTm[C, S] - builds setCovers C S.";
+unfoldSetCovers::usage = "unfoldSetCovers[C, S] - proves the beta-reduced setCovers definition at C and S.";
+setListSubcoverDefThm::usage = "setListSubcoverDefThm - |- setListSubcover = (lambda C S Vs. (forall V. MEM V Vs ==> C V) /\\ forall x. S x ==> exists V. MEM V Vs /\\ V x).";
+setListSubcoverConst::usage = "setListSubcoverConst[] - setListSubcover : ((real -> bool) -> bool) -> (real -> bool) -> (real -> bool) list -> bool.";
+setListSubcoverTm::usage = "setListSubcoverTm[C, S, Vs] - builds setListSubcover C S Vs.";
+unfoldSetListSubcover::usage = "unfoldSetListSubcover[C, S, Vs] - proves the beta-reduced setListSubcover definition at C, S, and Vs.";
+setFiniteSubcoverDefThm::usage = "setFiniteSubcoverDefThm - |- setFiniteSubcover = (lambda C S. exists Vs. setListSubcover C S Vs).";
+setFiniteSubcoverConst::usage = "setFiniteSubcoverConst[] - setFiniteSubcover : ((real -> bool) -> bool) -> (real -> bool) -> bool.";
+setFiniteSubcoverTm::usage = "setFiniteSubcoverTm[C, S] - builds setFiniteSubcover C S.";
+unfoldSetFiniteSubcover::usage = "unfoldSetFiniteSubcover[C, S] - proves the beta-reduced setFiniteSubcover definition at C and S.";
+isCompactDefThm::usage = "isCompactDefThm - |- isCompact = (lambda S. forall C. (forall V. C V ==> isOpen V) ==> setCovers C S ==> setFiniteSubcover C S).";
+isCompactConst::usage = "isCompactConst[] - isCompact : (real -> bool) -> bool.";
+isCompactTm::usage = "isCompactTm[S] - builds isCompact S.";
+unfoldIsCompact::usage = "unfoldIsCompact[S] - proves the beta-reduced isCompact definition at S.";
+isOpenEmptyThm::usage = "isOpenEmptyThm - |- isOpen (lambda x. F).";
+openIntervalIsOpenThm::usage = "openIntervalIsOpenThm - |- forall l r. isOpen (openInterval l r).";
+memFilterThm::usage = "memFilterThm - |- forall p x l. MEM x (FILTER p l) = (p x /\\ MEM x l) (at element type real->bool).";
 
 Begin["`Private`"];
 
@@ -52,7 +71,13 @@ csetNumTy = mkType["num", {}];
 csetSeqTy = tyFun[csetNumTy, csetRealTy];
 csetNumFunTy = tyFun[csetNumTy, csetNumTy];
 csetSetTy = tyFun[csetRealTy, boolTy];
+csetSetOfSetsTy = tyFun[csetSetTy, boolTy];
+csetSetListTy = HOL`Stdlib`List`listTy[csetSetTy];
 isSequentiallyCompactTy = tyFun[csetSetTy, boolTy];
+setCoversTy = tyFun[csetSetOfSetsTy, tyFun[csetSetTy, boolTy]];
+setListSubcoverTy = tyFun[csetSetOfSetsTy,
+  tyFun[csetSetTy, tyFun[csetSetListTy, boolTy]]];
+isCompactTy = tyFun[csetSetTy, boolTy];
 
 csetAndConst[] := mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]];
 csetImpConst[] := mkConst["⇒", tyFun[boolTy, tyFun[boolTy, boolTy]]];
@@ -64,6 +89,8 @@ csetExistsTm[vT_, bodyT_] :=
   mkComb[mkConst["∃", tyFun[tyFun[typeOf[vT], boolTy], boolTy]], mkAbs[vT, bodyT]];
 
 csetSetApp[sT_, xT_] := mkComb[sT, xT];
+csetSetMem[cT_, vT_] := mkComb[cT, vT];
+csetSetAppV[vT_, xT_] := mkComb[vT, xT];
 csetSeqApp[uT_, nT_] := mkComb[uT, nT];
 csetRealLe[aT_, bT_] := mkComb[mkComb[realLeConst[], aT], bT];
 
@@ -1060,6 +1087,249 @@ sequentialCompactIffClosedBoundedThm =
       HOL`Bool`CONJUNCT1[hCB]], HOL`Bool`CONJUNCT2[hCB]];
     eqTh = HOL`Kernel`DEDUCTANTISYM[scFromCB, closedBoundedFromSC];
     HOL`Bool`GEN[sV, eqTh]
+  ];
+
+csetFalseTm[] := mkConst["F", boolTy];
+csetEmptyRealSet[] := Module[{xV},
+  xV = mkVar["xEmptyCset", csetRealTy];
+  mkAbs[xV, csetFalseTm[]]
+  ];
+csetOpenIntervalSet[aT_, bT_] := mkComb[mkComb[openIntervalConst[], aT], bT];
+csetMemConstAt[ty_] := mkConst["MEM",
+  tyFun[ty, tyFun[HOL`Stdlib`List`listTy[ty], boolTy]]];
+csetMemTmAt[ty_, xT_, xsT_] := mkComb[mkComb[csetMemConstAt[ty], xT], xsT];
+
+csetOpenWitnessBody[uT_, xT_, leftT_, rightT_] :=
+  Module[{yV},
+    yV = mkVar["yOpenCset", csetRealTy];
+    csetConjTm[csetRealLt[leftT, xT],
+      csetConjTm[csetRealLt[xT, rightT],
+        csetForallTm[yV, csetImpTm[openIntervalTm[leftT, rightT, yV],
+          csetSetApp[uT, yV]]]]]
+  ];
+csetIsOpenExists[uT_, xT_] :=
+  Module[{leftV, rightV},
+    leftV = mkVar["leftOpenCset", csetRealTy];
+    rightV = mkVar["rightOpenCset", csetRealTy];
+    csetExistsTm[leftV, csetExistsTm[rightV,
+      csetOpenWitnessBody[uT, xT, leftV, rightV]]]
+  ];
+
+csetSetCoversBody[cT_, sT_] :=
+  Module[{xV, vV},
+    xV = mkVar["xSc", csetRealTy]; vV = mkVar["vSc", csetSetTy];
+    csetForallTm[xV, csetImpTm[csetSetApp[sT, xV],
+      csetExistsTm[vV, csetConjTm[csetSetMem[cT, vV],
+        csetSetAppV[vV, xV]]]]]
+  ];
+csetSetListSubcoverBody[cT_, sT_, vsT_] :=
+  Module[{vV, xV, memV},
+    vV = mkVar["vSl", csetSetTy]; xV = mkVar["xSl", csetRealTy];
+    memV = csetMemTmAt[csetSetTy, vV, vsT];
+    csetConjTm[
+      csetForallTm[vV, csetImpTm[memV, csetSetMem[cT, vV]]],
+      csetForallTm[xV, csetImpTm[csetSetApp[sT, xV],
+        csetExistsTm[vV, csetConjTm[csetMemTmAt[csetSetTy, vV, vsT],
+          csetSetAppV[vV, xV]]]]]]
+  ];
+csetSetFiniteSubcoverBody[cT_, sT_] :=
+  Module[{vsV},
+    vsV = mkVar["vsSf", csetSetListTy];
+    csetExistsTm[vsV, setListSubcoverTm[cT, sT, vsV]]
+  ];
+csetIsCompactBody[sT_] :=
+  Module[{cV, vV},
+    cV = mkVar["CCompact", csetSetOfSetsTy];
+    vV = mkVar["vCompact", csetSetTy];
+    csetForallTm[cV,
+      csetImpTm[csetForallTm[vV,
+          csetImpTm[csetSetMem[cV, vV], isOpenTm[vV]]],
+        csetImpTm[setCoversTm[cV, sT], setFiniteSubcoverTm[cV, sT]]]]
+  ];
+
+setCoversDefThm =
+  Module[{cV, sV},
+    cV = mkVar["C", csetSetOfSetsTy]; sV = mkVar["S", csetSetTy];
+    newDefinition[mkEq[mkVar["setCovers", setCoversTy],
+      mkAbs[cV, mkAbs[sV, csetSetCoversBody[cV, sV]]]]]
+  ];
+setCoversConst[] := mkConst["setCovers", setCoversTy];
+setCoversTm[cT_, sT_] := mkComb[mkComb[setCoversConst[], cT], sT];
+unfoldSetCovers[cT_, sT_] := csetApplyDef[setCoversDefThm, {cT, sT}];
+
+setListSubcoverDefThm =
+  Module[{cV, sV, vsV},
+    cV = mkVar["C", csetSetOfSetsTy]; sV = mkVar["S", csetSetTy];
+    vsV = mkVar["Vs", csetSetListTy];
+    newDefinition[mkEq[mkVar["setListSubcover", setListSubcoverTy],
+      mkAbs[cV, mkAbs[sV, mkAbs[vsV,
+        csetSetListSubcoverBody[cV, sV, vsV]]]]]]
+  ];
+setListSubcoverConst[] := mkConst["setListSubcover", setListSubcoverTy];
+setListSubcoverTm[cT_, sT_, vsT_] :=
+  mkComb[mkComb[mkComb[setListSubcoverConst[], cT], sT], vsT];
+unfoldSetListSubcover[cT_, sT_, vsT_] :=
+  csetApplyDef[setListSubcoverDefThm, {cT, sT, vsT}];
+
+setFiniteSubcoverDefThm =
+  Module[{cV, sV},
+    cV = mkVar["C", csetSetOfSetsTy]; sV = mkVar["S", csetSetTy];
+    newDefinition[mkEq[mkVar["setFiniteSubcover", setCoversTy],
+      mkAbs[cV, mkAbs[sV, csetSetFiniteSubcoverBody[cV, sV]]]]]
+  ];
+setFiniteSubcoverConst[] := mkConst["setFiniteSubcover", setCoversTy];
+setFiniteSubcoverTm[cT_, sT_] :=
+  mkComb[mkComb[setFiniteSubcoverConst[], cT], sT];
+unfoldSetFiniteSubcover[cT_, sT_] :=
+  csetApplyDef[setFiniteSubcoverDefThm, {cT, sT}];
+
+isCompactDefThm =
+  Module[{sV},
+    sV = mkVar["S", csetSetTy];
+    newDefinition[mkEq[mkVar["isCompact", isCompactTy],
+      mkAbs[sV, csetIsCompactBody[sV]]]]
+  ];
+isCompactConst[] := mkConst["isCompact", isCompactTy];
+isCompactTm[sT_] := mkComb[isCompactConst[], sT];
+unfoldIsCompact[sT_] := csetApplyDef[isCompactDefThm, {sT}];
+
+isOpenEmptyThm =
+  Module[{emptySet, xV, point, allX},
+    emptySet = csetEmptyRealSet[];
+    xV = mkVar["xEmptyOpen", csetRealTy];
+    point = csetBetaClean[HOL`Auto`PropTaut`propTaut[
+      csetImpTm[csetFalseTm[], csetIsOpenExists[emptySet, xV]]]];
+    allX = HOL`Bool`GEN[xV, point];
+    EQMP[HOL`Equal`SYM[csetBetaClean[unfoldIsOpen[emptySet]]], allX]
+  ];
+
+openIntervalIsOpenThm =
+  Module[{lV, rV, xV, yV, openSet, hXTm, hX, openedX, inner,
+          body, exRight, exLeft, allX, folded},
+    lV = mkVar["l", csetRealTy]; rV = mkVar["r", csetRealTy];
+    xV = mkVar["xOpenInterval", csetRealTy];
+    yV = mkVar["yOpenCset", csetRealTy];
+    openSet = csetOpenIntervalSet[lV, rV];
+    hXTm = openIntervalTm[lV, rV, xV]; hX = ASSUME[hXTm];
+    openedX = EQMP[unfoldOpenInterval[lV, rV, xV], hX];
+    inner = HOL`Bool`GEN[yV, HOL`Bool`DISCH[openIntervalTm[lV, rV, yV],
+      ASSUME[openIntervalTm[lV, rV, yV]]]];
+    body = HOL`Bool`CONJ[HOL`Bool`CONJUNCT1[openedX],
+      HOL`Bool`CONJ[HOL`Bool`CONJUNCT2[openedX], inner]];
+    exRight = HOL`Bool`EXISTS[
+      csetExistsTm[mkVar["rightOpenCset", csetRealTy],
+        csetOpenWitnessBody[openSet, xV, lV,
+          mkVar["rightOpenCset", csetRealTy]]], rV, body];
+    exLeft = HOL`Bool`EXISTS[csetIsOpenExists[openSet, xV], lV, exRight];
+    allX = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hXTm, exLeft]];
+    folded = EQMP[HOL`Equal`SYM[unfoldIsOpen[openSet]], allX];
+    HOL`Bool`GEN[lV, HOL`Bool`GEN[rV, folded]]
+  ];
+
+csetListTyAt = csetSetListTy;
+csetNilAt[] := mkConst["NIL", csetListTyAt];
+csetConsConstAt[] :=
+  mkConst["CONS", tyFun[csetSetTy, tyFun[csetListTyAt, csetListTyAt]]];
+csetConsTmAt[hT_, tT_] := mkComb[mkComb[csetConsConstAt[], hT], tT];
+csetFilterConstAt[] :=
+  mkConst["FILTER", tyFun[csetSetOfSetsTy, tyFun[csetListTyAt, csetListTyAt]]];
+csetFilterTmAt[pT_, lT_] := mkComb[mkComb[csetFilterConstAt[], pT], lT];
+csetMemXFun[xT_] := mkComb[csetMemConstAt[csetSetTy], xT];
+csetCondListConst[] := HOL`Bool`condConst[csetListTyAt];
+
+memFilterThm =
+  Module[{pV, xV, lV, wV, mV, memX, filterP, pxConj, predBody, predLam,
+          induction, base, ihTm, ih, py, em, filterCons, memXFilterCons,
+          memConsXM, pxConjCongr, condTInst, condFInst, branchT, branchF,
+          stepEq, step, allL, bodyL},
+    pV = mkVar["p", csetSetOfSetsTy]; xV = mkVar["xMemFilter", csetSetTy];
+    lV = mkVar["lMemFilter", csetListTyAt];
+    wV = mkVar["wMemFilter", csetSetTy]; mV = mkVar["mMemFilter", csetListTyAt];
+    memX[lT_] := csetMemTmAt[csetSetTy, xV, lT];
+    filterP[lT_] := csetFilterTmAt[pV, lT];
+    pxConj[qT_] := csetConjTm[mkComb[pV, xV], qT];
+    predBody[lT_] := mkEq[memX[filterP[lT]], pxConj[memX[lT]]];
+    predLam = mkAbs[lV, predBody[lV]];
+    induction = HOL`Bool`ISPEC[predLam, HOL`Stdlib`List`listInductionThm];
+
+    base = Module[{filterNil, memNil, lhsF, conjMemNil, rhsF, baseBeta},
+      filterNil = HOL`Bool`ISPEC[pV, HOL`Stdlib`List`filterNilThm];
+      memNil = HOL`Bool`ISPEC[xV, HOL`Stdlib`List`memNilThm];
+      lhsF = TRANS[HOL`Equal`APTERM[csetMemXFun[xV], filterNil], memNil];
+      conjMemNil = HOL`Equal`APTERM[
+        mkComb[csetAndConst[], mkComb[pV, xV]], memNil];
+      rhsF = TRANS[conjMemNil, HOL`Auto`PropTaut`propTaut[
+        mkEq[pxConj[csetFalseTm[]], csetFalseTm[]]]];
+      baseBeta = TRANS[lhsF, SYM[rhsF]];
+      EQMP[SYM[HOL`Equal`BETACONV[mkComb[predLam, csetNilAt[]]]], baseBeta]
+    ];
+
+    ihTm = mkComb[predLam, mV];
+    ih = EQMP[HOL`Equal`BETACONV[ihTm], ASSUME[ihTm]];
+    py = mkComb[pV, wV];
+    em = HOL`Bool`EXCLUDEDMIDDLE[py];
+    filterCons = HOL`Bool`SPEC[mV, HOL`Bool`SPEC[wV,
+      HOL`Bool`ISPEC[pV, HOL`Stdlib`List`filterConsThm]]];
+    memXFilterCons = HOL`Equal`APTERM[csetMemXFun[xV], filterCons];
+    memConsXM = HOL`Bool`SPEC[mV, HOL`Bool`SPEC[wV,
+      HOL`Bool`ISPEC[xV, HOL`Stdlib`List`memConsThm]]];
+    pxConjCongr = HOL`Equal`APTERM[mkComb[csetAndConst[], mkComb[pV, xV]],
+      SYM[memConsXM]];
+    condTInst = HOL`Bool`ISPEC[filterP[mV],
+      HOL`Bool`ISPEC[csetConsTmAt[wV, filterP[mV]], HOL`Bool`condTThm]];
+    condFInst = HOL`Bool`ISPEC[filterP[mV],
+      HOL`Bool`ISPEC[csetConsTmAt[wV, filterP[mV]], HOL`Bool`condFThm]];
+
+    branchT = Module[{hPy, pyT, condArgEq, condEqA, memConsFilter, ihOr,
+                      hXY, pEqXY, pxThm, pxFromEq, tautTm, eqTaut},
+      hPy = ASSUME[py]; pyT = HOL`Bool`EQTINTRO[hPy];
+      condArgEq = HOL`Equal`APTHM[HOL`Equal`APTHM[
+        HOL`Equal`APTERM[csetCondListConst[], pyT],
+        csetConsTmAt[wV, filterP[mV]]], filterP[mV]];
+      condEqA = TRANS[condArgEq, condTInst];
+      memConsFilter = HOL`Bool`SPEC[filterP[mV], HOL`Bool`SPEC[wV,
+        HOL`Bool`ISPEC[xV, HOL`Stdlib`List`memConsThm]]];
+      ihOr = HOL`Equal`APTERM[mkComb[csetOrConst[], mkEq[xV, wV]], ih];
+      hXY = ASSUME[mkEq[xV, wV]];
+      pEqXY = HOL`Equal`APTERM[pV, hXY];
+      pxThm = EQMP[SYM[pEqXY], hPy];
+      pxFromEq = HOL`Bool`DISCH[mkEq[xV, wV], pxThm];
+      tautTm = csetImpTm[csetImpTm[mkEq[xV, wV], mkComb[pV, xV]],
+        mkEq[csetOrTm[mkEq[xV, wV], pxConj[memX[mV]]],
+          pxConj[csetOrTm[mkEq[xV, wV], memX[mV]]]]];
+      eqTaut = HOL`Bool`MP[HOL`Auto`PropTaut`propTaut[tautTm], pxFromEq];
+      TRANS[memXFilterCons, TRANS[HOL`Equal`APTERM[csetMemXFun[xV], condEqA],
+        TRANS[memConsFilter, TRANS[ihOr, TRANS[eqTaut, pxConjCongr]]]]]
+    ];
+
+    branchF = Module[{hNotPy, pyF, condArgEq, condEqB, memXFilterM,
+                      npEqXY, npxThm, notPxFromEq, tautTm, eqTaut},
+      hNotPy = ASSUME[csetNotTm[py]];
+      pyF = EQMP[HOL`Auto`PropTaut`propTaut[mkEq[csetNotTm[py],
+        mkEq[py, csetFalseTm[]]]], hNotPy];
+      condArgEq = HOL`Equal`APTHM[HOL`Equal`APTHM[
+        HOL`Equal`APTERM[csetCondListConst[], pyF],
+        csetConsTmAt[wV, filterP[mV]]], filterP[mV]];
+      condEqB = TRANS[condArgEq, condFInst];
+      memXFilterM = TRANS[memXFilterCons,
+        TRANS[HOL`Equal`APTERM[csetMemXFun[xV], condEqB], ih]];
+      npEqXY = HOL`Equal`APTERM[pV, ASSUME[mkEq[xV, wV]]];
+      npxThm = EQMP[SYM[HOL`Equal`APTERM[csetNotConst[], npEqXY]], hNotPy];
+      notPxFromEq = HOL`Bool`DISCH[mkEq[xV, wV], npxThm];
+      tautTm = csetImpTm[csetImpTm[mkEq[xV, wV], csetNotTm[mkComb[pV, xV]]],
+        mkEq[pxConj[memX[mV]], pxConj[csetOrTm[mkEq[xV, wV], memX[mV]]]]];
+      eqTaut = HOL`Bool`MP[HOL`Auto`PropTaut`propTaut[tautTm], notPxFromEq];
+      TRANS[memXFilterM, TRANS[eqTaut, pxConjCongr]]
+    ];
+
+    stepEq = HOL`Bool`DISJCASES[em, branchT, branchF];
+    step = HOL`Bool`GEN[wV, HOL`Bool`GEN[mV, HOL`Bool`DISCH[ihTm,
+      EQMP[SYM[HOL`Equal`BETACONV[mkComb[predLam, csetConsTmAt[wV, mV]]]],
+        stepEq]]]];
+    allL = HOL`Bool`MP[induction, HOL`Bool`CONJ[base, step]];
+    bodyL = HOL`Bool`GEN[lV, EQMP[HOL`Equal`BETACONV[mkComb[predLam, lV]],
+      HOL`Bool`SPEC[lV, allL]]];
+    HOL`Bool`GEN[pV, HOL`Bool`GEN[xV, bodyL]]
   ];
 
 End[];

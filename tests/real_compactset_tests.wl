@@ -22,8 +22,11 @@ Needs["HOL`Auto`RealArith`"];
 realTyRCST = mkType["real", {}];
 numTyRCST = mkType["num", {}];
 setTyRCST = tyFun[realTyRCST, boolTy];
+setOfSetsTyRCST = tyFun[setTyRCST, boolTy];
+setListTyRCST = HOL`Stdlib`List`listTy[setTyRCST];
 seqTyRCST = tyFun[numTyRCST, realTyRCST];
 seqCompactTyRCST = tyFun[setTyRCST, boolTy];
+isCompactTyRCST = tyFun[setTyRCST, boolTy];
 
 andRCST[p_, q_] := mkComb[
   mkComb[mkConst["∧", tyFun[boolTy, tyFun[boolTy, boolTy]]], p], q];
@@ -37,6 +40,9 @@ forallRCST[v_, body_] :=
 existsRCST[v_, body_] :=
   mkComb[mkConst["∃", tyFun[tyFun[typeOf[v], boolTy], boolTy]], mkAbs[v, body]];
 setAppRCST[s_, x_] := mkComb[s, x];
+setMemRCST[c_, v_] := mkComb[c, v];
+memSetRCST[v_, vs_] := mkComb[
+  mkComb[mkConst["MEM", tyFun[setTyRCST, tyFun[setListTyRCST, boolTy]]], v], vs];
 seqAppRCST[u_, n_] := mkComb[u, n];
 realLtRCST[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realLtConst[], x], y];
 realLeRCST[x_, y_] := mkComb[mkComb[HOL`Stdlib`Real`realLeConst[], x], y];
@@ -61,6 +67,41 @@ seqCompactBodyRCST[sT_] :=
     forallRCST[uV, impRCST[allInSetRCST[sT, uV],
       existsRCST[lV, andRCST[setAppRCST[sT, lV],
         HOL`Stdlib`Real`hasConvergentSubseqTm[uV, lV]]]]]
+  ];
+
+setCoversBodyRCST[cT_, sT_] :=
+  Module[{xV, vV},
+    xV = mkVar["xSetCoverRCST", realTyRCST];
+    vV = mkVar["vSetCoverRCST", setTyRCST];
+    forallRCST[xV, impRCST[setAppRCST[sT, xV],
+      existsRCST[vV, andRCST[setMemRCST[cT, vV], setAppRCST[vV, xV]]]]]
+  ];
+
+setListSubcoverBodyRCST[cT_, sT_, vsT_] :=
+  Module[{vV, xV},
+    vV = mkVar["vSetListRCST", setTyRCST];
+    xV = mkVar["xSetListRCST", realTyRCST];
+    andRCST[
+      forallRCST[vV, impRCST[memSetRCST[vV, vsT], setMemRCST[cT, vV]]],
+      forallRCST[xV, impRCST[setAppRCST[sT, xV],
+        existsRCST[vV, andRCST[memSetRCST[vV, vsT], setAppRCST[vV, xV]]]]]]
+  ];
+
+setFiniteSubcoverBodyRCST[cT_, sT_] :=
+  Module[{vsV},
+    vsV = mkVar["vsFiniteRCST", setListTyRCST];
+    existsRCST[vsV, HOL`Stdlib`Real`setListSubcoverTm[cT, sT, vsV]]
+  ];
+
+isCompactBodyRCST[sT_] :=
+  Module[{cV, vV},
+    cV = mkVar["CCompactRCST", setOfSetsTyRCST];
+    vV = mkVar["vCompactRCST", setTyRCST];
+    forallRCST[cV,
+      impRCST[forallRCST[vV,
+          impRCST[setMemRCST[cV, vV], HOL`Stdlib`Real`isOpenTm[vV]]],
+        impRCST[HOL`Stdlib`Real`setCoversTm[cV, sT],
+          HOL`Stdlib`Real`setFiniteSubcoverTm[cV, sT]]]]
   ];
 
 assertConclRCST[name_, th_, expected_] := (
@@ -200,3 +241,69 @@ HOLTest`runTests["stdlib/Real/CompactSet: closed sequential compactness shapes",
           HOL`Stdlib`Real`setBoundedTm[sV]]]];
     assertConclRCST["sequentialCompactIffClosedBounded",
       HOL`Stdlib`Real`sequentialCompactIffClosedBoundedThm, expectedIff]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: open-cover compactness vocab",
+  Module[{cV, sV, vsV, th, expected},
+    cV = mkVar["COpenCoverRCST", setOfSetsTyRCST];
+    sV = mkVar["SOpenCoverRCST", setTyRCST];
+    vsV = mkVar["VsOpenCoverRCST", setListTyRCST];
+
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`setCoversConst[]],
+      tyFun[setOfSetsTyRCST, tyFun[setTyRCST, boolTy]],
+      "setCoversConst type"];
+    th = HOL`Stdlib`Real`unfoldSetCovers[cV, sV];
+    expected = mkEq[HOL`Stdlib`Real`setCoversTm[cV, sV],
+      setCoversBodyRCST[cV, sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected], "setCovers unfold shape"];
+
+    th = HOL`Stdlib`Real`unfoldSetListSubcover[cV, sV, vsV];
+    expected = mkEq[HOL`Stdlib`Real`setListSubcoverTm[cV, sV, vsV],
+      setListSubcoverBodyRCST[cV, sV, vsV]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "setListSubcover unfold shape"];
+
+    th = HOL`Stdlib`Real`unfoldSetFiniteSubcover[cV, sV];
+    expected = mkEq[HOL`Stdlib`Real`setFiniteSubcoverTm[cV, sV],
+      setFiniteSubcoverBodyRCST[cV, sV]];
+    HOLTest`assertTrue[aconv[concl[th], expected],
+      "setFiniteSubcover unfold shape"]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: isCompact and open support",
+  Module[{sV, lV, rV, xV, emptySet, expectedCompact, expectedOpenInt},
+    sV = mkVar["SIsCompactRCST", setTyRCST];
+    lV = mkVar["lOpenSupportRCST", realTyRCST];
+    rV = mkVar["rOpenSupportRCST", realTyRCST];
+    xV = mkVar["xEmptySupportRCST", realTyRCST];
+    emptySet = mkAbs[xV, mkConst["F", boolTy]];
+
+    HOLTest`assertEq[typeOf[HOL`Stdlib`Real`isCompactConst[]],
+      isCompactTyRCST, "isCompactConst type"];
+    expectedCompact = mkEq[HOL`Stdlib`Real`isCompactTm[sV],
+      isCompactBodyRCST[sV]];
+    HOLTest`assertTrue[aconv[
+      concl[HOL`Stdlib`Real`unfoldIsCompact[sV]], expectedCompact],
+      "isCompact unfold shape"];
+
+    assertConclRCST["isOpenEmpty", HOL`Stdlib`Real`isOpenEmptyThm,
+      HOL`Stdlib`Real`isOpenTm[emptySet]];
+    expectedOpenInt = forallRCST[lV, forallRCST[rV,
+      HOL`Stdlib`Real`isOpenTm[
+        mkComb[mkComb[HOL`Stdlib`Real`openIntervalConst[], lV], rV]]]];
+    assertConclRCST["openIntervalIsOpen",
+      HOL`Stdlib`Real`openIntervalIsOpenThm, expectedOpenInt]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: memFilter",
+  Module[{setOfSetsTy, setListTy, pV, xV, lV, memTm, filterTm, expected},
+    setOfSetsTy = tyFun[setTyRCST, boolTy];
+    setListTy = HOL`Stdlib`List`listTy[setTyRCST];
+    pV = mkVar["pMemFilterRCST", setOfSetsTy];
+    xV = mkVar["xMemFilterRCST", setTyRCST];
+    lV = mkVar["lMemFilterRCST", setListTy];
+    memTm[aT_, bsT_] := mkComb[mkComb[mkConst["MEM",
+      tyFun[setTyRCST, tyFun[setListTy, boolTy]]], aT], bsT];
+    filterTm[pT_, bsT_] := mkComb[mkComb[mkConst["FILTER",
+      tyFun[setOfSetsTy, tyFun[setListTy, setListTy]]], pT], bsT];
+    expected = forallRCST[pV, forallRCST[xV, forallRCST[lV,
+      mkEq[memTm[xV, filterTm[pV, lV]],
+        andRCST[mkComb[pV, xV], memTm[xV, lV]]]]]];
+    assertConclRCST["memFilter", HOL`Stdlib`Real`memFilterThm, expected]]];
