@@ -12,7 +12,12 @@ loadCode = StringJoin[
   "Get[FileNameJoin[{root, \"bootstrap.mx\"}]];\n",
   "$ContextPath = Join[\n",
   "  Select[Contexts[], StringMatchQ[#, \"HOL`*\"] && ! StringContainsQ[#, \"Private`\"] &],\n",
-  "  $ContextPath];"];
+  "  $ContextPath];\n\n",
+  "(* Display helper: re-print a theorem's outermost universal with a clean binder \n",
+  "   name. The library deliberately uses distinctive (collision-resistant) bound-\n",
+  "   variable names; prettyS only renames for display \[Dash] aconv-identical, the \n",
+  "   library theorem is untouched. *)\n",
+  "prettyS[th_] := With[{ty = concl[th][[2, 1, 2]]}, GEN[mkVar[\"S\", ty], SPEC[mkVar[\"S\", ty], th]]];"];
 
 cells = {
   Cell["mma-hol \[Dash] Runnable Examples", "Title"],
@@ -54,9 +59,9 @@ formatThm[HOL`Stdlib`Real`bwSequentialThm]", "Input"],
   Cell["(* Heine-Borel for a closed interval *)\n\
 formatThm[HOL`Stdlib`Real`compactnessPrincipleThm]", "Input"],
   Cell["(* compact <=> sequentially compact (general real sets) *)\n\
-formatThm[HOL`Stdlib`Real`compactIffSequentialCompactThm]", "Input"],
+formatThm[prettyS[HOL`Stdlib`Real`compactIffSequentialCompactThm]]", "Input"],
   Cell["(* connected <=> interval *)\n\
-formatThm[HOL`Stdlib`Real`connectedIffIntervalSetThm]", "Input"],
+formatThm[prettyS[HOL`Stdlib`Real`connectedIffIntervalSetThm]]", "Input"],
 
   Cell["5. A proof from scratch, checked live", "Section"],
   Cell["The cells above only displayed finished theorems. Here we BUILD one: prove \
