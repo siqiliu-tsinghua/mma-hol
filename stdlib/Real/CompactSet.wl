@@ -65,6 +65,14 @@ openIntervalIsOpenThm::usage = "openIntervalIsOpenThm - |- forall l r. isOpen (o
 memFilterThm::usage = "memFilterThm - |- forall p x l. MEM x (FILTER p l) = (p x /\\ MEM x l) (at element type real->bool).";
 closedIntervalSetCompactThm::usage = "closedIntervalSetCompactThm - |- forall a b C. realLe a b ==> (forall V. C V ==> isOpen V) ==> setCovers C (closedInterval a b) ==> setFiniteSubcover C (closedInterval a b).";
 compactOfClosedBoundedThm::usage = "compactOfClosedBoundedThm - |- forall S. isClosed S ==> setBounded S ==> isCompact S.";
+centerCoverDefThm::usage = "centerCoverDefThm - |- centerCover = (lambda V. exists c. V = openInterval (c + --1) (c + 1)).";
+centerCoverConst::usage = "centerCoverConst[] - centerCover : ((real -> bool) -> bool).";
+centerCoverTm::usage = "centerCoverTm[] - builds centerCover.";
+centerCoverMemThm::usage = "centerCoverMemThm - |- forall V. centerCover V = (exists c. V = openInterval (c + --1) (c + 1)).";
+centerCoverOpenThm::usage = "centerCoverOpenThm - |- forall V. centerCover V ==> isOpen V.";
+centerCoverCoversThm::usage = "centerCoverCoversThm - |- forall S. setCovers centerCover S.";
+boundedOfFiniteIntervalCoverThm::usage = "boundedOfFiniteIntervalCoverThm - |- forall Vs. (forall V. MEM V Vs ==> centerCover V) ==> exists lo hi. forall x. (exists V. MEM V Vs /\\ V x) ==> realLe lo x /\\ realLe x hi.";
+boundedOfCompactThm::usage = "boundedOfCompactThm - |- forall S. isCompact S ==> setBounded S.";
 
 Begin["`Private`"];
 
@@ -1712,6 +1720,298 @@ compactOfClosedBoundedThm =
     folded = EQMP[HOL`Equal`SYM[unfoldIsCompact[sV]], compactBody];
     HOL`Bool`GEN[sV, HOL`Bool`DISCH[hClosedTm,
       HOL`Bool`DISCH[hBddTm, folded]]]
+  ];
+
+csetSubOne[xT_] := csetRealAdd[xT, csetRealNeg[csetOneReal[]]];
+csetAddOne[xT_] := csetRealAdd[xT, csetOneReal[]];
+csetUnitInterval[cT_] := csetOpenIntervalSet[csetSubOne[cT], csetAddOne[cT]];
+csetRealMin[xT_, yT_] := mkComb[mkComb[realMinConst[], xT], yT];
+csetRealMax[xT_, yT_] := mkComb[mkComb[realMaxConst[], xT], yT];
+
+csetMemNilEq[xT_] := HOL`Bool`ISPEC[xT, HOL`Stdlib`List`memNilThm];
+csetMemConsEq[xT_, yT_, xsT_] :=
+  HOL`Bool`SPEC[xsT, HOL`Bool`SPEC[yT,
+    HOL`Bool`ISPEC[xT, HOL`Stdlib`List`memConsThm]]];
+
+csetCenterCoverBody[vT_] :=
+  Module[{cV},
+    cV = mkVar["cCenter", csetRealTy];
+    csetExistsTm[cV, mkEq[vT, csetUnitInterval[cV]]]
+  ];
+csetCenterCoverAll[vsT_] :=
+  Module[{vV},
+    vV = mkVar["vCenterAll", csetSetTy];
+    csetForallTm[vV, csetImpTm[csetMemTmAt[csetSetTy, vV, vsT],
+      csetSetMem[centerCoverTm[], vV]]]
+  ];
+csetFiniteCoverHitBody[vsT_, xT_, vT_] :=
+  csetConjTm[csetMemTmAt[csetSetTy, vT, vsT], csetSetAppV[vT, xT]];
+csetFiniteCoverHit[vsT_, xT_] :=
+  Module[{vV},
+    vV = mkVar["vFiniteHit", csetSetTy];
+    csetExistsTm[vV, csetFiniteCoverHitBody[vsT, xT, vV]]
+  ];
+csetFiniteCoverAll[vsT_, loT_, hiT_] :=
+  Module[{xV},
+    xV = mkVar["xFiniteBound", csetRealTy];
+    csetForallTm[xV, csetImpTm[csetFiniteCoverHit[vsT, xV],
+      csetConjTm[csetRealLe[loT, xV], csetRealLe[xV, hiT]]]]
+  ];
+csetFiniteCoverBoundExists[vsT_] :=
+  Module[{loV, hiV},
+    loV = mkVar["loFiniteBound", csetRealTy];
+    hiV = mkVar["hiFiniteBound", csetRealTy];
+    csetExistsTm[loV, csetExistsTm[hiV,
+      csetFiniteCoverAll[vsT, loV, hiV]]]
+  ];
+csetFiniteIntervalPredBody[vsT_] :=
+  csetImpTm[csetCenterCoverAll[vsT], csetFiniteCoverBoundExists[vsT]];
+
+centerCoverDefThm =
+  Module[{vV},
+    vV = mkVar["vCenter", csetSetTy];
+    newDefinition[mkEq[mkVar["centerCover", csetSetOfSetsTy],
+      mkAbs[vV, csetCenterCoverBody[vV]]]]
+  ];
+centerCoverConst[] := mkConst["centerCover", csetSetOfSetsTy];
+centerCoverTm[] := centerCoverConst[];
+
+centerCoverMemThm =
+  Module[{vV, app, beta},
+    vV = mkVar["vCenterMem", csetSetTy];
+    app = HOL`Equal`APTHM[centerCoverDefThm, vV];
+    beta = TRANS[app, HOL`Equal`BETACONV[concl[app][[2]]]];
+    HOL`Bool`GEN[vV, beta]
+  ];
+
+centerCoverOpenThm =
+  Module[{vV, hCenterTm, hCenter, opened, cV, hEqTm, hEq,
+          openInt, openV, body},
+    vV = mkVar["vCenterOpen", csetSetTy];
+    hCenterTm = csetSetMem[centerCoverTm[], vV]; hCenter = ASSUME[hCenterTm];
+    opened = EQMP[HOL`Bool`SPEC[vV, centerCoverMemThm], hCenter];
+    cV = mkVar["cOpen", csetRealTy];
+    hEqTm = mkEq[vV, csetUnitInterval[cV]]; hEq = ASSUME[hEqTm];
+    openInt = csetSpecAll[openIntervalIsOpenThm,
+      {csetSubOne[cV], csetAddOne[cV]}];
+    openV = EQMP[HOL`Equal`APTERM[isOpenConst[], HOL`Equal`SYM[hEq]],
+      openInt];
+    body = HOL`Bool`CHOOSE[cV, opened, openV];
+    HOL`Bool`GEN[vV, HOL`Bool`DISCH[hCenterTm, body]]
+  ];
+
+centerCoverCoversThm =
+  Module[{sV, xV, vT, hSxTm, hSx, centerEq, centerEx, centerAtV,
+          leftLt, rightLt, intAtX, hitV, exGoal, allX, folded},
+    sV = mkVar["SCenterCover", csetSetTy];
+    xV = mkVar["xCenterCover", csetRealTy];
+    vT = csetUnitInterval[xV];
+    hSxTm = csetSetApp[sV, xV]; hSx = ASSUME[hSxTm];
+    centerEq = HOL`Bool`SPEC[vT, centerCoverMemThm];
+    centerEx = HOL`Bool`EXISTS[csetCenterCoverBody[vT], xV, REFL[vT]];
+    centerAtV = EQMP[HOL`Equal`SYM[centerEq], centerEx];
+    leftLt = HOL`Bool`SPEC[xV, HOL`Auto`RealArith`realArithProve[
+      csetForallTm[xV, csetRealLt[csetSubOne[xV], xV]]]];
+    rightLt = HOL`Bool`SPEC[xV, HOL`Auto`RealArith`realArithProve[
+      csetForallTm[xV, csetRealLt[xV, csetAddOne[xV]]]]];
+    intAtX = EQMP[HOL`Equal`SYM[
+      unfoldOpenInterval[csetSubOne[xV], csetAddOne[xV], xV]],
+      HOL`Bool`CONJ[leftLt, rightLt]];
+    hitV = HOL`Bool`CONJ[centerAtV, intAtX];
+    exGoal = csetExistsTm[mkVar["vSc", csetSetTy],
+      csetConjTm[csetSetMem[centerCoverTm[], mkVar["vSc", csetSetTy]],
+        csetSetAppV[mkVar["vSc", csetSetTy], xV]]];
+    allX = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hSxTm,
+      HOL`Bool`EXISTS[exGoal, vT, hitV]]];
+    folded = EQMP[HOL`Equal`SYM[unfoldSetCovers[centerCoverTm[], sV]], allX];
+    HOL`Bool`GEN[sV, folded]
+  ];
+
+boundedOfFiniteIntervalCoverThm =
+  Module[{vsV, v0V, restV, predLam, induction, base, step, allVs, bodyVs},
+    vsV = mkVar["VsFiniteBound", csetSetListTy];
+    v0V = mkVar["v0FiniteBound", csetSetTy];
+    restV = mkVar["restFiniteBound", csetSetListTy];
+    predLam = mkAbs[vsV, csetFiniteIntervalPredBody[vsV]];
+    induction = HOL`Bool`ISPEC[predLam, HOL`Stdlib`List`listInductionThm];
+
+    base = Module[{nilT, hAllTm, hAll, loZ, hiZ, xV, hHitTm, hHit,
+        vHit, hBodyTm, hBody, hMem, memNil, falseTh, point, allX,
+        exHi, exLo, body},
+      nilT = csetNilAt[];
+      hAllTm = csetCenterCoverAll[nilT]; hAll = ASSUME[hAllTm];
+      loZ = zeroRealTm[]; hiZ = zeroRealTm[];
+      xV = mkVar["xBaseFinite", csetRealTy];
+      hHitTm = csetFiniteCoverHit[nilT, xV]; hHit = ASSUME[hHitTm];
+      vHit = mkVar["vFiniteHit", csetSetTy];
+      hBodyTm = csetFiniteCoverHitBody[nilT, xV, vHit];
+      hBody = ASSUME[hBodyTm];
+      hMem = HOL`Bool`CONJUNCT1[hBody];
+      memNil = csetMemNilEq[vHit];
+      falseTh = EQMP[memNil, hMem];
+      point = HOL`Bool`CHOOSE[vHit, hHit,
+        HOL`Bool`CONTR[
+          csetConjTm[csetRealLe[loZ, xV], csetRealLe[xV, hiZ]], falseTh]];
+      allX = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hHitTm, point]];
+      exHi = HOL`Bool`EXISTS[
+        csetExistsTm[mkVar["hiFiniteBound", csetRealTy],
+          csetFiniteCoverAll[nilT, loZ,
+            mkVar["hiFiniteBound", csetRealTy]]], hiZ, allX];
+      exLo = HOL`Bool`EXISTS[csetFiniteCoverBoundExists[nilT], loZ, exHi];
+      body = HOL`Bool`DISCH[hAllTm, exLo];
+      EQMP[HOL`Equal`SYM[HOL`Equal`BETACONV[mkComb[predLam, nilT]]], body]
+    ];
+
+    step = Module[{ihTm, ih, consT, hAllTm, hAll, restAll, restBound,
+        memV0Cons, hV0Center, centerExists, loRest, hiRest, hRestBoundTm,
+        hRestBound, cV, hV0EqTm, hV0Eq, loT, hiT, xV, hHitTm, hHit,
+        vHit, hBodyTm, hBody, hMemCons, hVx, memOpen, branchEq,
+        branchRest, point, allX, exHi, exLo, chooseC, chooseHi, chooseLo,
+        body},
+      ihTm = mkComb[predLam, restV];
+      ih = EQMP[HOL`Equal`BETACONV[ihTm], ASSUME[ihTm]];
+      consT = csetConsTmAt[v0V, restV];
+      hAllTm = csetCenterCoverAll[consT]; hAll = ASSUME[hAllTm];
+      restAll = Module[{vRest, hMemRestTm, hMemRest, memConsRest,
+          centerRest},
+        vRest = mkVar["vRestFinite", csetSetTy];
+        hMemRestTm = csetMemTmAt[csetSetTy, vRest, restV];
+        hMemRest = ASSUME[hMemRestTm];
+        memConsRest = EQMP[HOL`Equal`SYM[
+          csetMemConsEq[vRest, v0V, restV]],
+          HOL`Bool`DISJ2[hMemRest, mkEq[vRest, v0V]]];
+        centerRest = HOL`Bool`MP[HOL`Bool`SPEC[vRest, hAll], memConsRest];
+        HOL`Bool`GEN[vRest, HOL`Bool`DISCH[hMemRestTm, centerRest]]
+      ];
+      restBound = HOL`Bool`MP[ih, restAll];
+      memV0Cons = EQMP[HOL`Equal`SYM[csetMemConsEq[v0V, v0V, restV]],
+        HOL`Bool`DISJ1[REFL[v0V], csetMemTmAt[csetSetTy, v0V, restV]]];
+      hV0Center = HOL`Bool`MP[HOL`Bool`SPEC[v0V, hAll], memV0Cons];
+      centerExists = EQMP[HOL`Bool`SPEC[v0V, centerCoverMemThm], hV0Center];
+      loRest = mkVar["loRest", csetRealTy];
+      hiRest = mkVar["hiRest", csetRealTy];
+      hRestBoundTm = csetFiniteCoverAll[restV, loRest, hiRest];
+      hRestBound = ASSUME[hRestBoundTm];
+      cV = mkVar["cStep", csetRealTy];
+      hV0EqTm = mkEq[v0V, csetUnitInterval[cV]];
+      hV0Eq = ASSUME[hV0EqTm];
+      loT = csetRealMin[csetSubOne[cV], loRest];
+      hiT = csetRealMax[csetAddOne[cV], hiRest];
+      xV = mkVar["xStepFinite", csetRealTy];
+      hHitTm = csetFiniteCoverHit[consT, xV]; hHit = ASSUME[hHitTm];
+      vHit = mkVar["vFiniteHit", csetSetTy];
+      hBodyTm = csetFiniteCoverHitBody[consT, xV, vHit];
+      hBody = ASSUME[hBodyTm];
+      hMemCons = HOL`Bool`CONJUNCT1[hBody];
+      hVx = HOL`Bool`CONJUNCT2[hBody];
+      memOpen = EQMP[csetMemConsEq[vHit, v0V, restV], hMemCons];
+      branchEq = Module[{hEqTm, hEq, v0x, intervalX, intervalBody,
+          leftLt, rightLt, subLeX, loLeSub, loLeX, xLeAdd, addLeHi,
+          xLeHi},
+        hEqTm = mkEq[vHit, v0V]; hEq = ASSUME[hEqTm];
+        v0x = EQMP[HOL`Equal`APTHM[hEq, xV], hVx];
+        intervalX = EQMP[HOL`Equal`APTHM[hV0Eq, xV], v0x];
+        intervalBody = EQMP[unfoldOpenInterval[csetSubOne[cV],
+          csetAddOne[cV], xV], intervalX];
+        leftLt = HOL`Bool`CONJUNCT1[intervalBody];
+        rightLt = HOL`Bool`CONJUNCT2[intervalBody];
+        subLeX = HOL`Bool`MP[csetSpecAll[realLtImpLeThm,
+          {csetSubOne[cV], xV}], leftLt];
+        loLeSub = csetSpecAll[realMinLeLeftThm, {csetSubOne[cV], loRest}];
+        loLeX = HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeTransThm,
+          {loT, csetSubOne[cV], xV}], loLeSub], subLeX];
+        xLeAdd = HOL`Bool`MP[csetSpecAll[realLtImpLeThm,
+          {xV, csetAddOne[cV]}], rightLt];
+        addLeHi = csetSpecAll[realLeMaxLeftThm, {csetAddOne[cV], hiRest}];
+        xLeHi = HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeTransThm,
+          {xV, csetAddOne[cV], hiT}], xLeAdd], addLeHi];
+        HOL`Bool`CONJ[loLeX, xLeHi]
+      ];
+      branchRest = Module[{hMemRestTm, hMemRest, restHit, restBounds,
+          loRestLeX, xLeHiRest, loLeRest, restLeHi, loLeX, xLeHi},
+        hMemRestTm = csetMemTmAt[csetSetTy, vHit, restV];
+        hMemRest = ASSUME[hMemRestTm];
+        restHit = HOL`Bool`EXISTS[csetFiniteCoverHit[restV, xV], vHit,
+          HOL`Bool`CONJ[hMemRest, hVx]];
+        restBounds = HOL`Bool`MP[HOL`Bool`SPEC[xV, hRestBound], restHit];
+        loRestLeX = HOL`Bool`CONJUNCT1[restBounds];
+        xLeHiRest = HOL`Bool`CONJUNCT2[restBounds];
+        loLeRest = csetSpecAll[realMinLeRightThm,
+          {csetSubOne[cV], loRest}];
+        restLeHi = csetSpecAll[realLeMaxRightThm, {csetAddOne[cV], hiRest}];
+        loLeX = HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeTransThm,
+          {loT, loRest, xV}], loLeRest], loRestLeX];
+        xLeHi = HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeTransThm,
+          {xV, hiRest, hiT}], xLeHiRest], restLeHi];
+        HOL`Bool`CONJ[loLeX, xLeHi]
+      ];
+      point = HOL`Bool`CHOOSE[vHit, hHit,
+        HOL`Bool`DISJCASES[memOpen, branchEq, branchRest]];
+      allX = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hHitTm, point]];
+      exHi = HOL`Bool`EXISTS[
+        csetExistsTm[mkVar["hiFiniteBound", csetRealTy],
+          csetFiniteCoverAll[consT, loT,
+            mkVar["hiFiniteBound", csetRealTy]]], hiT, allX];
+      exLo = HOL`Bool`EXISTS[csetFiniteCoverBoundExists[consT], loT, exHi];
+      chooseC = HOL`Bool`CHOOSE[cV, centerExists, exLo];
+      chooseHi = HOL`Bool`CHOOSE[hiRest,
+        ASSUME[csetExistsTm[hiRest,
+          csetFiniteCoverAll[restV, loRest, hiRest]]], chooseC];
+      chooseLo = HOL`Bool`CHOOSE[loRest, restBound, chooseHi];
+      body = HOL`Bool`DISCH[hAllTm, chooseLo];
+      HOL`Bool`GEN[v0V, HOL`Bool`GEN[restV, HOL`Bool`DISCH[ihTm,
+        EQMP[HOL`Equal`SYM[HOL`Equal`BETACONV[mkComb[predLam, consT]]],
+          body]]]]
+    ];
+
+    allVs = HOL`Bool`MP[induction, HOL`Bool`CONJ[base, step]];
+    bodyVs = HOL`Bool`GEN[vsV,
+      EQMP[HOL`Equal`BETACONV[mkComb[predLam, vsV]],
+        HOL`Bool`SPEC[vsV, allVs]]];
+    bodyVs
+  ];
+
+boundedOfCompactThm =
+  Module[{sV, hCompactTm, hCompact, openCompact, finiteCover,
+          openFinite, vsV, hListTm, hList, listBody, hMemC, hCovS,
+          boundEx, loV, hiV, hBoundTm, hBound, xV, hSxTm, hSx,
+          hitX, boundsX, allX, exHi, exLo, folded, chooseHi, chooseLo,
+          chooseVs},
+    sV = mkVar["SBoundedCompact", csetSetTy];
+    hCompactTm = isCompactTm[sV]; hCompact = ASSUME[hCompactTm];
+    openCompact = EQMP[unfoldIsCompact[sV], hCompact];
+    finiteCover = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[centerCoverTm[], openCompact], centerCoverOpenThm],
+      HOL`Bool`SPEC[sV, centerCoverCoversThm]];
+    openFinite = EQMP[unfoldSetFiniteSubcover[centerCoverTm[], sV], finiteCover];
+    vsV = mkVar["vsBound", csetSetListTy];
+    hListTm = setListSubcoverTm[centerCoverTm[], sV, vsV];
+    hList = ASSUME[hListTm];
+    listBody = EQMP[unfoldSetListSubcover[centerCoverTm[], sV, vsV], hList];
+    hMemC = HOL`Bool`CONJUNCT1[listBody];
+    hCovS = HOL`Bool`CONJUNCT2[listBody];
+    boundEx = HOL`Bool`MP[HOL`Bool`SPEC[vsV,
+      boundedOfFiniteIntervalCoverThm], hMemC];
+    loV = mkVar["loBoundedCompact", csetRealTy];
+    hiV = mkVar["hiBoundedCompact", csetRealTy];
+    hBoundTm = csetFiniteCoverAll[vsV, loV, hiV];
+    hBound = ASSUME[hBoundTm];
+    xV = mkVar["xBoundedCompact", csetRealTy];
+    hSxTm = csetSetApp[sV, xV]; hSx = ASSUME[hSxTm];
+    hitX = HOL`Bool`MP[HOL`Bool`SPEC[xV, hCovS], hSx];
+    boundsX = HOL`Bool`MP[HOL`Bool`SPEC[xV, hBound], hitX];
+    allX = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hSxTm, boundsX]];
+    exHi = HOL`Bool`EXISTS[
+      csetExistsTm[mkVar["hiCset", csetRealTy],
+        csetSetBoundedAll[sV, loV, mkVar["hiCset", csetRealTy]]],
+      hiV, allX];
+    exLo = HOL`Bool`EXISTS[concl[unfoldSetBounded[sV]][[2]], loV, exHi];
+    folded = EQMP[HOL`Equal`SYM[unfoldSetBounded[sV]], exLo];
+    chooseHi = HOL`Bool`CHOOSE[hiV,
+      ASSUME[csetExistsTm[hiV, hBoundTm]], folded];
+    chooseLo = HOL`Bool`CHOOSE[loV, boundEx, chooseHi];
+    chooseVs = HOL`Bool`CHOOSE[vsV, openFinite, chooseLo];
+    HOL`Bool`GEN[sV, HOL`Bool`DISCH[hCompactTm, chooseVs]]
   ];
 
 End[];

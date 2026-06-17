@@ -332,3 +332,12 @@ HOLTest`runTests["stdlib/Real/CompactSet: Heine-Borel producer shapes",
           HOL`Stdlib`Real`isCompactTm[sV]]]];
     assertConclRCST["compactOfClosedBounded",
       HOL`Stdlib`Real`compactOfClosedBoundedThm, expectedCompact]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: compact consumer shape",
+  Module[{sV, expectedBounded},
+    sV = mkVar["SCompactBoundedRCST", setTyRCST];
+    expectedBounded = forallRCST[sV,
+      impRCST[HOL`Stdlib`Real`isCompactTm[sV],
+        HOL`Stdlib`Real`setBoundedTm[sV]]];
+    assertConclRCST["boundedOfCompact",
+      HOL`Stdlib`Real`boundedOfCompactThm, expectedBounded]]];
