@@ -73,6 +73,19 @@ centerCoverOpenThm::usage = "centerCoverOpenThm - |- forall V. centerCover V ==>
 centerCoverCoversThm::usage = "centerCoverCoversThm - |- forall S. setCovers centerCover S.";
 boundedOfFiniteIntervalCoverThm::usage = "boundedOfFiniteIntervalCoverThm - |- forall Vs. (forall V. MEM V Vs ==> centerCover V) ==> exists lo hi. forall x. (exists V. MEM V Vs /\\ V x) ==> realLe lo x /\\ realLe x hi.";
 boundedOfCompactThm::usage = "boundedOfCompactThm - |- forall S. isCompact S ==> setBounded S.";
+halfPosThm::usage = "halfPosThm - |- forall t. realLt 0 t ==> realLt 0 (t * inv 2).";
+halfDoubleThm::usage = "halfDoubleThm - |- forall t. realAdd (half t) (half t) = t.";
+puncturedMemFarThm::usage = "puncturedMemFarThm - |- forall c x y. ~(c = x) ==> openInterval (c - half |c-x|) (c + half |c-x|) y ==> realLe (half |c-x|) (realAbs (y - x)).";
+compactClosedCoverDefThm::usage = "compactClosedCoverDefThm - |- compactClosedCover = (lambda x V. exists c. ~(c=x) /\\ V = openInterval (c - half |c-x|) (c + half |c-x|)).";
+compactClosedCoverConst::usage = "compactClosedCoverConst[] - compactClosedCover : real -> ((real -> bool) -> bool).";
+compactClosedCoverTm::usage = "compactClosedCoverTm[x] - builds compactClosedCover x.";
+compactClosedCoverMemThm::usage = "compactClosedCoverMemThm - |- forall x V. compactClosedCover x V = (exists c. ~(c=x) /\\ V = punctured interval around c away from x).";
+compactClosedCoverOpenThm::usage = "compactClosedCoverOpenThm - |- forall x V. compactClosedCover x V ==> isOpen V.";
+compactClosedCoverCoversThm::usage = "compactClosedCoverCoversThm - |- forall S x. ~(S x) ==> setCovers (compactClosedCover x) S.";
+puncturedRadiusThm::usage = "puncturedRadiusThm - |- forall x Vs. (forall V. MEM V Vs ==> compactClosedCover x V) ==> exists d. realLt 0 d /\\ forall y. (exists V. MEM V Vs /\\ V y) ==> realLe d (realAbs (y - x)).";
+closedOfCompactThm::usage = "closedOfCompactThm - |- forall S. isCompact S ==> isClosed S.";
+compactIffClosedBoundedThm::usage = "compactIffClosedBoundedThm - |- forall S. isCompact S = (isClosed S /\\ setBounded S).";
+compactIffSequentialCompactThm::usage = "compactIffSequentialCompactThm - |- forall S. isCompact S = isSequentiallyCompact S.";
 
 Begin["`Private`"];
 
@@ -2012,6 +2025,528 @@ boundedOfCompactThm =
     chooseLo = HOL`Bool`CHOOSE[loV, boundEx, chooseHi];
     chooseVs = HOL`Bool`CHOOSE[vsV, openFinite, chooseLo];
     HOL`Bool`GEN[sV, HOL`Bool`DISCH[hCompactTm, chooseVs]]
+  ];
+
+csetTwoReal[] := csetRnumNat[csetSucNum[csetSucNum[zeroN[]]]];
+csetHalf[tT_] := csetRealMul[tT, csetRealInv[csetTwoReal[]]];
+csetSub[aT_, bT_] := csetRealAdd[aT, csetRealNeg[bT]];
+csetDist[aT_, bT_] := csetRealAbs[csetSub[aT, bT]];
+csetPunctured[cT_, xT_] :=
+  csetOpenIntervalSet[
+    csetSub[cT, csetHalf[csetDist[cT, xT]]],
+    csetRealAdd[cT, csetHalf[csetDist[cT, xT]]]];
+csetRealAddCongRight[cT_, eq_] :=
+  HOL`Equal`APTERM[mkComb[realAddConst[], cT], eq];
+
+csetSubZeroEqThm =
+  Module[{aV, bV},
+    aV = mkVar["aSubZero", csetRealTy];
+    bV = mkVar["bSubZero", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[csetForallList[{aV, bV},
+      csetImpTm[mkEq[csetSub[aV, bV], zeroRealTm[]], mkEq[aV, bV]]]]
+  ];
+
+csetNeSubNeZeroThm =
+  Module[{aV, bV, hNeTm, hNe, hZeroTm, hZero, eqAB, falseTh, body},
+    aV = mkVar["aNeSub", csetRealTy];
+    bV = mkVar["bNeSub", csetRealTy];
+    hNeTm = csetNotTm[mkEq[aV, bV]]; hNe = ASSUME[hNeTm];
+    hZeroTm = mkEq[csetSub[aV, bV], zeroRealTm[]]; hZero = ASSUME[hZeroTm];
+    eqAB = HOL`Bool`MP[csetSpecAll[csetSubZeroEqThm, {aV, bV}], hZero];
+    falseTh = HOL`Bool`MP[HOL`Bool`NOTELIM[hNe], eqAB];
+    body = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hZeroTm, falseTh]];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`DISCH[hNeTm, body]]]
+  ];
+
+csetDistPosFromNe[aT_, bT_, neTh_] :=
+  HOL`Bool`MP[HOL`Bool`SPEC[csetSub[aT, bT], realNeAbsPosThm],
+    HOL`Bool`MP[csetSpecAll[csetNeSubNeZeroThm, {aT, bT}], neTh]];
+
+csetTwoPosThm =
+  HOL`Auto`RealArith`realArithProve[
+    csetRealLt[zeroRealTm[], csetTwoReal[]]];
+
+csetTwoNeZeroThm =
+  HOL`Bool`MP[HOL`Bool`SPEC[csetTwoReal[], seqArithPosNeZeroThm],
+    csetTwoPosThm];
+
+halfPosThm =
+  Module[{tV, hPosTm, hPos, invTwoPos, body},
+    tV = mkVar["tHalfPos", csetRealTy];
+    hPosTm = csetRealLt[zeroRealTm[], tV]; hPos = ASSUME[hPosTm];
+    invTwoPos = HOL`Bool`MP[HOL`Bool`SPEC[csetTwoReal[],
+      seqRealInvPositiveThm], csetTwoPosThm];
+    body = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realLtMulPosThm, {tV, csetRealInv[csetTwoReal[]]}],
+      hPos], invTwoPos];
+    HOL`Bool`GEN[tV, HOL`Bool`DISCH[hPosTm, body]]
+  ];
+
+csetHalfDoubleArithThm =
+  Module[{aV},
+    aV = mkVar["aHalfDouble", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[csetForallTm[aV,
+      mkEq[csetRealAdd[aV, aV], csetRealMul[csetTwoReal[], aV]]]]
+  ];
+
+halfDoubleThm =
+  Module[{tV, invTwo, halfT, doubleArith, halfComm, halfCong,
+          assocBack, invLaw, invCong, oneLeft, rhsEq},
+    tV = mkVar["tHalfDouble", csetRealTy];
+    invTwo = csetRealInv[csetTwoReal[]];
+    halfT = csetHalf[tV];
+    doubleArith = HOL`Bool`SPEC[halfT, csetHalfDoubleArithThm];
+    halfComm = csetSpecAll[realMulCommThm, {tV, invTwo}];
+    halfCong = csetRealMulCongRight[csetTwoReal[], halfComm];
+    assocBack = HOL`Equal`SYM[csetSpecAll[realMulAssocThm,
+      {csetTwoReal[], invTwo, tV}]];
+    invLaw = HOL`Bool`MP[HOL`Bool`SPEC[csetTwoReal[], realMulInvThm],
+      csetTwoNeZeroThm];
+    invCong = csetRealMulCongLeft[invLaw, tV];
+    oneLeft = csetMulOneLeft[tV];
+    rhsEq = TRANS[halfCong, TRANS[assocBack, TRANS[invCong, oneLeft]]];
+    HOL`Bool`GEN[tV, TRANS[doubleArith, rhsEq]]
+  ];
+
+csetLtAddTwoThm =
+  Module[{pV, qV, rV},
+    pV = mkVar["pLtAddTwo", csetRealTy];
+    qV = mkVar["qLtAddTwo", csetRealTy];
+    rV = mkVar["rLtAddTwo", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[csetForallList[{pV, qV, rV},
+      csetImpTm[csetRealLt[pV, rV],
+        csetImpTm[csetRealLt[qV, rV],
+          csetRealLt[csetRealAdd[pV, qV], csetRealAdd[rV, rV]]]]]]
+  ];
+
+csetSubSubAddEqThm =
+  Module[{aV, bV, cV},
+    aV = mkVar["aSubSubAdd", csetRealTy];
+    bV = mkVar["bSubSubAdd", csetRealTy];
+    cV = mkVar["cSubSubAdd", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[csetForallList[{aV, bV, cV},
+      mkEq[csetRealAdd[csetSub[aV, bV], csetSub[bV, cV]],
+        csetSub[aV, cV]]]]
+  ];
+
+csetSubNegEqThm =
+  Module[{aV, bV},
+    aV = mkVar["aSubNeg", csetRealTy];
+    bV = mkVar["bSubNeg", csetRealTy];
+    HOL`Auto`RealArith`realArithProve[csetForallList[{aV, bV},
+      mkEq[csetSub[aV, bV], csetRealNeg[csetSub[bV, aV]]]]]
+  ];
+
+puncturedMemFarThm =
+  Module[{cV, xV, yV, dT, rT, leftT, rightT, hNeTm, hNe,
+          hMemTm, hMem, dPos, rPos, intBody, leftLt, rightLt,
+          absYCLtR, goalTm, hNotGoal, absYXT, yXLtR, triRaw, sumEq,
+          triStep, diffNeg, absNegStep, absCYEq, absCYLtR, sumLt,
+          halfDbl, ltDrr, dLtD, falseTh, body},
+    cV = mkVar["cPuncturedFar", csetRealTy];
+    xV = mkVar["xPuncturedFar", csetRealTy];
+    yV = mkVar["yPuncturedFar", csetRealTy];
+    dT = csetDist[cV, xV]; rT = csetHalf[dT];
+    leftT = csetSub[cV, rT]; rightT = csetRealAdd[cV, rT];
+    hNeTm = csetNotTm[mkEq[cV, xV]]; hNe = ASSUME[hNeTm];
+    hMemTm = openIntervalTm[leftT, rightT, yV]; hMem = ASSUME[hMemTm];
+    dPos = csetDistPosFromNe[cV, xV, hNe];
+    rPos = HOL`Bool`MP[HOL`Bool`SPEC[dT, halfPosThm], dPos];
+    intBody = EQMP[unfoldOpenInterval[leftT, rightT, yV], hMem];
+    leftLt = HOL`Bool`CONJUNCT1[intBody];
+    rightLt = HOL`Bool`CONJUNCT2[intBody];
+    absYCLtR = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realAbsSubLtThm, {yV, cV, rT}], leftLt], rightLt];
+    goalTm = csetRealLe[rT, csetDist[yV, xV]];
+    hNotGoal = ASSUME[csetNotTm[goalTm]];
+    absYXT = csetDist[yV, xV];
+    yXLtR = EQMP[csetSpecAll[HOL`Auto`RealArith`realNotLeLtThm,
+      {rT, absYXT}], hNotGoal];
+    triRaw = csetSpecAll[realAbsTriangleThm,
+      {csetSub[cV, yV], csetSub[yV, xV]}];
+    sumEq = csetSpecAll[csetSubSubAddEqThm, {cV, yV, xV}];
+    triStep = EQMP[csetRealLeCong[csetRealAbsCong[sumEq],
+      REFL[csetRealAdd[csetDist[cV, yV], absYXT]]], triRaw];
+    diffNeg = csetSpecAll[csetSubNegEqThm, {cV, yV}];
+    absNegStep = HOL`Bool`SPEC[csetSub[yV, cV], realAbsNegThm];
+    absCYEq = TRANS[csetRealAbsCong[diffNeg], absNegStep];
+    absCYLtR = EQMP[csetRealLtCong[HOL`Equal`SYM[absCYEq], REFL[rT]],
+      absYCLtR];
+    sumLt = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[csetLtAddTwoThm, {csetDist[cV, yV], absYXT, rT}],
+      absCYLtR], yXLtR];
+    halfDbl = HOL`Bool`SPEC[dT, halfDoubleThm];
+    ltDrr = HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeLtTransThm,
+      {dT, csetRealAdd[csetDist[cV, yV], absYXT],
+        csetRealAdd[rT, rT]}], triStep], sumLt];
+    dLtD = EQMP[csetRealLtCong[REFL[dT], halfDbl], ltDrr];
+    falseTh = HOL`Bool`MP[
+      HOL`Bool`NOTELIM[HOL`Bool`SPEC[dT,
+        HOL`Auto`RealArith`realLtIrreflThm]], dLtD];
+    body = HOL`Bool`CCONTR[goalTm, falseTh];
+    HOL`Bool`GEN[cV, HOL`Bool`GEN[xV, HOL`Bool`GEN[yV,
+      HOL`Bool`DISCH[hNeTm, HOL`Bool`DISCH[hMemTm, body]]]]]
+  ];
+
+compactClosedCoverTy = tyFun[csetRealTy, csetSetOfSetsTy];
+
+csetCompactClosedCoverBody[xT_, vT_] :=
+  Module[{cV},
+    cV = mkVar["cCcc", csetRealTy];
+    csetExistsTm[cV, csetConjTm[csetNotTm[mkEq[cV, xT]],
+      mkEq[vT, csetPunctured[cV, xT]]]]
+  ];
+
+compactClosedCoverDefThm =
+  Module[{xV, vV},
+    xV = mkVar["xCcc", csetRealTy];
+    vV = mkVar["vCcc", csetSetTy];
+    newDefinition[mkEq[mkVar["compactClosedCover", compactClosedCoverTy],
+      mkAbs[xV, mkAbs[vV, csetCompactClosedCoverBody[xV, vV]]]]]
+  ];
+compactClosedCoverConst[] := mkConst["compactClosedCover", compactClosedCoverTy];
+compactClosedCoverTm[xT_] := mkComb[compactClosedCoverConst[], xT];
+
+compactClosedCoverMemThm =
+  Module[{xV, vV},
+    xV = mkVar["xCccMem", csetRealTy];
+    vV = mkVar["vCccMem", csetSetTy];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[vV,
+      csetApplyDef[compactClosedCoverDefThm, {xV, vV}]]]
+  ];
+
+compactClosedCoverOpenThm =
+  Module[{xV, vV, hCccTm, hCcc, opened, cV, hBodyTm, hBody,
+          hEq, openPunctured, openV, result},
+    xV = mkVar["xCccOpen", csetRealTy];
+    vV = mkVar["vCccOpen", csetSetTy];
+    hCccTm = csetSetMem[compactClosedCoverTm[xV], vV];
+    hCcc = ASSUME[hCccTm];
+    opened = EQMP[csetSpecAll[compactClosedCoverMemThm, {xV, vV}], hCcc];
+    cV = mkVar["cOpen", csetRealTy];
+    hBodyTm = csetConjTm[csetNotTm[mkEq[cV, xV]],
+      mkEq[vV, csetPunctured[cV, xV]]];
+    hBody = ASSUME[hBodyTm];
+    hEq = HOL`Bool`CONJUNCT2[hBody];
+    openPunctured = csetSpecAll[openIntervalIsOpenThm,
+      {csetSub[cV, csetHalf[csetDist[cV, xV]]],
+        csetRealAdd[cV, csetHalf[csetDist[cV, xV]]]}];
+    openV = EQMP[HOL`Equal`APTERM[isOpenConst[], HOL`Equal`SYM[hEq]],
+      openPunctured];
+    result = HOL`Bool`CHOOSE[cV, opened, openV];
+    HOL`Bool`GEN[xV, HOL`Bool`GEN[vV, HOL`Bool`DISCH[hCccTm, result]]]
+  ];
+
+compactClosedCoverCoversThm =
+  Module[{sV, xV, yV, hNotSxTm, hNotSx, hSyTm, hSy, hEqYX,
+          notYX, vT, memEq, coverBody, coverAtV, dPos, rT, rPos,
+          leftLt, rightLt, intAtY, hitV, exGoal, allY, folded},
+    sV = mkVar["SClosedCover", csetSetTy];
+    xV = mkVar["xClosedCover", csetRealTy];
+    yV = mkVar["yClosedCover", csetRealTy];
+    hNotSxTm = csetNotTm[csetSetApp[sV, xV]]; hNotSx = ASSUME[hNotSxTm];
+    hSyTm = csetSetApp[sV, yV]; hSy = ASSUME[hSyTm];
+    hEqYX = ASSUME[mkEq[yV, xV]];
+    notYX = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[mkEq[yV, xV],
+      HOL`Bool`MP[HOL`Bool`NOTELIM[hNotSx],
+        EQMP[HOL`Equal`APTERM[sV, hEqYX], hSy]]]];
+    vT = csetPunctured[yV, xV];
+    memEq = csetSpecAll[compactClosedCoverMemThm, {xV, vT}];
+    coverBody = HOL`Bool`EXISTS[csetCompactClosedCoverBody[xV, vT],
+      yV, HOL`Bool`CONJ[notYX, REFL[vT]]];
+    coverAtV = EQMP[HOL`Equal`SYM[memEq], coverBody];
+    dPos = csetDistPosFromNe[yV, xV, notYX];
+    rT = csetHalf[csetDist[yV, xV]];
+    rPos = HOL`Bool`MP[HOL`Bool`SPEC[csetDist[yV, xV], halfPosThm], dPos];
+    leftLt = HOL`Bool`MP[csetSpecAll[csetSubRadiusLtCenterThm,
+      {yV, rT}], rPos];
+    rightLt = HOL`Bool`MP[csetSpecAll[csetCenterLtAddRadiusThm,
+      {yV, rT}], rPos];
+    intAtY = EQMP[HOL`Equal`SYM[
+      unfoldOpenInterval[csetSub[yV, rT], csetRealAdd[yV, rT], yV]],
+      HOL`Bool`CONJ[leftLt, rightLt]];
+    hitV = HOL`Bool`CONJ[coverAtV, intAtY];
+    exGoal = csetExistsTm[mkVar["vClosedCover", csetSetTy],
+      csetConjTm[csetSetMem[compactClosedCoverTm[xV],
+          mkVar["vClosedCover", csetSetTy]],
+        csetSetAppV[mkVar["vClosedCover", csetSetTy], yV]]];
+    allY = HOL`Bool`GEN[yV, HOL`Bool`DISCH[hSyTm,
+      HOL`Bool`EXISTS[exGoal, vT, hitV]]];
+    folded = EQMP[HOL`Equal`SYM[
+      unfoldSetCovers[compactClosedCoverTm[xV], sV]], allY];
+    HOL`Bool`GEN[sV, HOL`Bool`GEN[xV, HOL`Bool`DISCH[hNotSxTm, folded]]]
+  ];
+
+csetCompactClosedCoverAll[xT_, vsT_] :=
+  Module[{vV},
+    vV = mkVar["vCccAll", csetSetTy];
+    csetForallTm[vV, csetImpTm[csetMemTmAt[csetSetTy, vV, vsT],
+      csetSetMem[compactClosedCoverTm[xT], vV]]]
+  ];
+
+csetPuncturedRadiusAll[xT_, vsT_, dT_] :=
+  Module[{yV},
+    yV = mkVar["yRadiusAll", csetRealTy];
+    csetForallTm[yV, csetImpTm[csetFiniteCoverHit[vsT, yV],
+      csetRealLe[dT, csetDist[yV, xT]]]]
+  ];
+
+csetPuncturedRadiusExists[xT_, vsT_] :=
+  Module[{dV},
+    dV = mkVar["dPuncturedRadius", csetRealTy];
+    csetExistsTm[dV, csetConjTm[csetRealLt[zeroRealTm[], dV],
+      csetPuncturedRadiusAll[xT, vsT, dV]]]
+  ];
+
+csetPuncturedRadiusPredBody[xT_, vsT_] :=
+  csetImpTm[csetCompactClosedCoverAll[xT, vsT],
+    csetPuncturedRadiusExists[xT, vsT]];
+
+puncturedRadiusThm =
+  Module[{xV, vsV, v0V, restV, predLam, induction, base, step, allVs,
+          bodyVs},
+    xV = mkVar["xPuncturedRadius", csetRealTy];
+    vsV = mkVar["VsPuncturedRadius", csetSetListTy];
+    v0V = mkVar["v0PuncturedRadius", csetSetTy];
+    restV = mkVar["restPuncturedRadius", csetSetListTy];
+    predLam = mkAbs[vsV, csetPuncturedRadiusPredBody[xV, vsV]];
+    induction = HOL`Bool`ISPEC[predLam, HOL`Stdlib`List`listInductionThm];
+
+    base = Module[{nilT, hAllTm, hAll, oneT, onePos, yV, hHitTm,
+        hHit, vHit, hBodyTm, hBody, hMem, memNil, falseTh, point,
+        allY, exD, body},
+      nilT = csetNilAt[];
+      hAllTm = csetCompactClosedCoverAll[xV, nilT]; hAll = ASSUME[hAllTm];
+      oneT = csetOneReal[];
+      onePos = HOL`Auto`RealArith`realArithProve[
+        csetRealLt[zeroRealTm[], oneT]];
+      yV = mkVar["yRadiusBase", csetRealTy];
+      hHitTm = csetFiniteCoverHit[nilT, yV]; hHit = ASSUME[hHitTm];
+      vHit = mkVar["vRadiusBase", csetSetTy];
+      hBodyTm = csetFiniteCoverHitBody[nilT, yV, vHit];
+      hBody = ASSUME[hBodyTm];
+      hMem = HOL`Bool`CONJUNCT1[hBody];
+      memNil = csetMemNilEq[vHit];
+      falseTh = EQMP[memNil, hMem];
+      point = HOL`Bool`CHOOSE[vHit, hHit,
+        HOL`Bool`CONTR[csetRealLe[oneT, csetDist[yV, xV]], falseTh]];
+      allY = HOL`Bool`GEN[yV, HOL`Bool`DISCH[hHitTm, point]];
+      exD = HOL`Bool`EXISTS[csetPuncturedRadiusExists[xV, nilT],
+        oneT, HOL`Bool`CONJ[onePos, allY]];
+      body = HOL`Bool`DISCH[hAllTm, exD];
+      EQMP[HOL`Equal`SYM[HOL`Equal`BETACONV[mkComb[predLam, nilT]]],
+        body]
+    ];
+
+    step = Module[{ihTm, ih, consT, hAllTm, hAll, restAll, restRad,
+        memV0Cons, hV0Ccc, cccExists, dRest, hRestTm, hRest,
+        dRestPos, hRestFar, cStep, hCccBodyTm, hCccBody, hNe, hV0eq,
+        r0, r0Pos, dMin, dMinPos, yV, hHitTm, hHit, vHit,
+        hBodyTm, hBody, hMemCons, hVy, memOpen, branchEq, branchRest,
+        point, allY, exD, chooseC, chooseD, body},
+      ihTm = mkComb[predLam, restV];
+      ih = EQMP[HOL`Equal`BETACONV[ihTm], ASSUME[ihTm]];
+      consT = csetConsTmAt[v0V, restV];
+      hAllTm = csetCompactClosedCoverAll[xV, consT]; hAll = ASSUME[hAllTm];
+      restAll = Module[{vRest, hMemRestTm, hMemRest, memConsRest,
+          cccRest},
+        vRest = mkVar["vRadiusRest", csetSetTy];
+        hMemRestTm = csetMemTmAt[csetSetTy, vRest, restV];
+        hMemRest = ASSUME[hMemRestTm];
+        memConsRest = EQMP[HOL`Equal`SYM[
+          csetMemConsEq[vRest, v0V, restV]],
+          HOL`Bool`DISJ2[hMemRest, mkEq[vRest, v0V]]];
+        cccRest = HOL`Bool`MP[HOL`Bool`SPEC[vRest, hAll], memConsRest];
+        HOL`Bool`GEN[vRest, HOL`Bool`DISCH[hMemRestTm, cccRest]]
+      ];
+      restRad = HOL`Bool`MP[ih, restAll];
+      memV0Cons = EQMP[HOL`Equal`SYM[csetMemConsEq[v0V, v0V, restV]],
+        HOL`Bool`DISJ1[REFL[v0V], csetMemTmAt[csetSetTy, v0V, restV]]];
+      hV0Ccc = HOL`Bool`MP[HOL`Bool`SPEC[v0V, hAll], memV0Cons];
+      cccExists = EQMP[csetSpecAll[compactClosedCoverMemThm, {xV, v0V}],
+        hV0Ccc];
+      dRest = mkVar["dRest", csetRealTy];
+      hRestTm = csetConjTm[csetRealLt[zeroRealTm[], dRest],
+        csetPuncturedRadiusAll[xV, restV, dRest]];
+      hRest = ASSUME[hRestTm];
+      dRestPos = HOL`Bool`CONJUNCT1[hRest];
+      hRestFar = HOL`Bool`CONJUNCT2[hRest];
+      cStep = mkVar["cStep", csetRealTy];
+      hCccBodyTm = csetConjTm[csetNotTm[mkEq[cStep, xV]],
+        mkEq[v0V, csetPunctured[cStep, xV]]];
+      hCccBody = ASSUME[hCccBodyTm];
+      hNe = HOL`Bool`CONJUNCT1[hCccBody];
+      hV0eq = HOL`Bool`CONJUNCT2[hCccBody];
+      r0 = csetHalf[csetDist[cStep, xV]];
+      r0Pos = HOL`Bool`MP[HOL`Bool`SPEC[csetDist[cStep, xV], halfPosThm],
+        csetDistPosFromNe[cStep, xV, hNe]];
+      dMin = csetRealMin[r0, dRest];
+      dMinPos = HOL`Bool`DISJCASES[
+        HOL`Bool`EXCLUDEDMIDDLE[csetRealLe[r0, dRest]],
+        Module[{hLe, minEq},
+          hLe = ASSUME[csetRealLe[r0, dRest]];
+          minEq = HOL`Bool`MP[csetSpecAll[realMinLeCaseThm,
+            {r0, dRest}], hLe];
+          EQMP[csetRealLtCong[REFL[zeroRealTm[]], HOL`Equal`SYM[minEq]],
+            r0Pos]
+        ],
+        Module[{hNotLe, minEq},
+          hNotLe = ASSUME[csetNotTm[csetRealLe[r0, dRest]]];
+          minEq = HOL`Bool`MP[csetSpecAll[realMinGtCaseThm,
+            {r0, dRest}], hNotLe];
+          EQMP[csetRealLtCong[REFL[zeroRealTm[]], HOL`Equal`SYM[minEq]],
+            dRestPos]
+        ]];
+      yV = mkVar["yRadiusStep", csetRealTy];
+      hHitTm = csetFiniteCoverHit[consT, yV]; hHit = ASSUME[hHitTm];
+      vHit = mkVar["vRadiusHit", csetSetTy];
+      hBodyTm = csetFiniteCoverHitBody[consT, yV, vHit];
+      hBody = ASSUME[hBodyTm];
+      hMemCons = HOL`Bool`CONJUNCT1[hBody];
+      hVy = HOL`Bool`CONJUNCT2[hBody];
+      memOpen = EQMP[csetMemConsEq[vHit, v0V, restV], hMemCons];
+      branchEq = Module[{hEqTm, hEq, v0Y, puncturedY, farY, minLeR0},
+        hEqTm = mkEq[vHit, v0V]; hEq = ASSUME[hEqTm];
+        v0Y = EQMP[HOL`Equal`APTHM[hEq, yV], hVy];
+        puncturedY = EQMP[HOL`Equal`APTHM[hV0eq, yV], v0Y];
+        farY = HOL`Bool`MP[HOL`Bool`MP[
+          csetSpecAll[puncturedMemFarThm, {cStep, xV, yV}], hNe],
+          puncturedY];
+        minLeR0 = csetSpecAll[realMinLeLeftThm, {r0, dRest}];
+        HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeTransThm,
+          {dMin, r0, csetDist[yV, xV]}], minLeR0], farY]
+      ];
+      branchRest = Module[{hMemRestTm, hMemRest, restHit, farY, minLeRest},
+        hMemRestTm = csetMemTmAt[csetSetTy, vHit, restV];
+        hMemRest = ASSUME[hMemRestTm];
+        restHit = HOL`Bool`EXISTS[csetFiniteCoverHit[restV, yV],
+          vHit, HOL`Bool`CONJ[hMemRest, hVy]];
+        farY = HOL`Bool`MP[HOL`Bool`SPEC[yV, hRestFar], restHit];
+        minLeRest = csetSpecAll[realMinLeRightThm, {r0, dRest}];
+        HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeTransThm,
+          {dMin, dRest, csetDist[yV, xV]}], minLeRest], farY]
+      ];
+      point = HOL`Bool`CHOOSE[vHit, hHit,
+        HOL`Bool`DISJCASES[memOpen, branchEq, branchRest]];
+      allY = HOL`Bool`GEN[yV, HOL`Bool`DISCH[hHitTm, point]];
+      exD = HOL`Bool`EXISTS[csetPuncturedRadiusExists[xV, consT],
+        dMin, HOL`Bool`CONJ[dMinPos, allY]];
+      chooseC = HOL`Bool`CHOOSE[cStep, cccExists, exD];
+      chooseD = HOL`Bool`CHOOSE[dRest, restRad, chooseC];
+      body = HOL`Bool`DISCH[hAllTm, chooseD];
+      HOL`Bool`GEN[v0V, HOL`Bool`GEN[restV, HOL`Bool`DISCH[ihTm,
+        EQMP[HOL`Equal`SYM[HOL`Equal`BETACONV[mkComb[predLam, consT]]],
+          body]]]]
+    ];
+
+    allVs = HOL`Bool`MP[induction, HOL`Bool`CONJ[base, step]];
+    bodyVs = HOL`Bool`GEN[vsV,
+      EQMP[HOL`Equal`BETACONV[mkComb[predLam, vsV]],
+        HOL`Bool`SPEC[vsV, allVs]]];
+    HOL`Bool`GEN[xV, bodyVs]
+  ];
+
+closedOfCompactThm =
+  Module[{sV, xV, hCompactTm, hCompact, complSet, hComplXTm, hComplX,
+          hNotSx, coverT, openCompact, openCover, coversS, finiteCover,
+          openFinite, vsClosed, hListTm, hList, listBody, hMemCover,
+          hCovS, radiusEx, dClosed, hDTm, hD, hDpos, hFar,
+          leftT, rightT, leftLt, rightLt, yV, hIntTm, hInt, intBody,
+          loBound, hiBound, absLtD, hSyTm, hSy, hitY, farY, badLt,
+          falseTh, notSy, complAtY, allY, openBody, exRight, exLeft,
+          chooseD, chooseVs, openAll, openCompl, closed},
+    sV = mkVar["SClosedCompact", csetSetTy];
+    xV = mkVar["xClosedCompact", csetRealTy];
+    hCompactTm = isCompactTm[sV]; hCompact = ASSUME[hCompactTm];
+    complSet = complTm[sV];
+    hComplXTm = csetSetApp[complSet, xV]; hComplX = ASSUME[hComplXTm];
+    hNotSx = EQMP[csetSpecAll[complMemThm, {sV, xV}], hComplX];
+    coverT = compactClosedCoverTm[xV];
+    openCompact = EQMP[unfoldIsCompact[sV], hCompact];
+    openCover = HOL`Bool`SPEC[xV, compactClosedCoverOpenThm];
+    coversS = HOL`Bool`MP[csetSpecAll[compactClosedCoverCoversThm,
+      {sV, xV}], hNotSx];
+    finiteCover = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[coverT, openCompact], openCover], coversS];
+    openFinite = EQMP[unfoldSetFiniteSubcover[coverT, sV], finiteCover];
+    vsClosed = mkVar["vsClosed", csetSetListTy];
+    hListTm = setListSubcoverTm[coverT, sV, vsClosed];
+    hList = ASSUME[hListTm];
+    listBody = EQMP[unfoldSetListSubcover[coverT, sV, vsClosed], hList];
+    hMemCover = HOL`Bool`CONJUNCT1[listBody];
+    hCovS = HOL`Bool`CONJUNCT2[listBody];
+    radiusEx = HOL`Bool`MP[csetSpecAll[puncturedRadiusThm,
+      {xV, vsClosed}], hMemCover];
+    dClosed = mkVar["deltaClosed", csetRealTy];
+    hDTm = csetConjTm[csetRealLt[zeroRealTm[], dClosed],
+      csetPuncturedRadiusAll[xV, vsClosed, dClosed]];
+    hD = ASSUME[hDTm];
+    hDpos = HOL`Bool`CONJUNCT1[hD];
+    hFar = HOL`Bool`CONJUNCT2[hD];
+    leftT = csetSub[xV, dClosed];
+    rightT = csetRealAdd[xV, dClosed];
+    leftLt = HOL`Bool`MP[csetSpecAll[csetSubRadiusLtCenterThm,
+      {xV, dClosed}], hDpos];
+    rightLt = HOL`Bool`MP[csetSpecAll[csetCenterLtAddRadiusThm,
+      {xV, dClosed}], hDpos];
+    yV = mkVar["yClosedCompact", csetRealTy];
+    hIntTm = openIntervalTm[leftT, rightT, yV]; hInt = ASSUME[hIntTm];
+    intBody = EQMP[unfoldOpenInterval[leftT, rightT, yV], hInt];
+    loBound = HOL`Bool`CONJUNCT1[intBody];
+    hiBound = HOL`Bool`CONJUNCT2[intBody];
+    absLtD = HOL`Bool`MP[HOL`Bool`MP[
+      csetSpecAll[realAbsSubLtThm, {yV, xV, dClosed}],
+      loBound], hiBound];
+    hSyTm = csetSetApp[sV, yV]; hSy = ASSUME[hSyTm];
+    hitY = HOL`Bool`MP[HOL`Bool`SPEC[yV, hCovS], hSy];
+    farY = HOL`Bool`MP[HOL`Bool`SPEC[yV, hFar], hitY];
+    badLt = HOL`Bool`MP[HOL`Bool`MP[csetSpecAll[realLeLtTransThm,
+      {dClosed, csetDist[yV, xV], dClosed}], farY], absLtD];
+    falseTh = HOL`Bool`MP[
+      HOL`Bool`NOTELIM[HOL`Bool`SPEC[dClosed,
+        HOL`Auto`RealArith`realLtIrreflThm]], badLt];
+    notSy = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hSyTm, falseTh]];
+    complAtY = EQMP[HOL`Equal`SYM[csetSpecAll[complMemThm, {sV, yV}]],
+      notSy];
+    allY = HOL`Bool`GEN[yV, HOL`Bool`DISCH[hIntTm, complAtY]];
+    openBody = HOL`Bool`CONJ[leftLt, HOL`Bool`CONJ[rightLt, allY]];
+    exRight = HOL`Bool`EXISTS[
+      csetExistsTm[mkVar["rightClosedCompact", csetRealTy],
+        csetOpenWitnessBody[complSet, xV, leftT,
+          mkVar["rightClosedCompact", csetRealTy]]],
+      rightT, openBody];
+    exLeft = HOL`Bool`EXISTS[csetIsOpenExists[complSet, xV], leftT, exRight];
+    chooseD = HOL`Bool`CHOOSE[dClosed, radiusEx, exLeft];
+    chooseVs = HOL`Bool`CHOOSE[vsClosed, openFinite, chooseD];
+    openAll = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hComplXTm, chooseVs]];
+    openCompl = EQMP[HOL`Equal`SYM[unfoldIsOpen[complSet]], openAll];
+    closed = EQMP[HOL`Equal`SYM[unfoldIsClosed[sV]], openCompl];
+    HOL`Bool`GEN[sV, HOL`Bool`DISCH[hCompactTm, closed]]
+  ];
+
+compactIffClosedBoundedThm =
+  Module[{sV, hCompactTm, hCompact, hCBTm, hCB, closedBoundedFromCompact,
+          compactFromCB, eqTh},
+    sV = mkVar["SIffCB", csetSetTy];
+    hCompactTm = isCompactTm[sV]; hCompact = ASSUME[hCompactTm];
+    hCBTm = csetConjTm[isClosedTm[sV], setBoundedTm[sV]];
+    hCB = ASSUME[hCBTm];
+    closedBoundedFromCompact = HOL`Bool`CONJ[
+      HOL`Bool`MP[HOL`Bool`SPEC[sV, closedOfCompactThm], hCompact],
+      HOL`Bool`MP[HOL`Bool`SPEC[sV, boundedOfCompactThm], hCompact]];
+    compactFromCB = HOL`Bool`MP[HOL`Bool`MP[
+      HOL`Bool`SPEC[sV, compactOfClosedBoundedThm],
+      HOL`Bool`CONJUNCT1[hCB]], HOL`Bool`CONJUNCT2[hCB]];
+    eqTh = HOL`Kernel`DEDUCTANTISYM[compactFromCB, closedBoundedFromCompact];
+    HOL`Bool`GEN[sV, eqTh]
+  ];
+
+compactIffSequentialCompactThm =
+  Module[{sV, compactEq, seqEq},
+    sV = mkVar["SIffSeq", csetSetTy];
+    compactEq = HOL`Bool`SPEC[sV, compactIffClosedBoundedThm];
+    seqEq = HOL`Bool`SPEC[sV, sequentialCompactIffClosedBoundedThm];
+    HOL`Bool`GEN[sV, TRANS[compactEq, HOL`Equal`SYM[seqEq]]]
   ];
 
 End[];

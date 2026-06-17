@@ -334,10 +334,30 @@ HOLTest`runTests["stdlib/Real/CompactSet: Heine-Borel producer shapes",
       HOL`Stdlib`Real`compactOfClosedBoundedThm, expectedCompact]]];
 
 HOLTest`runTests["stdlib/Real/CompactSet: compact consumer shape",
-  Module[{sV, expectedBounded},
+  Module[{sV, expectedBounded, expectedClosed},
     sV = mkVar["SCompactBoundedRCST", setTyRCST];
     expectedBounded = forallRCST[sV,
       impRCST[HOL`Stdlib`Real`isCompactTm[sV],
         HOL`Stdlib`Real`setBoundedTm[sV]]];
     assertConclRCST["boundedOfCompact",
-      HOL`Stdlib`Real`boundedOfCompactThm, expectedBounded]]];
+      HOL`Stdlib`Real`boundedOfCompactThm, expectedBounded];
+    expectedClosed = forallRCST[sV,
+      impRCST[HOL`Stdlib`Real`isCompactTm[sV],
+        HOL`Stdlib`Real`isClosedTm[sV]]];
+    assertConclRCST["closedOfCompact",
+      HOL`Stdlib`Real`closedOfCompactThm, expectedClosed]]];
+
+HOLTest`runTests["stdlib/Real/CompactSet: compactness equivalences",
+  Module[{sV, expectedCB, expectedSeq},
+    sV = mkVar["SCompactIffRCST", setTyRCST];
+    expectedCB = forallRCST[sV,
+      mkEq[HOL`Stdlib`Real`isCompactTm[sV],
+        andRCST[HOL`Stdlib`Real`isClosedTm[sV],
+          HOL`Stdlib`Real`setBoundedTm[sV]]]];
+    assertConclRCST["compactIffClosedBounded",
+      HOL`Stdlib`Real`compactIffClosedBoundedThm, expectedCB];
+    expectedSeq = forallRCST[sV,
+      mkEq[HOL`Stdlib`Real`isCompactTm[sV],
+        HOL`Stdlib`Real`isSequentiallyCompactTm[sV]]];
+    assertConclRCST["compactIffSequentialCompact",
+      HOL`Stdlib`Real`compactIffSequentialCompactThm, expectedSeq]]];
