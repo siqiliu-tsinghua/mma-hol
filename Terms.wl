@@ -35,7 +35,9 @@ destFunType[tyApp["fun", {dom_, rng_}]] := {dom, rng};
 destFunType[other_] :=
   HOL`Error`holError["term", "destFunType: not a function type", <|"got" -> other|>];
 
-mkVar[n_String, t_] /; StringLength[n] > 0 := var[n, t];
+mkVar[n_String, t_] /; StringLength[n] > 0 && ! StringContainsQ[n, "@"] := var[n, t];
+mkVar[n_String, t_] /; StringContainsQ[n, "@"] :=
+  HOL`Error`holError["term", "mkVar: name must not contain '@' (reserved for MESON clause renaming)", <|"name" -> n|>];
 mkVar[n_, t_] :=
   HOL`Error`holError["term", "mkVar: invalid name", <|"name" -> n, "type" -> t|>];
 

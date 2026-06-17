@@ -326,7 +326,7 @@ EndPackage[];
 
 ## 7. 开发路线图
 
-里程碑 M1–M8：M1–M6 基础设施（kernel / 派生规则 / tactic / parser）、M7 stdlib + 自动化 + ℝ-完备有序域、**M8 ℝ 序列 + 紧性 + 连通 + 拓扑 = stdlib 收官**。M1–M7 基本完成，M8 进行中（见各段）。（M9 / M10 已砍，见 M8 段末"已砍范围"。）
+里程碑 M1–M8：M1–M6 基础设施（kernel / 派生规则 / tactic / parser）、M7 stdlib + 自动化 + ℝ-完备有序域、**M8 ℝ 序列 + 紧性 + 连通 + 拓扑 = stdlib 收官**。**M1–M8 全部完成 2026-06-17 —— stdlib 收官，三个 frontier 文件已毕业进 bootstrap.mx（见各段）。**（M9 / M10 已砍，见 M8 段末"已砍范围"。）
 
 ### M1：Types ✦ 第 1 周
 - [x] 数据构造 `tyVar`, `tyApp`
@@ -497,13 +497,13 @@ EndPackage[];
 
 **贯穿原则——绕开可数性地基。** 全部 capstone 都走 **确界原理 / 序列路线**，不碰 `CountableSet` / 第二可数 / Lindelöf。其直接后果：闭区间 Heine–Borel 走**确界原理 + 勒贝格延拓法**（`{x : [a,x] 可被有限覆盖}` 取确界、证确界 = b），**不走** 区间套 + 二分；并放弃"ℝ 不可数"与"`0.999…=1`"两个会拽进集合论地基的 capstone。
 
-#### M8.1 序列（`Real/Seq.wl`）—— 进行中
+#### M8.1 序列（`Real/Seq.wl`）✅ DONE + 毕业（cold rebuild，commit c5de53f）
 - [x] `tendsto`（实 ε、关系式）+ 极限演算（常数 / 唯一 / 和 / 负 / 差）、`convergent`（Stage 1，brief-008）
 - [x] `eventually` 组合子 + 收敛 ⇒ 有界 + 远离零 + 绝对值乘法 + 乘积 / 数乘极限律（Stage 2，briefs 009/010）
 - [x] **确界 ⇒ 单调收敛**（`dedekindCompleteThm` → 单调有界收敛；蓝本 `RealSequence/Principles/FromSupMonotone.lean`）（Stage 3，brief-011，commit 00981cf）
 - [x] **子列基础设施 + 单调子列存在**（Peak / 上升指标递归 → `existsMonoSubseqThm`；蓝本 `RealSequence/Subsequence.lean`）（Stage 4，brief-012，commit 8d27504）。**`existsMonoSubseqThm` 喂入 M8.2 的 BW 自组装(见下)——不是孤儿;子列定义另被 `FiniteToSeq` 风格证明复用。**
 - [x] **柯西准则**（`cauchyConvergesThm` `⊢ ∀u. seqCauchy u ⇒ ∃L. tendsto u L`,M7 桥接 capstone;走 `FromSupCauchy`(最终下界集之确界),蓝本 `Principles/FromSupCauchy.lean`）（Stage 5，brief-014，commit 58455bf；首个 full-access 自验 brief,Codex 自跑 dev.wls 到 202/0）。**注:这是 FromSupCauchy 路线,与 active 阀门的 `FromMonotoneCauchy`(经单调子列)不同;按 owner 决定保留为独立证明,而 `existsMonoSubseq` 的用武之地改在 M8.2 的 BW。**
-- 序列层(Stages 1–5)**全部完成**;`Seq.wl` 毕业进 `bootstrap.mx`(graduation 待办)。
+- 序列层(Stages 1–5)**全部完成**;`Seq.wl` 已毕业进 `bootstrap.mx`(2026-06-14,commit c5de53f)。
 
 #### M8.2 闭区间紧性（**双独立分支**路线 —— owner 重规划 2026-06-14）
 **路线决定(owner)。** 蓝本紧性层四路线 + 阀门是为「单一入口、阀门可控」服务的;**我们不需要那个约束**,所以走**两条互不相连的独立分支**——既能用上我们辛苦做的 `existsMonoSubseqThm`(否则成孤儿),又**全程避开 Lindelöf**(关键:`SeqToFinite` 列紧→紧 需 Lindelöf/可数性,我们**根本不连这条边**)。**全部依赖已审计为 Lindelöf-free(2026-06-14)。除「BW 自组装」一个新证明外,其余全是蓝本忠实翻译(~1370 行 Lean)。**
@@ -527,20 +527,20 @@ EndPackage[];
 #### M8.4 配套点集拓扑（`Topology.wl`，并行于主线，服务连通性 + 一般紧性）✅ DONE 2026-06-16（FRONTIER,未毕业;cold run_all 3045/0）
 - [x] `compl`(补集)+ `isClosed`(= `isOpen (compl S)`)+ `relativeClosed`/`closedIn`(子空间闭)+ `closedInSubset` + `closedIntervalIsClosed`（brief-029,70b88a2）;`pointInOpenIntervalOfTendsto`（收敛列最终落在极限的开邻域内）+ `limitMemOfClosed`（闭集含其收敛序列极限,seq-compact 方向的桥）(brief-030,281d774)。只移植一般紧性消费的部分;**跳过** `ClosureAlgebra`/`IntervalClosure`/`Sequential`/`RationalBasis`/`Lindelof`(闭包/内部/可数基)。
 
-#### M8.5 一般紧性刻画（终点站,`CompactSet.wl`,FRONTIER）—— **范围决定 2026-06-16(owner):列紧 ⟺ 有界闭 ⟺ 紧 重新纳入**
-- 当初 M8.2 把两分支(列紧 / 有限覆盖)留作不相连、以避开 Lindelöf。**现以「有界闭」作桥重连**:不走 Lindelöf 的「列紧 ⇒ 紧」,而是分别证「一般列紧 ⟺ 有界闭」「一般紧 ⟺ 有界闭」,两者合得「紧 ⟺ 列紧」。可数性非阻塞(仅 `IsLimitPointCompact` 需 `ListInfinite`;该第三等价**可跳过**)。**进度:cold run_all 3079/0。**
+#### M8.5 + M8.6 一般紧性刻画（终点站,`CompactSet.wl`）✅ DONE + 毕业 2026-06-17 —— **范围决定 2026-06-16(owner):列紧 ⟺ 有界闭 ⟺ 紧**
+- 当初 M8.2 把两分支(列紧 / 有限覆盖)留作不相连、以避开 Lindelöf。**现以「有界闭」作桥重连**:不走 Lindelöf 的「列紧 ⇒ 紧」,而是分别证「一般列紧 ⟺ 有界闭」「一般紧 ⟺ 有界闭」,两者合得「紧 ⟺ 列紧」。可数性非阻塞(仅 `IsLimitPointCompact` 需 `ListInfinite`;该第三等价**已跳过**)。**最终:cold Strict run_all + cold Stable run_all_stable 双 3124/0;三个 frontier 文件已毕业进 bootstrap.mx(commit b21fb63)。**
 - [x] `isSequentiallyCompact` 定义 + `seqBoundedOfSetBounded` + `sequentiallyCompactOfClosedBounded`(有界闭⇒列紧,BW+`limitMemOfClosed`)。brief-031,ee8a537。（`setBounded`/`seqBounded`/`bwSequentialThm`/`hasConvergentSubseq` 复用自已毕业的 Compact.wl。）
 - [x] `boundedOfSequentiallyCompact`(列紧⇒有界,逃逸序列 `unboundedEscapePoint` + `realArch`;`natRealLe`/`existsOutside`/`ltAbsOfOutside`)。brief-032,0943d95。
 - [x] 分析前置 `seqTendstoSubsequence`(收敛列的子列同极限)+ `invSuccRadius`(=1/(n+1))pos/antitone/`invSuccRadiusTendstoZero`(1/(n+1)→0)。brief-033,e75f4a0。
-- [ ] **brief-034:** `closedOfSequentiallyCompact`(列紧⇒闭,`nearClosedPoint` ε-序列 + `seqTendstoSubsequence`+`tendstoUnique`)+ **`sequentialCompact_iff_closed_bounded`** 打包三向 —— 收口序列侧「列紧⟺有界闭」。蓝本 `RealCompactness/SequentialCompactness.lean`(437 行,无 Lindelöf)。
-- [ ] **开覆盖侧:** `isCompact` 需 **集合-之-集合覆盖编码** `C:(real→bool)→bool`(蓝图 `∀{ι}` 类型量化 HOL 无对应,Claude 设计;把多态 `compactnessPrincipleThm` instantiate 在 ι:=real→bool)→ **`compact_iff_closed_bounded`**(`compact_of_closed_bounded` 用 `compactnessPrincipleThm` + 闭子集 + `centerList`,**brief-024 同族**,无 ULift)。蓝本 `RealCompactness/HeineBorel.lean`(457 行)。
-- [ ] **`compact_iff_sequentialCompact`**(两者皆 ⟺ 有界闭 ⇒ 推论;蓝本 `CompactSequential.lean` 52 行)。
+- [x] **brief-034:** `closedOfSequentiallyCompactThm`(列紧⇒闭,`nearClosedPoint` ε-序列 + `seqTendstoSubsequence`+`tendstoUnique`)+ **`sequentialCompactIffClosedBoundedThm`** 打包三向 —— 收口序列侧「列紧⟺有界闭」(b3753be)。
+- [x] **开覆盖侧(M8.6):** `isCompact` = **集合-之-集合覆盖编码** `C:(real→bool)→bool`(蓝图 `∀{ι}` 类型量化 HOL 无对应,owner 确认的钳制族设计:`λV. COND (C V) V (λx.F)` 经 `ISPEC` 把多态 `compactnessPrincipleThm` 实例化在 ι:=real→bool)。词汇 `setCovers`/`setListSubcover`/`setFiniteSubcover` + `memFilter`(brief-035,8903be5)、桥接 `closedIntervalSetCompact` + `compactOfClosedBounded`(brief-036,0c5363a)、`boundedOfCompact`(brief-037,3419647)、`closedOfCompact`(brief-038,ca843b2)→ **`compactIffClosedBoundedThm`**。
+- [x] **`compactIffSequentialCompactThm`**(与 `sequentialCompactIffClosedBounded` 传递得;brief-038 尾,Claude 直接做)。**HEINE–BOREL: isCompact ⟺ isClosed ∧ setBounded ⟺ isSequentiallyCompact 全部证出。**
 
 **M8 capstone（一组够得着的经典定理，取代旧的遥远 Lebesgue 判据）：**
-- 单调有界收敛定理 ✅ · **柯西完备性** ✅ · **Bolzano–Weierstrass** ✅ · **Heine–Borel**（闭区间）✅ · 连通性 / 介值定理 ✅（M8.3）· **列紧 ⟺ 有界闭 ⟺ 紧**（M8.5,终点站）
+- 单调有界收敛定理 ✅ · **柯西完备性** ✅ · **Bolzano–Weierstrass** ✅ · **Heine–Borel**（闭区间 `compactnessPrincipleThm` ✅ + 开覆盖 `isCompact` ✅）· 连通性 / 介值定理 ✅（M8.3）· **列紧 ⟺ 有界闭 ⟺ 紧** ✅（M8.5/M8.6,终点站）—— **全部证出 2026-06-17**
 - （勒贝格数引理已移出范围 2026-06-16 —— 见分支 B）
 
-**验收 + 收官**：M8.4 + M8.5 证出后，graduate `Connected.wl`/`Topology.wl`/`CompactSet.wl`,宣告 stdlib 完成，整理发布到 GitHub。
+**验收 + 收官 ✅ 2026-06-17**：`Connected.wl`/`Topology.wl`/`CompactSet.wl` 已 graduate 进 `bootstrap.mx`（commit b21fb63，冷重建 1432 KB，无 frontier 文件残留），cold Strict run_all + cold Stable run_all_stable 双 3124/0。**stdlib（M8 ℝ 理论）完成。** 发布到 GitHub 待 owner 推送（当前无远程仓库）。
 
 ---
 

@@ -12,6 +12,9 @@ HOLTest`runTests["terms: mkVar", Module[{alpha},
   HOLTest`assertEq[mkVar["y", boolTy], var["y", boolTy], "mkVar on bool"];
   HOLTest`assertThrows[mkVar["", alpha], "term", "empty name rejected"];
   HOLTest`assertThrows[mkVar[42, alpha], "term", "non-string rejected"];
+  HOLTest`assertThrows[mkVar["foo@bar", alpha], "term",
+    "name containing @ rejected (reserved for MESON renaming)"];
+  HOLTest`assertThrows[mkVar["@", alpha], "term", "bare @ name rejected"];
   HOLTest`assertEq[mkVar["_b0", alpha], var["_b0", alpha],
     "_b0 is just a name now (bvar head is structurally separate)"];
 ]];
