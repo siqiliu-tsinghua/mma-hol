@@ -542,6 +542,15 @@ EndPackage[];
 
 **验收 + 收官 ✅ 2026-06-17**：`Connected.wl`/`Topology.wl`/`CompactSet.wl` 已 graduate 进 `bootstrap.mx`（commit b21fb63，冷重建 1432 KB，无 frontier 文件残留），cold Strict run_all + cold Stable run_all_stable 双 3124/0。**stdlib（M8 ℝ 理论）完成。** 发布到 GitHub 待 owner 推送（当前无远程仓库）。
 
+#### 连续函数 demo —— `demos/Continuous.wl` + `demos/continuous.nb`（DONE 到 IVT；EVT 留待）
+范围=展示（非 stdlib；连续函数在 tautology 是下一章）。owner 定：**全局连续定义、Claude 自己证、怎么简单怎么来**。已建 `demos/Continuous.wl`（验证包，载于 bootstrap.mx 之上，context `HOL`Demos`Continuous`）+ `demos/continuous.nb`（+ 生成器 `build_continuous_nb.wls`）。`continuous f = ∀U. isOpen U ⇒ isOpen (PREIMAGE f U)`（全局；自建 α=β=real 的 IMAGE/PREIMAGE 常量——Set.wl 的多态 builder 对具体 f mkComb 不匹配）。
+- ✅ **T1 `continuousImageCompactThm`**（commit 8a94a5c）：开覆盖拉回 `Cp=λW.∃V. C V ∧ W=PREIMAGE f V` + 全局 `isCompact` + Hilbert-select 把有限子覆盖映回（自证两条 `memMap`/`memMapEx`：MEM 在 MAP 下双向）。**坑**：`cpBody` 的 ∃-绑定变量必须用独立名（`vCp`），否则传入含 `vExV` 的 `PREIMAGE f vExV` 会被捕获。
+- ✅ **T2 `continuousImageConnectedThm`**（9099260，零调试）：`isSeparation` 6 合取经 `trace`/`openInTrace`/`openIn` 拉回；`A'=trace S (PREIMAGE f WA)`。
+- ✅ **T3+推论**（1cf5e3b）：`closedIntervalCompactThm`（closed+bounded[lo=a,hi=b]⇒compact）、`continuousImageBoundedThm`（有界）、**`continuousIVTThm`**（函数版 IVT，经 connected→interval + isIntervalSet）。
+- ✅ **笔记本**（5551793）：`demos/continuous.nb`，8 cell 全验证。
+- ⏳ **EVT `continuousEVTThm`（唯一留待，最难）**：`∀f a b. continuous f ⇒ a≤b ⇒ ∃c. ci a b c ∧ ∀x. ci a b x ⇒ f x ≤ f c`。路线：T=IMAGE f [a,b] 紧⇒闭+有界+非空（f a∈T）；`M=realSup T`（`realSupUpper`/`realSupLeast`）；**M∈T**（最难，~150 行 nearClosedPoint 式：序列 `uₙ=@z. T z ∧ M−invSuccRadius n<z`，逐 n 存在性=EM+反证用 `realSupLeast`，`invSuccRadiusTendstoZeroThm` 挤压得 tendsto u M，`limitMemOfClosedThm`⇒T M）；M∈T 给 ∃c∈[a,b]. M=f c，再 `realSupUpper` 得 f x≤M=f c。复用 public `invSuccRadius*`。我曾起草但因 ~150 行风险撤回（保持文件干净）；建议下次单独一坐。
+- 验收：恢复 bootstrap.mx + `Get demos/Continuous.wl` 的单独脚本迭代；demos/ 不入正式套件。
+
 ---
 
 ### 已砍范围（2026-06-13 重定）
