@@ -20,6 +20,9 @@ continuousTm::usage = "continuousTm[f] - builds continuous f.";
 unfoldContinuous::usage = "unfoldContinuous[f] - proves the beta-reduced continuous definition at f.";
 continuousImageCompactThm::usage = "continuousImageCompactThm - |- forall f S. continuous f ==> isCompact S ==> isCompact (IMAGE f S).";
 continuousImageConnectedThm::usage = "continuousImageConnectedThm - |- forall f S. continuous f ==> isConnected S ==> isConnected (IMAGE f S).";
+closedIntervalCompactThm::usage = "closedIntervalCompactThm - |- forall a b. isCompact (closedInterval a b).";
+continuousImageBoundedThm::usage = "continuousImageBoundedThm - |- forall f a b. continuous f ==> setBounded (IMAGE f (closedInterval a b)).";
+continuousIVTThm::usage = "continuousIVTThm - |- forall f a b y. continuous f ==> realLe a b ==> realLe (f a) y ==> realLe y (f b) ==> exists c. closedInterval a b c /\\ f c = y.";
 
 Begin["`Private`"];
 
@@ -511,6 +514,102 @@ continuousImageConnectedThm =
     EQMP[HOL`Equal`SYM[unfoldIsConnected[imgS]],
       HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, notSep]]] // (HOL`Bool`GEN[fV,
         HOL`Bool`GEN[sV, HOL`Bool`DISCH[hContTm, HOL`Bool`DISCH[hConnTm, #]]]] &)
+  ];
+
+ctRealLe[xT_, yT_] := mkComb[mkComb[realLeConst[], xT], yT];
+ctClosedInterval[aT_, bT_] := mkComb[mkComb[closedIntervalConst[], aT], bT];
+ctReflLe[xT_] := HOL`Bool`SPEC[xT,
+  HOL`Auto`RealArith`realArithProve[ctForallTm[mkVar["zRefl", ctRealTy],
+    ctRealLe[mkVar["zRefl", ctRealTy], mkVar["zRefl", ctRealTy]]]]];
+
+(* T3 prerequisite: a closed interval is bounded, hence compact. *)
+closedIntervalSetBoundedThm =
+  Module[{aV, bV, xV, loV, hiV, ci, hCiTm, mem, body, innerExTm, outerExTm,
+          innerEx, outerEx},
+    aV = mkVar["a", ctRealTy]; bV = mkVar["b", ctRealTy]; xV = mkVar["x", ctRealTy];
+    loV = mkVar["lo", ctRealTy]; hiV = mkVar["hi", ctRealTy];
+    ci = ctClosedInterval[aV, bV];
+    hCiTm = ctApp[ci, xV];
+    mem = ctSpecAll[closedIntervalMemThm, {aV, bV, xV}];
+    body = HOL`Bool`GEN[xV, HOL`Bool`DISCH[hCiTm, EQMP[mem, ASSUME[hCiTm]]]];
+    innerExTm = ctExistsTm[hiV, ctForallTm[xV, ctImpTm[ctApp[ci, xV],
+      ctConjTm[ctRealLe[aV, xV], ctRealLe[xV, hiV]]]]];
+    outerExTm = ctExistsTm[loV, ctExistsTm[hiV, ctForallTm[xV,
+      ctImpTm[ctApp[ci, xV], ctConjTm[ctRealLe[loV, xV], ctRealLe[xV, hiV]]]]]];
+    innerEx = HOL`Bool`EXISTS[innerExTm, bV, body];
+    outerEx = HOL`Bool`EXISTS[outerExTm, aV, innerEx];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      EQMP[HOL`Equal`SYM[unfoldSetBounded[ci]], outerEx]]]
+  ];
+
+closedIntervalCompactThm =
+  Module[{aV, bV, ci},
+    aV = mkVar["a", ctRealTy]; bV = mkVar["b", ctRealTy];
+    ci = ctClosedInterval[aV, bV];
+    HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[ci, compactOfClosedBoundedThm],
+        ctSpecAll[closedIntervalIsClosedThm, {aV, bV}]],
+        ctSpecAll[closedIntervalSetBoundedThm, {aV, bV}]]]]
+  ];
+
+(* corollary: a continuous image of a closed interval is bounded *)
+continuousImageBoundedThm =
+  Module[{fV, aV, bV, ci, img, hContTm, hCont, imgCompact, ccb},
+    fV = mkVar["f", ctFunTy]; aV = mkVar["a", ctRealTy]; bV = mkVar["b", ctRealTy];
+    ci = ctClosedInterval[aV, bV]; img = ctImageTm[fV, ci];
+    hContTm = continuousTm[fV]; hCont = ASSUME[hContTm];
+    imgCompact = HOL`Bool`MP[HOL`Bool`MP[
+      ctSpecAll[continuousImageCompactThm, {fV, ci}], hCont],
+      ctSpecAll[closedIntervalCompactThm, {aV, bV}]];
+    ccb = EQMP[HOL`Bool`SPEC[img, compactIffClosedBoundedThm], imgCompact];
+    HOL`Bool`GEN[fV, HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[hContTm, HOL`Bool`CONJUNCT2[ccb]]]]]
+  ];
+
+(* corollary: intermediate value theorem (function form) *)
+continuousIVTThm =
+  Module[{fV, aV, bV, yV, cV, fa, fb, ci, img, hContTm, hCont, hAbTm, hAb,
+          hLoTm, hLo, hHiTm, hHi, imgConn, imgIv, ivU, ciA, ciB, faImg,
+          fbImg, betweenThm, imgY, hcTm, hc, ciC, yEqfc, fcEqy, goalEx,
+          chosen},
+    fV = mkVar["f", ctFunTy]; aV = mkVar["a", ctRealTy]; bV = mkVar["b", ctRealTy];
+    yV = mkVar["y", ctRealTy]; cV = mkVar["c", ctRealTy];
+    fa = mkComb[fV, aV]; fb = mkComb[fV, bV];
+    ci = ctClosedInterval[aV, bV]; img = ctImageTm[fV, ci];
+    hContTm = continuousTm[fV]; hCont = ASSUME[hContTm];
+    hAbTm = ctRealLe[aV, bV]; hAb = ASSUME[hAbTm];
+    hLoTm = ctRealLe[fa, yV]; hLo = ASSUME[hLoTm];
+    hHiTm = ctRealLe[yV, fb]; hHi = ASSUME[hHiTm];
+    imgConn = HOL`Bool`MP[HOL`Bool`MP[
+      ctSpecAll[continuousImageConnectedThm, {fV, ci}], hCont],
+      ctSpecAll[connectedClosedIntervalThm, {aV, bV}]];
+    imgIv = EQMP[HOL`Bool`SPEC[img, connectedIffIntervalSetThm], imgConn];
+    ivU = EQMP[HOL`Bool`SPEC[img, isIntervalSetMemThm], imgIv];
+    (* a, b in [a,b] *)
+    ciA = EQMP[HOL`Equal`SYM[ctSpecAll[closedIntervalMemThm, {aV, bV, aV}]],
+      HOL`Bool`CONJ[ctReflLe[aV], hAb]];
+    ciB = EQMP[HOL`Equal`SYM[ctSpecAll[closedIntervalMemThm, {aV, bV, bV}]],
+      HOL`Bool`CONJ[hAb, ctReflLe[bV]]];
+    faImg = EQMP[HOL`Equal`SYM[ctImageAt[fV, ci, fa]],
+      HOL`Bool`EXISTS[concl[ctImageAt[fV, ci, fa]][[2]], aV,
+        HOL`Bool`CONJ[ciA, REFL[fa]]]];
+    fbImg = EQMP[HOL`Equal`SYM[ctImageAt[fV, ci, fb]],
+      HOL`Bool`EXISTS[concl[ctImageAt[fV, ci, fb]][[2]], bV,
+        HOL`Bool`CONJ[ciB, REFL[fb]]]];
+    betweenThm = EQMP[HOL`Equal`SYM[ctApplyDef[betweenDefThm, {fa, yV, fb}]],
+      HOL`Bool`CONJ[hLo, hHi]];   (* between (f a) y (f b) *)
+    imgY = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      ctSpecAll[ivU, {fa, yV, fb}], faImg], fbImg], betweenThm];  (* img y *)
+    (* img y = exists c. ci c /\ y = f c ; turn into f c = y *)
+    hcTm = ctConjTm[ctApp[ci, cV], mkEq[yV, mkComb[fV, cV]]]; hc = ASSUME[hcTm];
+    ciC = HOL`Bool`CONJUNCT1[hc]; yEqfc = HOL`Bool`CONJUNCT2[hc];
+    fcEqy = HOL`Equal`SYM[yEqfc];
+    goalEx = ctExistsTm[cV, ctConjTm[ctApp[ci, cV], mkEq[mkComb[fV, cV], yV]]];
+    chosen = HOL`Bool`CHOOSE[cV, EQMP[ctImageAt[fV, ci, yV], imgY],
+      HOL`Bool`EXISTS[goalEx, cV, HOL`Bool`CONJ[ciC, fcEqy]]];
+    HOL`Bool`GEN[fV, HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[yV,
+      HOL`Bool`DISCH[hContTm, HOL`Bool`DISCH[hAbTm, HOL`Bool`DISCH[hLoTm,
+        HOL`Bool`DISCH[hHiTm, chosen]]]]]]]]
   ];
 
 End[];
