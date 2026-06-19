@@ -13,8 +13,7 @@ Thumbs.db
 .vscode/
 *~
 
-# cross-team bug-report exchange (not part of the source tree)
-bug_report/
-
-# external Lean reference project (Tautology Dedekind ℝ rewrite, read-only blueprint)
+# external Lean reference project (the unpublished "tautology" Dedekind ℝ blueprint).
+# Kept ignored as a safety guard: if the private blueprint is ever re-extracted here for
+# reference, this prevents it from being committed to the public repo.
 tautology-ref/

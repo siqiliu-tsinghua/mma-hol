@@ -6,6 +6,21 @@
 
 ---
 
+## 0.5 上线前清单（项目本体已完成，待下个时段收尾发布）
+
+stdlib 已完成；连续函数 demo（含 EVT/IVT）已完成（§"连续函数 demo"）；开源必备文档已就位。
+
+**已决定**：许可证 = **MIT**（`LICENSE`，版权人 Si-Qi Liu / 2026）；真名+邮箱公开 = OK；源码注释/codex 简报里引用未发布的 Lean 蓝图 `tautology` = OK；**不做** GitHub Actions CI；`tautology-ref/` 的 `.gitignore` 条目**保留**（作"防止未发布蓝图被误提交进公开仓库"的护栏，不是陈旧条目）。
+
+**已做的发布准备**：`LICENSE`(MIT) + `CITATION.cff` + `CONTRIBUTING.md` + `demos/README.md` + 双语 README 加 demo/License 段（commit 67f9583）；codex `TEMPLATE.md` 去掉本机绝对路径（57aee07）；`.gitignore` 清掉 `bug_report/` 陈旧条目。安全扫描干净（无密钥、无被跟踪的 `.mx`/`tautology-ref`、冷 runner 不依赖快照、Parser 不用 `ToExpression`）。合规无负担（不 vendor 第三方代码；只*要求*而非*再分发* Wolfram；HOL Light 是重写非拷贝且已致谢）。
+
+**剩余（下个时段）**：
+1. **🔴 冷 `run_all.wls`(Strict) 跑绿 + 核对真实 `passed` 数**——README 写 `3126/0`，但毕业 commit/memory 是 `3124`、CLAUDE.md 是 `3126`，须复现确定并把 README 改成真实数字（对外通过数必须可复现）。冷 runner 从源码全量加载、不依赖 `bootstrap.mx`（已确认），同时验证"克隆即绿"。可顺带 `run_all_stable.wls`。
+2. 建 GitHub 公开仓库 + push；填 `CITATION.cff` 的 `repository-code`；设仓库描述/topics。
+3.（可选）打开两个 demo 笔记本确认可评估。
+
+---
+
 ## 1. 项目愿景
 
 构建一个在 notebook 里可交互的 HOL 证明助手，满足：
