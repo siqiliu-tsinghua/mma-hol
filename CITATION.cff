@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use mma-hol in your work, please cite it as below."
+title: "mma-hol: a kernel-minimal LCF-style HOL theorem prover in the Wolfram Language"
+abstract: >-
+  A kernel-minimal, LCF-style higher-order logic theorem prover written in the
+  Wolfram Language, modeled on HOL Light. It is, first of all, an experiment in
+  using the Wolfram Language's Module/Unique (gensym) machinery to build a
+  private-like trust boundary around a 10-rule kernel. Its standard library
+  constructs the real numbers from Dedekind cuts and proves a spine of classical
+  real-analysis theorems (monotone convergence, Cauchy completeness,
+  Bolzano-Weierstrass, Heine-Borel, the connectedness characterization of
+  intervals) with zero sorry/axioms beyond the three standard HOL axioms.
+type: software
+authors:
+  - family-names: "Liu"
+    given-names: "Si-Qi"
+license: MIT
+keywords:
+  - theorem-proving
+  - higher-order-logic
+  - HOL
+  - LCF
+  - Wolfram-Language
+  - formal-mathematics
+  - real-analysis
+# repository-code: fill in once the project is published to a public host.

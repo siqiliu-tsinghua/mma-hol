@@ -106,7 +106,8 @@ countability machinery):
 - **Connectedness** (`Connected`): **connected ⟺ interval** — the order-topological heart of
   the intermediate value theorem. (The library stops at point-set topology: there is no
   continuous-function layer, so the *function-form* IVT, `f(a)<0<f(b) ⇒ ∃c. f(c)=0`, is out
-  of scope.)
+  of scope — but the [`demos/`](demos/) folder builds exactly that layer as a showcase and
+  derives the function-form IVT and the extreme value theorem from it.)
 - **Topology** (`Topology`): open/closed sets, complements, relative (subspace) closedness.
 
 Interested readers can follow these routes directly in the source — each file is one
@@ -149,9 +150,13 @@ wolframscript -file tests/run_fast.wls real
 wolframscript -file tests/build_snapshot.wls
 ```
 
-An interactive notebook with runnable examples is provided for exploring the prover by hand
-(double-click to open in Mathematica / the Wolfram Player). A separate user guide covers the
-API and how to develop your own proofs.
+Two interactive notebooks in [`demos/`](demos/) let you explore the prover by hand
+(double-click to open in Mathematica / the free Wolfram Player): `examples.nb` is a guided
+tour of the kernel, the automation, and the marquee library theorems; `continuous.nb` builds
+a small continuous-function layer on top of the topology and derives boundedness, the extreme
+value theorem, and the function-form intermediate value theorem on a closed interval. See
+[`demos/README.md`](demos/README.md) for details, and [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)
+for the API and how to develop your own proofs.
 
 ## Provenance
 
@@ -162,3 +167,10 @@ portion of the translation from those blueprints into Wolfram Language proofs wa
 OpenAI's Codex CLI under a "write the spec here, verify every result against the kernel here"
 discipline. As noted above, the AI authorship of the untrusted layers does not affect
 soundness — every theorem is rechecked by the kernel.
+
+## License
+
+[MIT](LICENSE) — do essentially anything with it, just keep the copyright notice. A
+[`CITATION.cff`](CITATION.cff) is provided if you would like to cite the project, and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) describes the one rule that matters (don't breach the
+kernel trust boundary).

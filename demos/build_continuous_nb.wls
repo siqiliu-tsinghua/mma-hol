@@ -18,9 +18,10 @@ cells = {
   Cell["Continuous functions on a closed interval", "Title"],
   Cell[TextData[{
      "Continuous functions are NOT part of this library's real-number theory \[Dash] ",
-     "in the Lean blueprint they are the next chapter. But the point-set topology we ",
-     "already have (open / closed / compact / connected) makes the classical theorems ",
-     "on a closed interval fall out cheaply. Everything below is kernel-checked, 0-sorry, ",
+     "in a typical real-analysis course they are the next chapter after the topology of ",
+     "the line. But the point-set topology we already have (open / closed / compact / ",
+     "connected) makes the classical theorems on a closed interval fall out cheaply. ",
+     "Everything below is kernel-checked, 0-sorry, ",
      "and lives in the demo file ", Cell[BoxData["demos/Continuous.wl"]], ". Evaluate the ",
      "cells top to bottom (Shift+Enter)."}], "Text"],
 

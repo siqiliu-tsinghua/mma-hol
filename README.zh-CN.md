@@ -85,7 +85,8 @@ WL-`Module` 信任边界就有了一项明确的职责，"它成功了吗"也就
   （经"可被部分覆盖的点集有确界 = 右端点"）；以及对一般实集的开覆盖谓词 `isCompact`，
   含完整等价 **`isCompact ⟺ isClosed ∧ setBounded ⟺ isSequentiallyCompact`**。
 - **连通性**（`Connected`）：**连通 ⟺ 区间**——介值定理的序-拓扑内核。（本库止于点集拓扑，
-  没有连续函数层，所以**函数形式**的介值定理 `f(a)<0<f(b) ⇒ ∃c. f(c)=0` 不在范围内。）
+  没有连续函数层，所以**函数形式**的介值定理 `f(a)<0<f(b) ⇒ ∃c. f(c)=0` 不在范围内——
+  但 [`demos/`](demos/) 目录把这一层作为示例搭了出来，并由它导出函数形式介值定理与极值定理。）
 - **拓扑**（`Topology`）：开/闭集、补集、相对（子空间）闭。
 
 感兴趣的读者可直接在源码里追这些路线——每个文件是一个按依赖排序的定义/引理闭包，导出显式。
@@ -125,8 +126,11 @@ wolframscript -file tests/run_fast.wls real
 wolframscript -file tests/build_snapshot.wls
 ```
 
-我们还提供一个带可运行样例的交互式笔记本，供手动探索证明器（在 Mathematica / Wolfram Player
-里双击打开）。另有一份独立的 user guide 介绍 API 与如何开发自己的证明。
+[`demos/`](demos/) 里有两个交互式笔记本供手动探索证明器（在 Mathematica / 免费的 Wolfram
+Player 里双击打开）：`examples.nb` 是对内核、自动化与标准库代表性定理的导览；`continuous.nb`
+在拓扑之上搭一层连续函数，并在闭区间上导出有界性、极值定理与函数形式的介值定理。详见
+[`demos/README.md`](demos/README.md)，API 与如何开发自己的证明见
+[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)。
 
 ## 开发署名
 
@@ -135,3 +139,9 @@ wolframscript -file tests/build_snapshot.wls
 重新实现），并将其中一部分从蓝图到 Wolfram 语言证明的翻译工作，在"规格写在这里、每个结果
 都在这里对内核核验"的纪律下委派给了 OpenAI 的 Codex CLI。如上所述，不受信任各层的 AI 作者
 身份不影响健全性——每条定理都由内核重新核验。
+
+## 许可证
+
+[MIT](LICENSE)——几乎可以任意使用，只需保留版权声明。如需引用本项目，可用
+[`CITATION.cff`](CITATION.cff)；[`CONTRIBUTING.md`](CONTRIBUTING.md) 说明了唯一要紧的规则
+（不要破坏内核信任边界）。
