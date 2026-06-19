@@ -1,0 +1,194 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 14.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[      8531,        185]
+NotebookOptionsPosition[      5820,        146]
+NotebookOutlinePosition[      6173,        161]
+CellTagsIndexPosition[      6130,        158]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+Cell["Continuous functions on a closed interval", "Title",ExpressionUUID->"8e7f6b66-0d07-4a1a-aebb-ee9116b17988"],
+
+Cell[TextData[{
+ "Continuous functions are NOT part of this library's real-number theory \
+\[Dash] ",
+ "in the Lean blueprint they are the next chapter. But the point-set topology \
+we ",
+ "already have (open / closed / compact / connected) makes the classical \
+theorems ",
+ "on a closed interval fall out cheaply. Everything below is kernel-checked, \
+0-sorry, ",
+ "and lives in the demo file ",
+ Cell[BoxData[
+  RowBox[{"demos", "/", 
+   RowBox[{"Continuous", ".", "wl"}]}]],ExpressionUUID->
+  "fddfc5c8-eacd-4636-b6ad-bb60f44023b6"],
+ ". Evaluate the ",
+ "cells top to bottom (Shift+Enter)."
+}], "Text",ExpressionUUID->"e22f3d8e-ec39-49a7-8b06-c8852eedc171"],
+
+Cell["Setup", "Section",ExpressionUUID->"68165c51-396e-4c6d-96f8-b824758fe125"],
+
+Cell["\<\
+Load the kernel + stdlib snapshot and the continuity development:\
+\>", "Text",ExpressionUUID->"31b52238-a2cb-45fe-990e-ee40515fc68e"],
+
+Cell["\<\
+(* Load the kernel + stdlib snapshot, then the (demo) continuity theory. *)
+root = ParentDirectory[NotebookDirectory[]];
+Global`$HOLEncapsulationMode = \"Stable\";
+Get[FileNameJoin[{root, \"bootstrap.mx\"}]];
+$ContextPath = Join[
+  Select[Contexts[], StringMatchQ[#, \"HOL`*\"] && ! StringContainsQ[#, \
+\"Private`\"] &],
+  $ContextPath];
+Get[FileNameJoin[{root, \"demos\", \"Continuous.wl\"}]];
+$ContextPath = Prepend[$ContextPath, \"HOL`Demos`Continuous`\"];\
+\>", "Input",ExpressionUUID->"cb8c9218-1edf-4a45-95c9-be1ba8443354"],
+
+Cell["1. Continuity, topologically", "Section",ExpressionUUID->"9dec3752-bd1c-4b24-9438-6fca544b7cb3"],
+
+Cell[TextData[{
+ "We use the topological definition: f is continuous when the preimage of \
+every ",
+ "open set is open. No epsilons, no limits \[Dash] just ",
+ Cell[BoxData[
+ "isOpen"],ExpressionUUID->"8741e7aa-e097-4191-8b8a-91caae812c2e"],
+ " and ",
+ Cell[BoxData[
+ "PREIMAGE"],ExpressionUUID->"bf19d7a6-df11-4ffb-b9db-ae0be6918494"],
+ "."
+}], "Text",ExpressionUUID->"78778cee-7f52-4512-ba24-c0c8e313f1a7"],
+
+Cell["formatThm[continuousDefThm]", "Input",ExpressionUUID->"be879077-9006-4b3b-8d65-400e37a57bfc"],
+
+Cell["2. The two image theorems", "Section",ExpressionUUID->"0b21900b-e82b-4d02-90a5-627c65e2c643"],
+
+Cell["\<\
+The continuous image of a compact set is compact (pull an open cover of the \
+image back through f, take a finite subcover, push it forward):\
+\>", "Text",ExpressionUUID->"d7b2f968-01a5-4e80-a8fa-294f9a3678ab"],
+
+Cell["formatThm[continuousImageCompactThm]", "Input",ExpressionUUID->"7c55aa61-e6e7-4f12-a90a-e9b1e45da21e"],
+
+Cell["\<\
+The continuous image of a connected set is connected (a separation of the \
+image pulls back to a separation of the domain):\
+\>", "Text",ExpressionUUID->"de1012c0-4dc0-430f-abd8-7bed3b565c21"],
+
+Cell["formatThm[continuousImageConnectedThm]", "Input",ExpressionUUID->"eb1b210e-fa4b-4dd9-be36-9ade20a5cc04"],
+
+Cell["3. A closed interval is compact", "Section",ExpressionUUID->"df0ac10c-31b5-47ba-9d59-be9521933035"],
+
+Cell["\<\
+[a,b] is closed (Topology) and bounded (lo=a, hi=b), hence compact:\
+\>", "Text",ExpressionUUID->"39643c5d-c913-4625-8400-c1bc74d4b412"],
+
+Cell["formatThm[closedIntervalCompactThm]", "Input",ExpressionUUID->"eda3579d-19d5-4b33-b55e-67740dd6964f"],
+
+Cell["4. Boundedness on [a,b]", "Section",ExpressionUUID->"b193ce4d-f5e6-4aaa-bca0-2b2bbabf2655"],
+
+Cell["\<\
+[a,b] is compact, so its continuous image is compact, hence closed and \
+bounded \[Dash] in particular bounded. A continuous function on a closed \
+interval is bounded:\
+\>", "Text",ExpressionUUID->"ae23761d-42c8-4969-a151-b2fdbcbb8e47"],
+
+Cell["formatThm[continuousImageBoundedThm]", "Input",ExpressionUUID->"35d610ef-5d5a-4e5b-9767-036185b3ad3a"],
+
+Cell["5. The intermediate value theorem", "Section",ExpressionUUID->"6c951954-1821-4b19-bc04-2f3439f04cfc"],
+
+Cell["\<\
+[a,b] is also connected, so its continuous image is connected, hence an \
+interval. Since the image contains f(a) and f(b), it contains every value \
+between them \[Dash] the function-form IVT, proved from pure topology with no \
+continuous-function analysis:\
+\>", "Text",ExpressionUUID->"bd3ae424-fa8f-49a8-9878-6cb5f5eafd71"],
+
+Cell["formatThm[continuousIVTThm]", "Input",ExpressionUUID->"815a5a0a-811b-45af-8c25-213026fde576"],
+
+Cell["A live check", "Section",ExpressionUUID->"e957f702-1668-447b-a035-6f7aaa7b488b"],
+
+Cell["\<\
+Each statement above is a real theorem object; the kernel built it. For \
+example, the IVT has no hypotheses beyond the ones shown, and is genuinely a \
+theorem:\
+\>", "Text",ExpressionUUID->"4b206688-04c1-4eb6-bcfc-3928b4f13bff"],
+
+Cell["{isThm[continuousIVTThm], hyp[continuousIVTThm]}", "Input",ExpressionUUID->"eea53869-d2ad-4390-a655-ea7e6adc9886"],
+
+Cell["Next steps", "Section",ExpressionUUID->"cb5cb0b6-56d3-440f-ad5a-9e4d08a518f1"],
+
+Cell[TextData[{
+ "See ",
+ Cell[BoxData[
+  RowBox[{"demos", "/", 
+   RowBox[{"Continuous", ".", "wl"}]}]],ExpressionUUID->
+  "4b6016f4-754d-42a0-9aed-ad881c877c89"],
+ " for the proofs and ",
+ Cell[BoxData[
+  RowBox[{"docs", "/", 
+   RowBox[{"USER_GUIDE", ".", "md"}]}]],ExpressionUUID->
+  "215527fd-6ca6-4b5f-834a-1bcd5cb06243"],
+ " for the API."
+}], "Text",ExpressionUUID->"80f5977d-eb21-4783-bfcd-7d2a8a622c55"]
+},
+WindowSize->{820, 720},
+FrontEndVersion->"14.3 for Mac OS X x86 (64-bit) (2025\:5e747\:67088\:65e5)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"552faed0-6478-4a01-8c51-772fc6d5a64e"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[554, 20, 113, 0, 70, "Title",ExpressionUUID->"8e7f6b66-0d07-4a1a-aebb-ee9116b17988"],
+Cell[670, 22, 662, 16, 70, "Text",ExpressionUUID->"e22f3d8e-ec39-49a7-8b06-c8852eedc171"],
+Cell[1335, 40, 79, 0, 70, "Section",ExpressionUUID->"68165c51-396e-4c6d-96f8-b824758fe125"],
+Cell[1417, 42, 144, 2, 70, "Text",ExpressionUUID->"31b52238-a2cb-45fe-990e-ee40515fc68e"],
+Cell[1564, 46, 540, 11, 70, "Input",ExpressionUUID->"cb8c9218-1edf-4a45-95c9-be1ba8443354"],
+Cell[2107, 59, 102, 0, 70, "Section",ExpressionUUID->"9dec3752-bd1c-4b24-9438-6fca544b7cb3"],
+Cell[2212, 61, 409, 10, 70, "Text",ExpressionUUID->"78778cee-7f52-4512-ba24-c0c8e313f1a7"],
+Cell[2624, 73, 99, 0, 70, "Input",ExpressionUUID->"be879077-9006-4b3b-8d65-400e37a57bfc"],
+Cell[2726, 75, 99, 0, 70, "Section",ExpressionUUID->"0b21900b-e82b-4d02-90a5-627c65e2c643"],
+Cell[2828, 77, 220, 3, 70, "Text",ExpressionUUID->"d7b2f968-01a5-4e80-a8fa-294f9a3678ab"],
+Cell[3051, 82, 108, 0, 70, "Input",ExpressionUUID->"7c55aa61-e6e7-4f12-a90a-e9b1e45da21e"],
+Cell[3162, 84, 203, 3, 70, "Text",ExpressionUUID->"de1012c0-4dc0-430f-abd8-7bed3b565c21"],
+Cell[3368, 89, 110, 0, 70, "Input",ExpressionUUID->"eb1b210e-fa4b-4dd9-be36-9ade20a5cc04"],
+Cell[3481, 91, 105, 0, 70, "Section",ExpressionUUID->"df0ac10c-31b5-47ba-9d59-be9521933035"],
+Cell[3589, 93, 146, 2, 70, "Text",ExpressionUUID->"39643c5d-c913-4625-8400-c1bc74d4b412"],
+Cell[3738, 97, 107, 0, 70, "Input",ExpressionUUID->"eda3579d-19d5-4b33-b55e-67740dd6964f"],
+Cell[3848, 99, 97, 0, 70, "Section",ExpressionUUID->"b193ce4d-f5e6-4aaa-bca0-2b2bbabf2655"],
+Cell[3948, 101, 247, 4, 70, "Text",ExpressionUUID->"ae23761d-42c8-4969-a151-b2fdbcbb8e47"],
+Cell[4198, 107, 108, 0, 70, "Input",ExpressionUUID->"35d610ef-5d5a-4e5b-9767-036185b3ad3a"],
+Cell[4309, 109, 107, 0, 70, "Section",ExpressionUUID->"6c951954-1821-4b19-bc04-2f3439f04cfc"],
+Cell[4419, 111, 338, 5, 70, "Text",ExpressionUUID->"bd3ae424-fa8f-49a8-9878-6cb5f5eafd71"],
+Cell[4760, 118, 99, 0, 70, "Input",ExpressionUUID->"815a5a0a-811b-45af-8c25-213026fde576"],
+Cell[4862, 120, 86, 0, 70, "Section",ExpressionUUID->"e957f702-1668-447b-a035-6f7aaa7b488b"],
+Cell[4951, 122, 240, 4, 70, "Text",ExpressionUUID->"4b206688-04c1-4eb6-bcfc-3928b4f13bff"],
+Cell[5194, 128, 120, 0, 70, "Input",ExpressionUUID->"eea53869-d2ad-4390-a655-ea7e6adc9886"],
+Cell[5317, 130, 84, 0, 70, "Section",ExpressionUUID->"cb5cb0b6-56d3-440f-ad5a-9e4d08a518f1"],
+Cell[5404, 132, 412, 12, 70, "Text",ExpressionUUID->"80f5977d-eb21-4783-bfcd-7d2a8a622c55"]
+}
+]
+*)
+
+(* End of internal cache information *)
