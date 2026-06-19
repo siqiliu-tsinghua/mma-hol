@@ -19,6 +19,7 @@ continuousConst::usage = "continuousConst[] - continuous : (real -> real) -> boo
 continuousTm::usage = "continuousTm[f] - builds continuous f.";
 unfoldContinuous::usage = "unfoldContinuous[f] - proves the beta-reduced continuous definition at f.";
 continuousImageCompactThm::usage = "continuousImageCompactThm - |- forall f S. continuous f ==> isCompact S ==> isCompact (IMAGE f S).";
+continuousImageConnectedThm::usage = "continuousImageConnectedThm - |- forall f S. continuous f ==> isConnected S ==> isConnected (IMAGE f S).";
 
 Begin["`Private`"];
 
@@ -340,6 +341,176 @@ continuousImageCompactThm =
     result = EQMP[HOL`Equal`SYM[unfoldIsCompact[imgS]], isCompactBody];
     HOL`Bool`GEN[fV, HOL`Bool`GEN[sV,
       HOL`Bool`DISCH[hContTm, HOL`Bool`DISCH[hCompactTm, result]]]]
+  ];
+
+ctTraceAt[sT_, vT_, xT_] :=
+  Module[{u},
+    u = unfoldTrace[sT, vT];
+    TRANS[HOL`Equal`APTHM[u, xT], HOL`Equal`BETACONV[mkComb[concl[u][[2]], xT]]]
+  ];
+(* eq of two bools from the two implications, via a propositional tautology *)
+ctEqFromImps[pqTh_, qpTh_] :=
+  Module[{pT, qT},
+    pT = concl[pqTh][[1, 2]]; qT = concl[pqTh][[2]];
+    HOL`Bool`MP[HOL`Bool`MP[HOL`Auto`PropTaut`propTaut[
+      ctImpTm[ctImpTm[pT, qT], ctImpTm[ctImpTm[qT, pT], mkEq[pT, qT]]]],
+      pqTh], qpTh]
+  ];
+
+(* T2: continuous image of a connected set is connected. *)
+continuousImageConnectedThm =
+  Module[{fV, sV, aV, bV, imgS, hContTm, hCont, contU, hConnTm, hConn, connU,
+          hSepTm, hSep, sepU, hOpA, r1, hOpB, r2, hNeA, r3, hNeB, r4, hCov,
+          hDisj, waV, wbV, openExA, openExB, memEqABodyA, memEqABodyB,
+          hWAbodyTm, hWBbodyTm, preA, preB, aPrime, bPrime, mkBodyEq,
+          prove6, isSepSAB, notSepInner, chooseWB, chooseWA, notSep,
+          xV, yV, zV, aPrimeAt, bPrimeAt},
+    fV = mkVar["f", ctFunTy]; sV = mkVar["S", ctSetTy];
+    aV = mkVar["A", ctSetTy]; bV = mkVar["B", ctSetTy];
+    waV = mkVar["WA", ctSetTy]; wbV = mkVar["WB", ctSetTy];
+    xV = mkVar["x", ctRealTy]; yV = mkVar["yC", ctRealTy]; zV = mkVar["zC", ctRealTy];
+    imgS = ctImageTm[fV, sV];
+    hContTm = continuousTm[fV]; hCont = ASSUME[hContTm];
+    contU = EQMP[unfoldContinuous[fV], hCont];
+    hConnTm = isConnectedTm[sV]; hConn = ASSUME[hConnTm];
+    connU = EQMP[unfoldIsConnected[sV], hConn];   (* forall U V. ~ isSeparation S U V *)
+    hSepTm = isSeparationTm[imgS, aV, bV]; hSep = ASSUME[hSepTm];
+    sepU = EQMP[unfoldIsSeparation[imgS, aV, bV], hSep];
+    hOpA = HOL`Bool`CONJUNCT1[sepU]; r1 = HOL`Bool`CONJUNCT2[sepU];
+    hOpB = HOL`Bool`CONJUNCT1[r1]; r2 = HOL`Bool`CONJUNCT2[r1];
+    hNeA = HOL`Bool`CONJUNCT1[r2]; r3 = HOL`Bool`CONJUNCT2[r2];
+    hNeB = HOL`Bool`CONJUNCT1[r3]; r4 = HOL`Bool`CONJUNCT2[r3];
+    hCov = HOL`Bool`CONJUNCT1[r4]; hDisj = HOL`Bool`CONJUNCT2[r4];
+    openExA = EQMP[unfoldOpenIn[imgS, aV], hOpA];   (* exists W. isOpen W /\ forall y. A y = (imgS y /\ W y) *)
+    openExB = EQMP[unfoldOpenIn[imgS, bV], hOpB];
+    memEqABodyA[wT_] := ctForallTm[yV, mkEq[ctApp[aV, yV],
+      ctConjTm[ctApp[imgS, yV], ctApp[wT, yV]]]];
+    memEqABodyB[wT_] := ctForallTm[yV, mkEq[ctApp[bV, yV],
+      ctConjTm[ctApp[imgS, yV], ctApp[wT, yV]]]];
+    hWAbodyTm = ctConjTm[isOpenTm[waV], memEqABodyA[waV]];
+    hWBbodyTm = ctConjTm[isOpenTm[wbV], memEqABodyB[wbV]];
+    preA = ctPreimageTm[fV, waV]; preB = ctPreimageTm[fV, wbV];
+    aPrime = traceTm[sV, preA]; bPrime = traceTm[sV, preB];
+    aPrimeAt[xT_] := ctTraceAt[sV, preA, xT];   (* A' x = S x /\ (PREIMAGE f WA) x *)
+    bPrimeAt[xT_] := ctTraceAt[sV, preB, xT];
+
+    (* the whole inner proof of F, assuming hWAbody and hWBbody *)
+    notSepInner = Module[{hWA, hWB, openWA, openWB, memEqA, memEqB, c1, c2,
+                          c3, c4, c5, c6, conj6, isSepSAB2, notSepS, falseTh},
+      hWA = ASSUME[hWAbodyTm]; hWB = ASSUME[hWBbodyTm];
+      openWA = HOL`Bool`CONJUNCT1[hWA]; memEqA = HOL`Bool`CONJUNCT2[hWA];
+      openWB = HOL`Bool`CONJUNCT1[hWB]; memEqB = HOL`Bool`CONJUNCT2[hWB];
+      (* C1, C2: openIn S A', B' *)
+      c1 = HOL`Bool`MP[ctSpecAll[openInTraceThm, {sV, preA}],
+        HOL`Bool`MP[HOL`Bool`SPEC[waV, contU], openWA]];
+      c2 = HOL`Bool`MP[ctSpecAll[openInTraceThm, {sV, preB}],
+        HOL`Bool`MP[HOL`Bool`SPEC[wbV, contU], openWB]];
+      (* C3: nonempty A'  (exists x. A' x) *)
+      c3 = Module[{neEx, y0, hAy0, conj0, imgY0, waY0, imgEx, z0, hz0, sz0,
+                   y0eqfz0, wafz0, preAz0, aPz0, exA},
+        neEx = EQMP[unfoldSetNonempty[aV], hNeA];   (* exists y. A y *)
+        hAy0 = ASSUME[ctApp[aV, yV]];
+        conj0 = EQMP[HOL`Bool`SPEC[yV, memEqA], hAy0];   (* imgS y /\ WA y *)
+        imgY0 = HOL`Bool`CONJUNCT1[conj0]; waY0 = HOL`Bool`CONJUNCT2[conj0];
+        imgEx = EQMP[ctImageAt[fV, sV, yV], imgY0];   (* exists z. S z /\ y = f z *)
+        hz0 = ASSUME[ctConjTm[ctApp[sV, zV], mkEq[yV, mkComb[fV, zV]]]];
+        sz0 = HOL`Bool`CONJUNCT1[hz0]; y0eqfz0 = HOL`Bool`CONJUNCT2[hz0];
+        wafz0 = EQMP[HOL`Equal`APTERM[waV, y0eqfz0], waY0];   (* WA (f z) *)
+        preAz0 = EQMP[HOL`Equal`SYM[ctPreimageAt[fV, waV, zV]], wafz0];  (* (PREIMAGE f WA) z *)
+        aPz0 = EQMP[HOL`Equal`SYM[aPrimeAt[zV]], HOL`Bool`CONJ[sz0, preAz0]];  (* A' z *)
+        exA = HOL`Bool`EXISTS[ctExistsTm[xV, ctApp[aPrime, xV]], zV, aPz0];
+        EQMP[HOL`Equal`SYM[unfoldSetNonempty[aPrime]],
+          HOL`Bool`CHOOSE[yV, neEx, HOL`Bool`CHOOSE[zV, imgEx, exA]]]
+      ];
+      (* C4: nonempty B' *)
+      c4 = Module[{neEx, hBy0, conj0, imgY0, wbY0, imgEx, hz0, sz0, y0eqfz0,
+                   wbfz0, preBz0, bPz0, exB},
+        neEx = EQMP[unfoldSetNonempty[bV], hNeB];
+        hBy0 = ASSUME[ctApp[bV, yV]];
+        conj0 = EQMP[HOL`Bool`SPEC[yV, memEqB], hBy0];
+        imgY0 = HOL`Bool`CONJUNCT1[conj0]; wbY0 = HOL`Bool`CONJUNCT2[conj0];
+        imgEx = EQMP[ctImageAt[fV, sV, yV], imgY0];
+        hz0 = ASSUME[ctConjTm[ctApp[sV, zV], mkEq[yV, mkComb[fV, zV]]]];
+        sz0 = HOL`Bool`CONJUNCT1[hz0]; y0eqfz0 = HOL`Bool`CONJUNCT2[hz0];
+        wbfz0 = EQMP[HOL`Equal`APTERM[wbV, y0eqfz0], wbY0];
+        preBz0 = EQMP[HOL`Equal`SYM[ctPreimageAt[fV, wbV, zV]], wbfz0];
+        bPz0 = EQMP[HOL`Equal`SYM[bPrimeAt[zV]], HOL`Bool`CONJ[sz0, preBz0]];
+        exB = HOL`Bool`EXISTS[ctExistsTm[xV, ctApp[bPrime, xV]], zV, bPz0];
+        EQMP[HOL`Equal`SYM[unfoldSetNonempty[bPrime]],
+          HOL`Bool`CHOOSE[yV, neEx, HOL`Bool`CHOOSE[zV, imgEx, exB]]]
+      ];
+      (* C5: coversByTwo S A' B'  =  forall x. S x = (A' x \/ B' x) *)
+      c5 = Module[{covU, fx, fwd, bwd, eqAt},
+        covU = EQMP[unfoldCoversByTwo[imgS, aV, bV], hCov];  (* forall y. imgS y = (A y \/ B y) *)
+        fx = mkComb[fV, xV];
+        (* fwd: S x ==> A' x \/ B' x *)
+        fwd = Module[{hSx, fxImg, covfx, disjAB, caseA, caseB},
+          hSx = ASSUME[ctApp[sV, xV]];
+          fxImg = EQMP[HOL`Equal`SYM[ctImageAt[fV, sV, fx]],
+            HOL`Bool`EXISTS[concl[ctImageAt[fV, sV, fx]][[2]], xV,
+              HOL`Bool`CONJ[hSx, REFL[fx]]]];   (* imgS (f x) *)
+          disjAB = EQMP[HOL`Bool`SPEC[fx, covU], fxImg];   (* A (f x) \/ B (f x) *)
+          caseA = Module[{hAfx, waFx, aPx},
+            hAfx = ASSUME[ctApp[aV, fx]];
+            waFx = HOL`Bool`CONJUNCT2[EQMP[HOL`Bool`SPEC[fx, memEqA], hAfx]];  (* WA (f x) *)
+            aPx = EQMP[HOL`Equal`SYM[aPrimeAt[xV]],
+              HOL`Bool`CONJ[hSx, EQMP[HOL`Equal`SYM[ctPreimageAt[fV, waV, xV]], waFx]]];
+            HOL`Bool`DISJ1[aPx, ctApp[bPrime, xV]]];
+          caseB = Module[{hBfx, wbFx, bPx},
+            hBfx = ASSUME[ctApp[bV, fx]];
+            wbFx = HOL`Bool`CONJUNCT2[EQMP[HOL`Bool`SPEC[fx, memEqB], hBfx]];
+            bPx = EQMP[HOL`Equal`SYM[bPrimeAt[xV]],
+              HOL`Bool`CONJ[hSx, EQMP[HOL`Equal`SYM[ctPreimageAt[fV, wbV, xV]], wbFx]]];
+            HOL`Bool`DISJ2[bPx, ctApp[aPrime, xV]]];
+          HOL`Bool`DISCH[ctApp[sV, xV],
+            HOL`Bool`DISJCASES[disjAB, caseA, caseB]]];
+        (* bwd: A' x \/ B' x ==> S x *)
+        bwd = Module[{hDisjP, sFromA, sFromB},
+          hDisjP = ASSUME[ctOrTm[ctApp[aPrime, xV], ctApp[bPrime, xV]]];
+          sFromA = HOL`Bool`CONJUNCT1[EQMP[aPrimeAt[xV], ASSUME[ctApp[aPrime, xV]]]];
+          sFromB = HOL`Bool`CONJUNCT1[EQMP[bPrimeAt[xV], ASSUME[ctApp[bPrime, xV]]]];
+          HOL`Bool`DISCH[ctOrTm[ctApp[aPrime, xV], ctApp[bPrime, xV]],
+            HOL`Bool`DISJCASES[hDisjP, sFromA, sFromB]]];
+        eqAt = ctEqFromImps[fwd, bwd];   (* S x = (A' x \/ B' x) *)
+        EQMP[HOL`Equal`SYM[unfoldCoversByTwo[sV, aPrime, bPrime]],
+          HOL`Bool`GEN[xV, eqAt]]
+      ];
+      (* C6: setDisjoint A' B'  =  forall x. ~ (A' x /\ B' x) *)
+      c6 = Module[{disjU, fx, hboth, aPx, bPx, sx, waFx, wbFx, fxImg, afx,
+                   bfx, falseB},
+        disjU = EQMP[unfoldSetDisjoint[aV, bV], hDisj];   (* forall y. ~ (A y /\ B y) *)
+        fx = mkComb[fV, xV];
+        hboth = ASSUME[ctConjTm[ctApp[aPrime, xV], ctApp[bPrime, xV]]];
+        aPx = EQMP[aPrimeAt[xV], HOL`Bool`CONJUNCT1[hboth]];  (* S x /\ (PREIMAGE f WA) x *)
+        bPx = EQMP[bPrimeAt[xV], HOL`Bool`CONJUNCT2[hboth]];
+        sx = HOL`Bool`CONJUNCT1[aPx];
+        waFx = EQMP[ctPreimageAt[fV, waV, xV], HOL`Bool`CONJUNCT2[aPx]];  (* WA (f x) *)
+        wbFx = EQMP[ctPreimageAt[fV, wbV, xV], HOL`Bool`CONJUNCT2[bPx]];
+        fxImg = EQMP[HOL`Equal`SYM[ctImageAt[fV, sV, fx]],
+          HOL`Bool`EXISTS[concl[ctImageAt[fV, sV, fx]][[2]], xV,
+            HOL`Bool`CONJ[sx, REFL[fx]]]];
+        afx = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[fx, memEqA]],
+          HOL`Bool`CONJ[fxImg, waFx]];   (* A (f x) *)
+        bfx = EQMP[HOL`Equal`SYM[HOL`Bool`SPEC[fx, memEqB]],
+          HOL`Bool`CONJ[fxImg, wbFx]];
+        falseB = HOL`Bool`MP[HOL`Bool`NOTELIM[HOL`Bool`SPEC[fx, disjU]],
+          HOL`Bool`CONJ[afx, bfx]];
+        EQMP[HOL`Equal`SYM[unfoldSetDisjoint[aPrime, bPrime]],
+          HOL`Bool`GEN[xV, HOL`Bool`NOTINTRO[HOL`Bool`DISCH[
+            ctConjTm[ctApp[aPrime, xV], ctApp[bPrime, xV]], falseB]]]]
+      ];
+      conj6 = HOL`Bool`CONJ[c1, HOL`Bool`CONJ[c2, HOL`Bool`CONJ[c3,
+        HOL`Bool`CONJ[c4, HOL`Bool`CONJ[c5, c6]]]]];
+      isSepSAB2 = EQMP[HOL`Equal`SYM[unfoldIsSeparation[sV, aPrime, bPrime]], conj6];
+      notSepS = HOL`Bool`SPEC[bPrime, HOL`Bool`SPEC[aPrime, connU]];
+      HOL`Bool`MP[HOL`Bool`NOTELIM[notSepS], isSepSAB2]
+    ];
+    chooseWB = HOL`Bool`CHOOSE[wbV, openExB, notSepInner];
+    chooseWA = HOL`Bool`CHOOSE[waV, openExA, chooseWB];
+    notSep = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[hSepTm, chooseWA]];
+    EQMP[HOL`Equal`SYM[unfoldIsConnected[imgS]],
+      HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, notSep]]] // (HOL`Bool`GEN[fV,
+        HOL`Bool`GEN[sV, HOL`Bool`DISCH[hContTm, HOL`Bool`DISCH[hConnTm, #]]]] &)
   ];
 
 End[];
