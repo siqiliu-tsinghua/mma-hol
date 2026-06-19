@@ -60,10 +60,19 @@ pulls back to a separation of the domain):", "Text"],
      "function analysis:"}], "Text"],
   Cell["formatThm[continuousIVTThm]", "Input"],
 
+  Cell["6. The extreme value theorem", "Section"],
+  Cell[TextData[{
+     "The image of [a,b] is also compact, hence closed and bounded, so its supremum ",
+     "is attained: there is a point where f reaches its maximum. The proof builds a ",
+     "sequence approaching the supremum (each term within ",
+     Cell[BoxData["1/(n+1)"]], " of it), uses that a closed set contains its sequential ",
+     "limits, and reads the maximiser off the resulting image membership:"}], "Text"],
+  Cell["formatThm[continuousEVTThm]", "Input"],
+
   Cell["A live check", "Section"],
   Cell["Each statement above is a real theorem object; the kernel built it. For example, \
-the IVT has no hypotheses beyond the ones shown, and is genuinely a theorem:", "Text"],
-  Cell["{isThm[continuousIVTThm], hyp[continuousIVTThm]}", "Input"],
+the EVT has no hypotheses beyond the ones shown, and is genuinely a theorem:", "Text"],
+  Cell["{isThm[continuousEVTThm], hyp[continuousEVTThm]}", "Input"],
 
   Cell["Next steps", "Section"],
   Cell[TextData[{

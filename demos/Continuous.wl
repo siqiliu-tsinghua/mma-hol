@@ -23,6 +23,7 @@ continuousImageConnectedThm::usage = "continuousImageConnectedThm - |- forall f 
 closedIntervalCompactThm::usage = "closedIntervalCompactThm - |- forall a b. isCompact (closedInterval a b).";
 continuousImageBoundedThm::usage = "continuousImageBoundedThm - |- forall f a b. continuous f ==> setBounded (IMAGE f (closedInterval a b)).";
 continuousIVTThm::usage = "continuousIVTThm - |- forall f a b y. continuous f ==> realLe a b ==> realLe (f a) y ==> realLe y (f b) ==> exists c. closedInterval a b c /\\ f c = y.";
+continuousEVTThm::usage = "continuousEVTThm - |- forall f a b. continuous f ==> realLe a b ==> exists c. closedInterval a b c /\\ (forall x. closedInterval a b x ==> realLe (f x) (f c)). (Extreme value theorem: the maximum is attained.)";
 
 Begin["`Private`"];
 
@@ -610,6 +611,185 @@ continuousIVTThm =
     HOL`Bool`GEN[fV, HOL`Bool`GEN[aV, HOL`Bool`GEN[bV, HOL`Bool`GEN[yV,
       HOL`Bool`DISCH[hContTm, HOL`Bool`DISCH[hAbTm, HOL`Bool`DISCH[hLoTm,
         HOL`Bool`DISCH[hHiTm, chosen]]]]]]]]
+  ];
+
+ctRealNeg[xT_] := mkComb[realNegConst[], xT];
+ctRealAdd[xT_, yT_] := mkComb[mkComb[realAddConst[], xT], yT];
+ctRealLt[xT_, yT_] := mkComb[mkComb[realLtConst[], xT], yT];
+ctRealAbs[xT_] := mkComb[realAbsConst[], xT];
+ctInvSucc[nT_] := mkComb[invSuccRadiusConst[], nT];
+ctRealLtCong[eqL_, eqR_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLtConst[], eqL], eqR];
+ctRealLeCong[eqL_, eqR_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realLeConst[], eqL], eqR];
+ctRealAbsCong[eq_] := HOL`Equal`APTERM[realAbsConst[], eq];
+ctRealAddCong[eqL_, eqR_] :=
+  HOL`Kernel`MKCOMB[HOL`Equal`APTERM[realAddConst[], eqL], eqR];
+(* from  ~(p < q)  derive  q <= p *)
+ctNotLtToLe[pT_, qT_, notLtTh_] :=
+  EQMP[HOL`Auto`PropTaut`propTaut[mkEq[
+      ctNotTm[ctNotTm[ctRealLe[qT, pT]]], ctRealLe[qT, pT]]],
+    EQMP[HOL`Equal`APTERM[ctNotConst[],
+        HOL`Equal`SYM[ctSpecAll[HOL`Auto`RealArith`realNotLeLtThm, {qT, pT}]]],
+      notLtTh]];
+
+(* T4: extreme value theorem - a continuous function on [a,b] attains its max. *)
+continuousEVTThm =
+  Module[{fV, aV, bV, xV, zV, nV, numTy, ci, tSet, supM, fa, hContTm, hCont,
+          hAbTm, hAb, tCompact, ccb, tClosed, tBdd, aInCi, faMem, neTm, ne, bdd,
+          supUp, leSubLem, dropZeroLem, dNNLem, dLtRLem, negEqLem,
+          evtPredOf, evtMsrOf, evtExists, selZ, evtSeq, evtSeqAt, evtSat,
+          evtMemAll, tendM, supInT, supExTm, exTM, cV, hcTm, ciC, mEqfc,
+          fxMem, fxLeM, fxLefc, maxBody, exGoalM, chosen, zerR,
+          mEv, sEv, zZ, pD, qD, mE2, zE2, rE2, pN, qN},
+    fV = mkVar["f", ctFunTy]; aV = mkVar["a", ctRealTy]; bV = mkVar["b", ctRealTy];
+    xV = mkVar["x", ctRealTy]; zV = mkVar["zE", ctRealTy];
+    numTy = concl[invSuccRadiusPosThm][[2, 1, 2]];   (* the num type, from forall n *)
+    nV = mkVar["nE", numTy];
+    ci = ctClosedInterval[aV, bV]; tSet = ctImageTm[fV, ci];
+    supM = mkComb[realSupConst[], tSet]; fa = mkComb[fV, aV];
+    zerR = concl[invSuccRadiusTendstoZeroThm][[2]];   (* &R 0, extracted *)
+    mEv = mkVar["mEv", ctRealTy]; sEv = mkVar["sEv", ctRealTy]; zZ = mkVar["zZ", ctRealTy];
+    pD = mkVar["pD", ctRealTy]; qD = mkVar["qD", ctRealTy];
+    mE2 = mkVar["mE2", ctRealTy]; zE2 = mkVar["zE2", ctRealTy]; rE2 = mkVar["rE2", ctRealTy];
+    pN = mkVar["pN", ctRealTy]; qN = mkVar["qN", ctRealTy];
+    hContTm = continuousTm[fV]; hCont = ASSUME[hContTm];
+    hAbTm = ctRealLe[aV, bV]; hAb = ASSUME[hAbTm];
+    tCompact = HOL`Bool`MP[HOL`Bool`MP[
+      ctSpecAll[continuousImageCompactThm, {fV, ci}], hCont],
+      ctSpecAll[closedIntervalCompactThm, {aV, bV}]];
+    ccb = EQMP[HOL`Bool`SPEC[tSet, compactIffClosedBoundedThm], tCompact];
+    tClosed = HOL`Bool`CONJUNCT1[ccb]; tBdd = HOL`Bool`CONJUNCT2[ccb];
+    aInCi = EQMP[HOL`Equal`SYM[ctSpecAll[closedIntervalMemThm, {aV, bV, aV}]],
+      HOL`Bool`CONJ[ctReflLe[aV], hAb]];
+    faMem = EQMP[HOL`Equal`SYM[ctImageAt[fV, ci, fa]],
+      HOL`Bool`EXISTS[concl[ctImageAt[fV, ci, fa]][[2]], aV,
+        HOL`Bool`CONJ[aInCi, REFL[fa]]]];   (* tSet (f a) *)
+    neTm = ctExistsTm[zV, ctApp[tSet, zV]];
+    ne = HOL`Bool`EXISTS[neTm, fa, faMem];
+    bdd = Module[{sbU, loV, hiV, hbodyTm, upBody, exU},
+      sbU = EQMP[unfoldSetBounded[tSet], tBdd];
+      loV = mkVar["loE", ctRealTy]; hiV = mkVar["hiE", ctRealTy];
+      hbodyTm = ctForallTm[xV, ctImpTm[ctApp[tSet, xV],
+        ctConjTm[ctRealLe[loV, xV], ctRealLe[xV, hiV]]]];
+      upBody = HOL`Bool`GEN[xV, HOL`Bool`DISCH[ctApp[tSet, xV],
+        HOL`Bool`CONJUNCT2[HOL`Bool`MP[HOL`Bool`SPEC[xV, ASSUME[hbodyTm]],
+          ASSUME[ctApp[tSet, xV]]]]]];
+      exU = HOL`Bool`EXISTS[ctExistsTm[hiV, ctForallTm[xV,
+        ctImpTm[ctApp[tSet, xV], ctRealLe[xV, hiV]]]], hiV, upBody];
+      HOL`Bool`CHOOSE[loV, sbU, HOL`Bool`CHOOSE[hiV,
+        ASSUME[ctExistsTm[hiV, hbodyTm]], exU]]
+    ];
+    supUp = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`SPEC[tSet, realSupUpperThm], ne], bdd];
+      (* forall a. tSet a ==> a <= supM *)
+    leSubLem = HOL`Auto`RealArith`realArithProve[
+      ctForallTm[mEv, ctForallTm[sEv,
+        ctImpTm[ctRealLt[zerR, sEv], ctRealLt[ctRealAdd[mEv, ctRealNeg[sEv]], mEv]]]]];
+    dropZeroLem = HOL`Auto`RealArith`realArithProve[
+      ctForallTm[zZ, mkEq[ctRealAdd[zZ, ctRealNeg[zerR]], zZ]]];
+    dNNLem = HOL`Auto`RealArith`realArithProve[
+      ctForallTm[pD, ctForallTm[qD,
+        ctImpTm[ctRealLe[pD, qD], ctRealLe[zerR, ctRealAdd[qD, ctRealNeg[pD]]]]]]];
+    dLtRLem = HOL`Auto`RealArith`realArithProve[
+      ctForallTm[mE2, ctForallTm[zE2, ctForallTm[rE2,
+        ctImpTm[ctRealLt[ctRealAdd[mE2, ctRealNeg[rE2]], zE2],
+          ctRealLt[ctRealAdd[mE2, ctRealNeg[zE2]], rE2]]]]]];
+    negEqLem = HOL`Auto`RealArith`realArithProve[
+      ctForallTm[pN, ctForallTm[qN,
+        mkEq[ctRealAdd[pN, ctRealNeg[qN]], ctRealNeg[ctRealAdd[qN, ctRealNeg[pN]]]]]]];
+    evtMsrOf[nT_] := ctRealAdd[supM, ctRealNeg[ctInvSucc[nT]]];   (* supM - 1/(n+1) *)
+    evtPredOf[nT_] := mkAbs[zV, ctConjTm[ctApp[tSet, zV], ctRealLt[evtMsrOf[nT], zV]]];
+    evtExists[nT_] := Module[{goalTm, em, hNo, hTz, notgt, zLe, allLe, mLe, mGt, falseTh},
+      goalTm = ctExistsTm[zV, ctConjTm[ctApp[tSet, zV], ctRealLt[evtMsrOf[nT], zV]]];
+      em = HOL`Bool`EXCLUDEDMIDDLE[goalTm];
+      hNo = ASSUME[ctNotTm[goalTm]];
+      hTz = ASSUME[ctApp[tSet, zV]];
+      notgt = HOL`Bool`NOTINTRO[HOL`Bool`DISCH[ctRealLt[evtMsrOf[nT], zV],
+        HOL`Bool`MP[HOL`Bool`NOTELIM[hNo],
+          HOL`Bool`EXISTS[goalTm, zV,
+            HOL`Bool`CONJ[hTz, ASSUME[ctRealLt[evtMsrOf[nT], zV]]]]]]];
+      zLe = ctNotLtToLe[evtMsrOf[nT], zV, notgt];   (* z <= supM - r *)
+      allLe = HOL`Bool`GEN[zV, HOL`Bool`DISCH[ctApp[tSet, zV], zLe]];
+      mLe = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+        ctSpecAll[realSupLeastThm, {tSet, evtMsrOf[nT]}], ne], bdd], allLe];
+      mGt = HOL`Bool`MP[ctSpecAll[leSubLem, {supM, ctInvSucc[nT]}],
+        HOL`Bool`SPEC[nT, invSuccRadiusPosThm]];   (* supM - r < supM *)
+      falseTh = HOL`Bool`MP[
+        HOL`Bool`NOTELIM[HOL`Bool`SPEC[supM, HOL`Auto`RealArith`realLtIrreflThm]],
+        HOL`Bool`MP[HOL`Bool`MP[
+          ctSpecAll[realLeLtTransThm, {supM, evtMsrOf[nT], supM}], mLe], mGt]];
+      HOL`Bool`DISJCASES[em, ASSUME[goalTm], HOL`Bool`CONTR[goalTm, falseTh]]
+    ];
+    selZ[nT_] := mkComb[ctSelectConst[ctRealTy], evtPredOf[nT]];
+    evtSeq = mkAbs[nV, selZ[nV]];
+    evtSeqAt[nT_] := HOL`Equal`BETACONV[mkComb[evtSeq, nT]];   (* evtSeq n = selZ n *)
+    evtSat[nT_] := ctBetaClean[HOL`Stdlib`Num`selectOfExists[evtPredOf[nT], evtExists[nT]]];
+    evtMemAll = HOL`Bool`GEN[nV,
+      EQMP[HOL`Equal`SYM[HOL`Equal`APTERM[tSet, evtSeqAt[nV]]],
+        HOL`Bool`CONJUNCT1[evtSat[nV]]]];   (* forall n. tSet (evtSeq n) *)
+    tendM = Module[{kV, eV, n0V, openTend, hEps, exN, hAll, specHAll, leTm, hLe,
+                    kk, radAbs, rPos, rNonneg, absR, rLtE, gt, le, dNN, dLtR,
+                    negEq, absEq, closeB, selToSeq, seqK, congAbsAdd, closeBe,
+                    closeK, allK, exTm2, chosenN, epsImp, allEps},
+      kV = mkVar["kE", numTy]; eV = mkVar["eE", ctRealTy]; n0V = mkVar["NE", numTy];
+      openTend = EQMP[unfoldTendsto[invSuccRadiusConst[], zerR], invSuccRadiusTendstoZeroThm];
+      hEps = ASSUME[ctRealLt[zerR, eV]];
+      exN = HOL`Bool`MP[HOL`Bool`SPEC[eV, openTend], hEps];
+      hAll = ASSUME[concl[HOL`Equal`BETACONV[mkComb[concl[exN][[2]], n0V]]][[2]]];
+      kk = kV;
+      specHAll = HOL`Bool`SPEC[kk, hAll];   (* (N<=k) ==> |invSucc k - 0| < e *)
+      leTm = concl[specHAll][[1, 2]];   (* N<=k, antecedent of the implication *)
+      hLe = ASSUME[leTm];
+      radAbs = HOL`Bool`MP[specHAll, hLe];   (* |invSucc k - 0| < e *)
+      rPos = HOL`Bool`SPEC[kk, invSuccRadiusPosThm];
+      rNonneg = HOL`Bool`MP[ctSpecAll[realLtImpLeThm, {zerR, ctInvSucc[kk]}], rPos];
+      absR = TRANS[ctRealAbsCong[HOL`Bool`SPEC[ctInvSucc[kk], dropZeroLem]],
+        HOL`Bool`MP[HOL`Bool`SPEC[ctInvSucc[kk], realAbsPosThm], rNonneg]];
+      rLtE = EQMP[ctRealLtCong[absR, REFL[eV]], radAbs];   (* invSucc k < e *)
+      gt = HOL`Bool`CONJUNCT2[evtSat[kk]];   (* (supM - r) < selZ k *)
+      le = HOL`Bool`MP[HOL`Bool`SPEC[selZ[kk], supUp], HOL`Bool`CONJUNCT1[evtSat[kk]]];
+      dNN = HOL`Bool`MP[ctSpecAll[dNNLem, {selZ[kk], supM}], le];   (* 0 <= supM + -selZ k *)
+      dLtR = HOL`Bool`MP[ctSpecAll[dLtRLem, {supM, selZ[kk], ctInvSucc[kk]}], gt];
+      negEq = ctSpecAll[negEqLem, {selZ[kk], supM}];   (* selZ k + -supM = -(supM + -selZ k) *)
+      absEq = TRANS[ctRealAbsCong[negEq],
+        TRANS[HOL`Bool`SPEC[ctRealAdd[supM, ctRealNeg[selZ[kk]]], realAbsNegThm],
+          HOL`Bool`MP[HOL`Bool`SPEC[ctRealAdd[supM, ctRealNeg[selZ[kk]]], realAbsPosThm],
+            dNN]]];   (* |selZ k + -supM| = supM + -selZ k *)
+      closeB = EQMP[ctRealLtCong[HOL`Equal`SYM[absEq], REFL[ctInvSucc[kk]]], dLtR];
+      selToSeq = HOL`Equal`SYM[evtSeqAt[kk]];   (* selZ k = evtSeq k *)
+      seqK = mkComb[evtSeq, kk];
+      congAbsAdd = ctRealAbsCong[ctRealAddCong[selToSeq, REFL[ctRealNeg[supM]]]];
+      closeBe = EQMP[ctRealLtCong[congAbsAdd, REFL[ctInvSucc[kk]]], closeB];
+      closeK = HOL`Bool`MP[HOL`Bool`MP[
+        ctSpecAll[realLtTransThm,
+          {ctRealAbs[ctRealAdd[seqK, ctRealNeg[supM]]], ctInvSucc[kk], eV}],
+        closeBe], rLtE];   (* |evtSeq k - supM| < e *)
+      allK = HOL`Bool`GEN[kV, HOL`Bool`DISCH[leTm, closeK]];
+      exTm2 = ctExistsTm[n0V, concl[allK]];
+      chosenN = HOL`Bool`CHOOSE[n0V, exN, HOL`Bool`EXISTS[exTm2, n0V, allK]];
+      epsImp = HOL`Bool`DISCH[ctRealLt[zerR, eV], chosenN];
+      allEps = HOL`Bool`GEN[eV, epsImp];
+      EQMP[HOL`Equal`SYM[unfoldTendsto[evtSeq, supM]], allEps]   (* tendsto evtSeq supM *)
+    ];
+    supInT = HOL`Bool`MP[HOL`Bool`MP[HOL`Bool`MP[
+      ctSpecAll[limitMemOfClosedThm, {tSet, evtSeq, supM}], tClosed], evtMemAll], tendM];
+    supExTm = ctImageAt[fV, ci, supM];
+    exTM = EQMP[supExTm, supInT];   (* exists x. ci x /\ supM = f x *)
+    cV = mkVar["cMax", ctRealTy];
+    hcTm = ctConjTm[ctApp[ci, cV], mkEq[supM, mkComb[fV, cV]]];
+    ciC = HOL`Bool`CONJUNCT1[ASSUME[hcTm]];   (* ci cV *)
+    mEqfc = HOL`Bool`CONJUNCT2[ASSUME[hcTm]];   (* supM = f cV *)
+    fxMem = EQMP[HOL`Equal`SYM[ctImageAt[fV, ci, mkComb[fV, xV]]],
+      HOL`Bool`EXISTS[concl[ctImageAt[fV, ci, mkComb[fV, xV]]][[2]], xV,
+        HOL`Bool`CONJ[ASSUME[ctApp[ci, xV]], REFL[mkComb[fV, xV]]]]];   (* tSet (f x) *)
+    fxLeM = HOL`Bool`MP[HOL`Bool`SPEC[mkComb[fV, xV], supUp], fxMem];   (* f x <= supM *)
+    fxLefc = EQMP[ctRealLeCong[REFL[mkComb[fV, xV]], mEqfc], fxLeM];   (* f x <= f cV *)
+    maxBody = HOL`Bool`GEN[xV, HOL`Bool`DISCH[ctApp[ci, xV], fxLefc]];
+    exGoalM = ctExistsTm[cV, ctConjTm[ctApp[ci, cV], concl[maxBody]]];
+    chosen = HOL`Bool`CHOOSE[cV, exTM,
+      HOL`Bool`EXISTS[exGoalM, cV, HOL`Bool`CONJ[ciC, maxBody]]];
+    HOL`Bool`GEN[fV, HOL`Bool`GEN[aV, HOL`Bool`GEN[bV,
+      HOL`Bool`DISCH[hContTm, HOL`Bool`DISCH[hAbTm, chosen]]]]]
   ];
 
 End[];
