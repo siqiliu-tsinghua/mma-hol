@@ -3,7 +3,7 @@
 Copy this template to `docs/dev/codex/brief-NNN-<slug>.md`, fill every section, then run:
 
 ```
-cdx exec -C /Users/fft/Developments/mma-hol -s danger-full-access \
+cdx exec -C "$(git rev-parse --show-toplevel)" -s danger-full-access \
   "Read docs/dev/codex/brief-NNN-<slug>.md and execute it exactly. Follow its Hard rules." \
   > /tmp/cdx_brief_NNN.log 2>&1
 ```
